@@ -4,7 +4,7 @@ Project-scoped skills for the Research flow (idea generation, code survey, imple
 
 ## Project layout
 
-When a project is **created in Vibe Lab**, the app creates **`instance.json`** at the project root (single config with **absolute paths**) and these preset directories:
+When a project is **created in VibeLab**, the app creates **`instance.json`** at the project root (single config with **absolute paths**) and these preset directories:
 
 - `Ideation/ideas`, `Ideation/references`
 - `Experiment/code_references`, `Experiment/datasets`, `Experiment/core_code`, `Experiment/analysis`

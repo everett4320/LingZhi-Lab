@@ -35,7 +35,7 @@ VibeLab is a general-purpose AI research assistant designed to help researchers 
 - **🤖 Multi-Agent Backend** — Seamlessly switch between Claude Code, Cursor CLI, and Codex as your execution engine; compatible with Claude Sonnet 4.5, Opus 4.5, and GPT-5.2
 
 <details>
-<summary><strong>More Features</strong></summary>
+<summary><span style="font-size: 1.17em; font-weight: 600;">More Features</span></summary>
 
 - **💬 Interactive Chat + Shell** — Chat with your agent or drop into a full terminal — side by side with your research context
 - **📁 File & Git Explorer** — Browse files with syntax highlighting, live-edit, stage changes, commit, and switch branches without leaving the UI
@@ -88,11 +88,11 @@ Remove or override this variable in your deployment/startup layer (shell profile
 npm run dev
 ```
 
-6. **Open your browser** at `http://localhost:3001` (or the port you configured in `.env`)
+6. **Open your browser** at `http://localhost:5173` (or the port you configured in `.env`)
 
 ## Research Lab — Quick Example
 
-The core feature of Vibe Lab is the **Research Lab**.
+The core feature of VibeLab is the **Research Lab**.
 
 ### Step 0 — Configure Any One Agent in Settings First
 
@@ -120,14 +120,14 @@ For full step-by-step operations, see **Usage Guide** below.
 
 ## Usage Guide
 
-After starting Vibe Lab, open your browser and follow the steps below.
+After starting VibeLab, open your browser and follow the steps below.
 
 ### Step 1 — Create or Open a Project
 
-When you first open Vibe Lab you will see the **Projects** sidebar. You have two options:
+When you first open VibeLab you will see the **Projects** sidebar. You have two options:
 
-- **Open an existing project** — Vibe Lab auto-discovers projects from Claude Code, Cursor, and Codex sessions. Click any listed project to open it.
-- **Create a new project** — Click the **"+"** button, choose a directory on your machine, and Vibe Lab will set up the workspace: `.claude/`, `.agents/`, `.cursor/` (with `skills/` symlinked from the app), preset dirs (`Ideation/ideas`, `Ideation/references`, `Experiment/code_references`, `Experiment/datasets`, `Experiment/core_code`, `Experiment/analysis`, `Publication/paper`, `Publication/homepage`, `Publication/slide`), and **instance.json** at the project root with absolute paths for those directories.
+- **Open an existing project** — VibeLab auto-discovers projects from Claude Code, Cursor, and Codex sessions. Click any listed project to open it.
+- **Create a new project** — Click the **"+"** button, choose a directory on your machine, and VibeLab will set up the workspace: `.claude/`, `.agents/`, `.cursor/` (with `skills/` symlinked from the app), preset dirs (`Ideation/ideas`, `Ideation/references`, `Experiment/code_references`, `Experiment/datasets`, `Experiment/core_code`, `Experiment/analysis`, `Publication/paper`, `Publication/homepage`, `Publication/slide`), and **instance.json** at the project root with absolute paths for those directories.
 
 ### Step 2 — Generate Your Research Pipeline via Chat
 
@@ -146,17 +146,7 @@ Switch to **Research Lab** to review the generated tasks, progress metrics, and 
 
 ### Step 4 — Enable Network Access for Web Search (Claude / Cursor / Codex)
 
-If the agent cannot search webpages, your current permission settings are likely too restrictive.
-
-#### Important: Common Network Issue
-
-If web search still fails after you open permissions, check `CODEX_SANDBOX_NETWORK_DISABLED` first:
-
-```bash
-echo "${CODEX_SANDBOX_NETWORK_DISABLED:-0}"
-```
-
-If it prints `1`, network is blocked at runtime and Settings alone cannot fix it. Remove/override this variable in your startup layer (shell profile, systemd, Docker, PM2), then restart VibeLab.
+If the agent cannot search webpages, your current permission settings are likely too restrictive. If web search still fails after you open permissions, ensure you have checked the **runtime network lock** in **Quick Start** (step 4) — if `CODEX_SANDBOX_NETWORK_DISABLED` is `1`, Settings alone cannot fix it.
 
 1. Open **Settings** (gear icon in sidebar).
 2. Go to **Permissions**, then choose your current agent:
@@ -193,33 +183,6 @@ By default, trust flow is already enabled in VibeLab, so you usually do **not** 
 
 The trust decision is persisted per directory — you only need to do this once per project.
 
-#### Avoid Repeated Trust Prompts
-
-If you still get trust prompts in every new session and your projects all live under one root (for example `/home/<your-username>`), set trust at that root once:
-
-```bash
-# Cursor CLI: trust the workspace root once
-# Use whichever command exists in your environment: `agent` or `cursor-agent`
-cd /home/<your-username>
-agent --trust
-```
-
-```toml
-# Codex: ~/.codex/config.toml
-[projects."/home/<your-username>"]
-trust_level = "trusted"
-```
-
-Path consistency matters. A trust entry for `/home/<your-username>/project-a` does not apply if the session starts from a different path string (symlink/alias/container mount). In the VibeLab Shell tab, verify the real path with:
-
-```bash
-pwd -P
-```
-
-> **Security**: Do **not** run these commands from your home directory (`~`). Always run them inside the specific project directory, which is the default in VibeLab's Shell tab.
-
-> **Security (advanced root trust)**: Trusting `/home/<your-username>` (or `~`) means all subdirectories are treated as trusted. Do this only on a private machine and only if you understand the risk.
-
 > **Shell tab not working?** If the Shell tab shows `Error: posix_spawnp failed`, see [docs/faq.md](docs/faq.md) for the fix, then retry.
 
 You can switch tabs at any time:
@@ -234,20 +197,23 @@ You can switch tabs at any time:
 
 #### Research Skills
 
-Vibe Lab now uses the generated **Pipeline Task List** as the execution flow.
+VibeLab now uses the generated **Pipeline Task List** as the execution flow.
 The project includes **100+ skills** under `skills/` to support research tasks (idea exploration, code survey, experiment development/analysis, writing, review, and delivery).
 These skills are discovered by the agent and can be applied as task-level assistance throughout the workflow.
 
-### Mobile & Tablet
+<details>
+<summary><span style="font-size: 1.17em; font-weight: 600;">Mobile & Tablet</span></summary>
 
-Vibe Lab is fully responsive. On mobile devices:
+VibeLab is fully responsive. On mobile devices:
 
 - **Bottom tab bar** for thumb-friendly navigation
 - **Swipe gestures** and touch-optimized controls
 - **Add to Home Screen** to use it as a PWA (Progressive Web App)
 
+</details>
+
 <details>
-<summary><strong>Architecture</strong></summary>
+<summary><span style="font-size: 1.17em; font-weight: 600;">Architecture</span></summary>
 
 ### System Overview
 
@@ -272,7 +238,7 @@ Vibe Lab is fully responsive. On mobile devices:
 </details>
 
 <details>
-<summary><strong>Security & Tools Configuration</strong></summary>
+<summary><span style="font-size: 1.17em; font-weight: 600;">Security & Tools Configuration</span></summary>
 
 **🔒 Important Notice**: All Claude Code tools are **disabled by default**. This prevents potentially harmful operations from running automatically.
 
@@ -288,7 +254,8 @@ To use Claude Code's full functionality, you'll need to manually enable tools:
 
 </details>
 
-### Contributing
+<details>
+<summary><span style="font-size: 1.17em; font-weight: 600;">Contributing</span></summary>
 
 We welcome contributions! Please follow these guidelines:
 
@@ -316,48 +283,9 @@ We welcome contributions! Please follow these guidelines:
 - **UI/UX improvements** - Better user experience
 - **Performance optimizations** - Make it faster
 
-## Troubleshooting
+</details>
 
-For comprehensive setup help, see the [documentation](docs/).
-
-### Common Issues & Solutions
-
-#### `npm install` fails on `better-sqlite3` (`'climits' file not found`)
-**Problem**: Dependency installation fails, often on Node 25.
-**Solutions**:
-- Switch to Node 22 (`nvm install 22 && nvm use 22`)
-- Confirm with `node -v` (should be `v22.x`)
-- Run `npm install` again
-
-#### `npm run dev` fails with `Cannot find module @rollup/rollup-darwin-arm64`
-**Problem**: Vite exits immediately and `concurrently` terminates the server process.
-**Solutions**:
-- Install the missing optional dependency: `npm install @rollup/rollup-darwin-arm64`
-- Re-run `npm run dev`
-- If still failing, reinstall dependencies under Node 22
-
-
-#### "No Claude projects found"
-**Problem**: The UI shows no projects or empty project list
-**Solutions**:
-- Ensure [Claude Code](https://docs.anthropic.com/en/docs/claude-code) is properly installed
-- Run `claude` command in at least one project directory to initialize
-- Verify `~/.claude/projects/` directory exists and has proper permissions
-
-#### File Explorer Issues
-**Problem**: Files not loading, permission errors, empty directories
-**Solutions**:
-- Check project directory permissions (`ls -la` in terminal)
-- Verify the project path exists and is accessible
-- Review server console logs for detailed error messages
-- Ensure you're not trying to access system directories outside project scope
-
-#### Agent trust errors ("Workspace Trust Required", authentication prompts, etc.)
-**Problem**: Chat freezes or displays a trust / authentication prompt from Claude Code, Cursor CLI, or Codex.
-**Solution**: See **[Step 5 — Resolve "Workspace Trust" or First-Run Errors](#step-5--resolve-workspace-trust-or-first-run-errors)** in the Usage Guide above.
-
-For full troubleshooting details, see [docs/faq.md](docs/faq.md).
-
+For setup help and troubleshooting, see [FAQ](docs/faq.md).
 
 ## License
 
@@ -376,6 +304,10 @@ This project is open source and free to use, modify, and distribute under the GP
 - **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS framework
 - **[CodeMirror](https://codemirror.net/)** - Advanced code editor
 
+### Also Thanks To
+- **[Claude Code UI](https://github.com/siteboon/claudecodeui)** — VibeLab is based on it. See [NOTICE](NOTICE) for details.
+- **[AI Researcher](https://github.com/HKUDS/AI-Researcher/)** (HKUDS) — Inspiration for research workflow and agentic research.
+
 ## Support & Community
 
 ### Stay Updated
@@ -383,10 +315,8 @@ This project is open source and free to use, modify, and distribute under the GP
 - **Watch** for updates and new releases
 - **Follow** the project for announcements
 
-### Acknowledgments
-- Vibe Lab is based on [Claude Code UI](https://github.com/siteboon/claudecodeui). See [NOTICE](NOTICE) for details.
 ---
 
 <div align="center">
-  <strong>Vibe Lab — Made with care for the Claude Code, Cursor and Codex community.</strong>
+  <strong>VibeLab — From idea to paper.</strong>
 </div>
