@@ -330,36 +330,13 @@ function shouldAutoOpenUrlFromOutput(value = '') {
 const wss = new WebSocketServer({
     server,
     verifyClient: (info) => {
-        console.log('WebSocket connection attempt to:', info.req.url);
-
-        // Platform mode: always allow connection
-        if (IS_PLATFORM) {
-            const user = authenticateWebSocket(null); // Will return first user
-            if (!user) {
-                console.log('[WARN] Platform mode: No user found in database');
-                return false;
-            }
-            info.req.user = user;
-            console.log('[OK] Platform mode WebSocket authenticated for user:', user.username);
-            return true;
-        }
-
-        // Normal mode: verify token
-        // Extract token from query parameters or headers
-        const url = new URL(info.req.url, 'http://localhost');
-        const token = url.searchParams.get('token') ||
-            info.req.headers.authorization?.split(' ')[1];
-
-        // Verify token
-        const user = authenticateWebSocket(token);
+        // Auth wall disabled — always allow and attach default user
+        const user = authenticateWebSocket(null);
         if (!user) {
-            console.log('[WARN] WebSocket authentication failed');
+            console.log('[WARN] No user found in database for WebSocket');
             return false;
         }
-
-        // Store user info in the request for later use
         info.req.user = user;
-        console.log('[OK] WebSocket authenticated for user:', user.username);
         return true;
     }
 });

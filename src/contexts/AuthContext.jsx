@@ -32,15 +32,11 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (IS_PLATFORM) {
-      setUser({ username: 'platform-user' });
-      setNeedsSetup(false);
-      checkOnboardingStatus();
-      setIsLoading(false);
-      return;
-    }
-
-    checkAuthStatus();
+    // Auth wall is disabled — always treat the user as logged in.
+    setUser({ username: 'default' });
+    setNeedsSetup(false);
+    checkOnboardingStatus();
+    setIsLoading(false);
   }, []);
 
   const checkOnboardingStatus = async () => {

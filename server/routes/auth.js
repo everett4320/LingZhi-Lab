@@ -5,18 +5,12 @@ import { generateToken, authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Check auth status and setup requirements
+// Check auth status — auth wall is disabled, never require setup
 router.get('/status', async (req, res) => {
-  try {
-    const hasUsers = await userDb.hasUsers();
-    res.json({ 
-      needsSetup: !hasUsers,
-      isAuthenticated: false // Will be overridden by frontend if token exists
-    });
-  } catch (error) {
-    console.error('Auth status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  res.json({
+    needsSetup: false,
+    isAuthenticated: true
+  });
 });
 
 // User registration (setup) - only allowed if no users exist

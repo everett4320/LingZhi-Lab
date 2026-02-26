@@ -20,49 +20,19 @@ const validateApiKey = (req, res, next) => {
 };
 
 // JWT authentication middleware
+// Auth wall is disabled — always use the single default user.
 const authenticateToken = async (req, res, next) => {
-  // Platform mode:  use single database user
-  if (IS_PLATFORM) {
-    try {
-      const user = userDb.getFirstUser();
-      if (!user) {
-        return res.status(500).json({ error: 'Platform mode: No user found in database' });
-      }
-      req.user = user;
-      return next();
-    } catch (error) {
-      console.error('Platform mode error:', error);
-      return res.status(500).json({ error: 'Platform mode: Failed to fetch user' });
-    }
-  }
-
-  // Normal OSS JWT validation
-  const authHeader = req.headers['authorization'];
-  let token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-
-  // Also check query param for SSE endpoints (EventSource can't set headers)
-  if (!token && req.query.token) {
-    token = req.query.token;
-  }
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access denied. No token provided.' });
-  }
-
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-
-    // Verify user still exists and is active
-    const user = userDb.getUserById(decoded.userId);
+    let user = userDb.getFirstUser();
     if (!user) {
-      return res.status(401).json({ error: 'Invalid token. User not found.' });
+      // Auto-create a default user on first access
+      user = ensureDefaultUser();
     }
-
     req.user = user;
-    next();
+    return next();
   } catch (error) {
-    console.error('Token verification error:', error);
-    return res.status(403).json({ error: 'Invalid token' });
+    console.error('Auth middleware error:', error);
+    return res.status(500).json({ error: 'Failed to resolve user' });
   }
 };
 
@@ -78,32 +48,26 @@ const generateToken = (user) => {
   );
 };
 
+// Auto-create a default user if the database is empty
+function ensureDefaultUser() {
+  const placeholder = '$2b$12$placeholder.hash.not.used.for.login';
+  const created = userDb.createUser('default', placeholder);
+  // Mark onboarding as complete so the user goes straight to the app
+  userDb.completeOnboarding(created.id);
+  return userDb.getUserById(created.id);
+}
+
 // WebSocket authentication function
-const authenticateWebSocket = (token) => {
-  // Platform mode: bypass token validation, return first user
-  if (IS_PLATFORM) {
-    try {
-      const user = userDb.getFirstUser();
-      if (user) {
-        return { userId: user.id, username: user.username };
-      }
-      return null;
-    } catch (error) {
-      console.error('Platform mode WebSocket error:', error);
-      return null;
-    }
-  }
-
-  // Normal OSS JWT validation
-  if (!token) {
-    return null;
-  }
-
+// Auth wall is disabled — always return the default user.
+const authenticateWebSocket = (_token) => {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    return decoded;
+    let user = userDb.getFirstUser();
+    if (!user) {
+      user = ensureDefaultUser();
+    }
+    return { userId: user.id, username: user.username };
   } catch (error) {
-    console.error('WebSocket token verification error:', error);
+    console.error('WebSocket auth error:', error);
     return null;
   }
 };

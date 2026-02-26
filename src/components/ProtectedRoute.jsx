@@ -26,32 +26,13 @@ const LoadingScreen = () => (
 );
 
 const ProtectedRoute = ({ children }) => {
-  const { user, isLoading, needsSetup, hasCompletedOnboarding, refreshOnboardingStatus } = useAuth();
-
-  if (IS_PLATFORM) {
-    if (isLoading) {
-      return <LoadingScreen />;
-    }
-
-    if (!hasCompletedOnboarding) {
-      return <Onboarding onComplete={refreshOnboardingStatus} />;
-    }
-
-    return children;
-  }
+  const { isLoading, hasCompletedOnboarding, refreshOnboardingStatus } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen />;
   }
 
-  if (needsSetup) {
-    return <SetupForm />;
-  }
-
-  if (!user) {
-    return <LoginForm />;
-  }
-
+  // Auth wall is disabled — skip login/setup, only keep onboarding
   if (!hasCompletedOnboarding) {
     return <Onboarding onComplete={refreshOnboardingStatus} />;
   }
