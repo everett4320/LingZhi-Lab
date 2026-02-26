@@ -48,11 +48,17 @@ Output directories: `Publication/paper/`, `Publication/homepage/`, `Publication/
 
 Research skills are available in `.agents/skills/`. Each skill directory contains a `SKILL.md` with step-by-step procedures.
 
+**IMPORTANT**: Do NOT read all SKILL.md files at once. Only read the specific skill you need.
+
 When the user sends a task via "Use in Chat", the task prompt already includes suggested skills, missing inputs, quality gates, and stage guidance. You do not need to parse `tasks.json` — just read the `SKILL.md` for each skill listed in the prompt:
-1. Read `.agents/skills/<skill-name>/SKILL.md` for the full procedure of each suggested skill.
+1. Read `.agents/skills/<skill-name>/SKILL.md` for the full procedure of each suggested skill. If not found there, check `.agents/skills/library/<skill-name>/SKILL.md`.
 2. Follow the steps exactly as written in the `SKILL.md`.
 
-If no suggested skills appear in the prompt, or the user makes a freeform request outside the task list, list the `.agents/skills/` directory to discover available skills and pick the best match.
+If no suggested skills appear in the prompt, or the user makes a freeform request outside the task list:
+1. Read `.agents/skills/skills-index.md` to see all available skills.
+2. Pick the best match from the index.
+3. Core skills: Read `.agents/skills/<skill-name>/SKILL.md`
+4. Library skills: Read `.agents/skills/library/<skill-name>/SKILL.md`
 
 ## Key Files
 

@@ -1265,6 +1265,97 @@ async function collectSkillDirs(baseDir) {
   return results;
 }
 
+/**
+ * Load the set of core (platform-native) skill names from skill-tag-mapping.json.
+ * Returns a Set of skill directory names that are considered "core pipeline" skills.
+ */
+function getCoreSkillNames() {
+  try {
+    const mappingPath = path.join(VIBELAB_SKILLS_DIR, 'skill-tag-mapping.json');
+    const raw = fsSync.readFileSync(mappingPath, 'utf8');
+    const mapping = JSON.parse(raw);
+    const names = new Set(mapping.platformNativeSkills || []);
+    // inno-pipeline-planner is always core but not in platformNativeSkills
+    names.add('inno-pipeline-planner');
+    // bioinformatics-init-analysis resolves to dir name 'init-analysis' via collectSkillDirs
+    names.add('init-analysis');
+    return names;
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Generate a compact skills-index.md for the .agents/skills/ directory.
+ * Reads YAML frontmatter (name, description) from each SKILL.md and produces
+ * a markdown table grouped by Core Pipeline Skills vs Library Skills.
+ *
+ * @param {Array<{name: string, absolutePath: string}>} skillDirs
+ * @returns {string} Markdown content for skills-index.md
+ */
+async function generateSkillsIndex(skillDirs) {
+  const matter = (await import('gray-matter')).default;
+  const coreNames = getCoreSkillNames();
+
+  const coreSkills = [];
+  const librarySkills = [];
+
+  for (const { name, absolutePath } of skillDirs) {
+    const skillMdPath = path.join(absolutePath, 'SKILL.md');
+    let skillName = name;
+    let description = '';
+    try {
+      const content = await fs.readFile(skillMdPath, 'utf8');
+      const { data } = matter(content);
+      if (data.name) skillName = data.name;
+      if (data.description) {
+        // Collapse newlines (YAML block scalars) and escape pipe chars for markdown tables
+        const cleaned = data.description.replace(/[\r\n]+/g, ' ').replace(/\|/g, '/').trim();
+        description = cleaned.length > 120
+          ? cleaned.slice(0, 117) + '...'
+          : cleaned;
+      }
+    } catch {
+      // Skip skills with unreadable SKILL.md
+      continue;
+    }
+
+    const entry = { dirName: name, skillName, description };
+    if (coreNames.has(name)) {
+      coreSkills.push(entry);
+    } else {
+      librarySkills.push(entry);
+    }
+  }
+
+  coreSkills.sort((a, b) => a.dirName.localeCompare(b.dirName));
+  librarySkills.sort((a, b) => a.dirName.localeCompare(b.dirName));
+
+  const lines = [
+    '# Skills Index',
+    '',
+    '> **Do NOT read all SKILL.md files at once.** Use this index to find the right skill, then read only that one.',
+    '',
+    '## Core Pipeline Skills',
+    '',
+    '| Skill | Path | Description |',
+    '|-------|------|-------------|',
+  ];
+  for (const s of coreSkills) {
+    lines.push(`| ${s.skillName} | \`.agents/skills/${s.dirName}/SKILL.md\` | ${s.description} |`);
+  }
+
+  lines.push('', '## Library Skills', '');
+  lines.push('| Skill | Path | Description |');
+  lines.push('|-------|------|-------------|');
+  for (const s of librarySkills) {
+    lines.push(`| ${s.skillName} | \`.agents/skills/library/${s.dirName}/SKILL.md\` | ${s.description} |`);
+  }
+
+  lines.push('');
+  return lines.join('\n');
+}
+
 async function ensureProjectSkillLinks(projectPath) {
   try {
     for (const dir of PROJECT_PIPELINE_FOLDERS) {
@@ -1359,25 +1450,49 @@ async function ensureProjectSkillLinks(projectPath) {
       }
     }
 
+    const coreNames = getCoreSkillNames();
+
     for (const dir of PROJECT_SKILL_FOLDERS) {
       const skillsSubdir = path.join(projectPath, dir, 'skills');
+      const isAgents = dir === '.agents';
       try {
         await fs.mkdir(skillsSubdir, { recursive: true });
+        if (isAgents) {
+          await fs.mkdir(path.join(skillsSubdir, 'library'), { recursive: true });
+        }
       } catch (err) {
         console.error(`[projects] Failed to create ${dir}/skills:`, err.message);
         continue;
       }
+
       for (const { name, absolutePath } of skillDirs) {
-        const linkPath = path.join(skillsSubdir, name);
+        // For .agents/: core skills at top level, library skills under library/
+        const linkPath = isAgents && !coreNames.has(name)
+          ? path.join(skillsSubdir, 'library', name)
+          : path.join(skillsSubdir, name);
         try {
           try {
             await fs.unlink(linkPath);
           } catch (_) {
             // ignore if not exists or not a symlink
           }
+          // Clean up stale top-level symlink when migrating library skills into library/
+          if (isAgents && !coreNames.has(name)) {
+            try { await fs.unlink(path.join(skillsSubdir, name)); } catch (_) {}
+          }
           await fs.symlink(absolutePath, linkPath, 'dir');
         } catch (err) {
           console.error(`[projects] Failed to symlink ${name} in ${dir}/skills:`, err.message);
+        }
+      }
+
+      // Write the skills index for .agents/ so Codex can discover skills lazily
+      if (isAgents) {
+        try {
+          const indexContent = await generateSkillsIndex(skillDirs);
+          await fs.writeFile(path.join(skillsSubdir, 'skills-index.md'), indexContent, 'utf8');
+        } catch (err) {
+          console.error('[projects] Failed to write skills-index.md:', err.message);
         }
       }
     }
