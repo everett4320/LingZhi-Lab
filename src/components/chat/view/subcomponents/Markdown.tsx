@@ -11,6 +11,7 @@ import { normalizeInlineCodeFences } from '../../utils/chatFormatting';
 type MarkdownProps = {
   children: React.ReactNode;
   className?: string;
+  onFileOpen?: (filePath: string) => void;
 };
 
 type CodeBlockProps = {
@@ -146,6 +147,19 @@ const CodeBlock = ({ node, inline, className, children, ...props }: CodeBlockPro
   );
 };
 
+// Detect file path patterns like "src/lib.rs:36", "README.md", "package.json"
+const FILE_PATH_RE = /^([\w./@\\-][\w./@ \\-]*\.\w{1,10})(:\d+)?$/;
+
+function isFilePath(text: string): boolean {
+  return FILE_PATH_RE.test(text.trim());
+}
+
+function parseFilePath(text: string): { filePath: string; line?: string } {
+  const match = text.trim().match(FILE_PATH_RE);
+  if (!match) return { filePath: text.trim() };
+  return { filePath: match[1], line: match[2] };
+}
+
 const markdownComponents = {
   code: CodeBlock,
   blockquote: ({ children }: { children?: React.ReactNode }) => (
@@ -173,14 +187,66 @@ const markdownComponents = {
   ),
 };
 
-export function Markdown({ children, className }: MarkdownProps) {
+export function Markdown({ children, className, onFileOpen }: MarkdownProps) {
   const content = normalizeInlineCodeFences(String(children ?? ''));
   const remarkPlugins = useMemo(() => [remarkGfm, remarkMath], []);
   const rehypePlugins = useMemo(() => [rehypeKatex], []);
 
+  const components = useMemo(() => {
+    if (!onFileOpen) return markdownComponents;
+
+    return {
+      ...markdownComponents,
+      // Make bold text clickable if it looks like a file path
+      strong: ({ children: strongChildren }: { children?: React.ReactNode }) => {
+        const text = typeof strongChildren === 'string'
+          ? strongChildren
+          : Array.isArray(strongChildren)
+            ? strongChildren.map(c => (typeof c === 'string' ? c : '')).join('')
+            : '';
+        if (text && isFilePath(text)) {
+          const { filePath } = parseFilePath(text);
+          return (
+            <button
+              onClick={() => onFileOpen(filePath)}
+              className="font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline cursor-pointer transition-colors"
+              title={`Open ${filePath}`}
+            >
+              {strongChildren}
+            </button>
+          );
+        }
+        return <strong>{strongChildren}</strong>;
+      },
+      // Make inline code clickable if it looks like a file path
+      code: (props: CodeBlockProps) => {
+        const { node, inline, children: codeChildren } = props;
+        const raw = Array.isArray(codeChildren) ? codeChildren.join('') : String(codeChildren ?? '');
+        const inlineDetected = inline || (node && node.type === 'inlineCode');
+        const looksMultiline = /[\r\n]/.test(raw);
+        const shouldInline = inlineDetected || !looksMultiline;
+
+        if (shouldInline && isFilePath(raw)) {
+          const { filePath } = parseFilePath(raw);
+          return (
+            <button
+              onClick={() => onFileOpen(filePath)}
+              className="font-mono text-[0.9em] px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:underline cursor-pointer transition-colors"
+              title={`Open ${filePath}`}
+            >
+              {codeChildren}
+            </button>
+          );
+        }
+
+        return <CodeBlock {...props} />;
+      },
+    };
+  }, [onFileOpen]);
+
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents as any}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components as any}>
         {content}
       </ReactMarkdown>
     </div>

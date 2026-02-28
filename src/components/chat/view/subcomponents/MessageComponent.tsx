@@ -211,7 +211,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
               <>
                 <div className="flex flex-col">
                   <div className="flex flex-col">
-                    <Markdown className="prose prose-sm max-w-none dark:prose-invert">
+                    <Markdown className="prose prose-sm max-w-none dark:prose-invert" onFileOpen={onFileOpen}>
                       {String(message.displayText || '')}
                     </Markdown>
                   </div>
@@ -474,7 +474,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
 
                   // Normal rendering for non-JSON content
                   return message.type === 'assistant' ? (
-                    <Markdown className="prose prose-md max-w-none dark:prose-invert prose-gray text-[15.5px] leading-relaxed">
+                    <Markdown className="prose prose-md max-w-none dark:prose-invert prose-gray text-[15.5px] leading-relaxed" onFileOpen={onFileOpen}>
                       {content}
                     </Markdown>
                   ) : (
