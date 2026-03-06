@@ -11,6 +11,7 @@ import { useDeviceSettings } from '../../hooks/useDeviceSettings';
 import { useSessionProtection } from '../../hooks/useSessionProtection';
 import { useProjectsState } from '../../hooks/useProjectsState';
 import { useInteractionTelemetry } from '../../hooks/useInteractionTelemetry';
+import { useUiPreferences } from '../../hooks/useUiPreferences';
 import {
   ensureTelemetryDefaultEnabled,
   isTelemetryEnabled,
@@ -24,6 +25,8 @@ export default function AppContent() {
   const { t } = useTranslation('common');
   const { isMobile } = useDeviceSettings({ trackPWA: false });
   const { ws, sendMessage, latestMessage, isConnected } = useWebSocket();
+  const { preferences } = useUiPreferences();
+  const { sidebarVisible } = preferences;
 
   const {
     activeSessions,
@@ -124,6 +127,7 @@ export default function AppContent() {
   const SIDEBAR_MIN = 220;
   const SIDEBAR_MAX = 480;
   const SIDEBAR_DEFAULT = 288; // w-72
+  const SIDEBAR_COLLAPSED_WIDTH = 48; // matches SidebarCollapsed w-12
   const STORAGE_KEY = 'vibelab-sidebar-width';
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -133,6 +137,7 @@ export default function AppContent() {
       ? parsed
       : SIDEBAR_DEFAULT;
   });
+  const desktopSidebarWidth = sidebarVisible ? sidebarWidth : SIDEBAR_COLLAPSED_WIDTH;
 
   const isResizing = useRef(false);
 
@@ -167,14 +172,19 @@ export default function AppContent() {
   return (
     <div className="fixed inset-0 flex bg-background">
       {!isMobile ? (
-        <div className="h-full flex-shrink-0 relative" style={{ width: sidebarWidth }}>
+        <div
+          className="h-full flex-shrink-0 relative transition-[width] duration-150 ease-out"
+          style={{ width: desktopSidebarWidth }}
+        >
           <div className="h-full border-r border-border/50">
             <Sidebar {...sidebarSharedProps} />
           </div>
-          <div
-            className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 active:bg-primary/30 z-10"
-            onMouseDown={handleResizeStart}
-          />
+          {sidebarVisible && (
+            <div
+              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 active:bg-primary/30 z-10"
+              onMouseDown={handleResizeStart}
+            />
+          )}
         </div>
       ) : (
         <div

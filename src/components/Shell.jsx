@@ -70,7 +70,23 @@ function getPreferredProvider(selectedSession) {
   return 'claude';
 }
 
-function Shell({ selectedProject, selectedSession, initialCommand, isPlainShell = false, onProcessComplete, minimal = false, autoConnect = false, wsPath = '/shell' }) {
+function buildShellWebSocketUrl(wsPath) {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const baseUrl = `${protocol}//${window.location.host}${wsPath}`;
+
+  if (IS_PLATFORM) {
+    return baseUrl;
+  }
+
+  const token = localStorage.getItem('auth-token');
+  if (!token) {
+    return baseUrl;
+  }
+
+  return `${baseUrl}${wsPath.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+}
+
+function Shell({ selectedProject, selectedSession, initialCommand, isPlainShell = false, onProcessComplete, minimal = false, autoConnect = false, wsPath = '/shell', shellInstanceId = null }) {
   const { t } = useTranslation('chat');
   const terminalRef = useRef(null);
   const terminal = useRef(null);
@@ -89,6 +105,7 @@ function Shell({ selectedProject, selectedSession, initialCommand, isPlainShell 
   const selectedSessionRef = useRef(selectedSession);
   const initialCommandRef = useRef(initialCommand);
   const isPlainShellRef = useRef(isPlainShell);
+  const shellInstanceIdRef = useRef(shellInstanceId);
   const onProcessCompleteRef = useRef(onProcessComplete);
   const authUrlRef = useRef('');
 
@@ -97,6 +114,7 @@ function Shell({ selectedProject, selectedSession, initialCommand, isPlainShell 
     selectedSessionRef.current = selectedSession;
     initialCommandRef.current = initialCommand;
     isPlainShellRef.current = isPlainShell;
+    shellInstanceIdRef.current = shellInstanceId;
     onProcessCompleteRef.current = onProcessComplete;
   });
 
@@ -140,21 +158,7 @@ function Shell({ selectedProject, selectedSession, initialCommand, isPlainShell 
     if (isConnecting || isConnected) return;
 
     try {
-      let wsUrl;
-
-      if (IS_PLATFORM) {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        wsUrl = `${protocol}//${window.location.host}${wsPath}`;
-      } else {
-        const token = localStorage.getItem('auth-token');
-        if (!token) {
-          console.error('No authentication token found for Shell WebSocket connection');
-          return;
-        }
-
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        wsUrl = `${protocol}//${window.location.host}${wsPath}${wsPath.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
-      }
+      const wsUrl = buildShellWebSocketUrl(wsPath);
 
       ws.current = new WebSocket(wsUrl);
 
@@ -173,7 +177,9 @@ function Shell({ selectedProject, selectedSession, initialCommand, isPlainShell 
             ws.current.send(JSON.stringify({
               type: 'init',
               projectPath: selectedProjectRef.current.fullPath || selectedProjectRef.current.path,
-              sessionId: isPlainShellRef.current ? null : selectedSessionRef.current?.id,
+              sessionId: isPlainShellRef.current
+                ? shellInstanceIdRef.current
+                : selectedSessionRef.current?.id,
               hasSession: isPlainShellRef.current ? false : !!selectedSessionRef.current,
               provider: isPlainShellRef.current ? 'plain-shell' : getPreferredProvider(selectedSessionRef.current),
               cols: terminal.current.cols,
@@ -245,7 +251,7 @@ function Shell({ selectedProject, selectedSession, initialCommand, isPlainShell 
       setIsConnected(false);
       setIsConnecting(false);
     }
-  }, [isConnecting, isConnected, openAuthUrlInBrowser]);
+  }, [isConnecting, isConnected, wsPath]);
 
   const connectToShell = useCallback(() => {
     if (!isInitialized || isConnected || isConnecting) return;

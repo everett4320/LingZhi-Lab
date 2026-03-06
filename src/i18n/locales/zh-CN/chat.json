@@ -216,7 +216,12 @@
     "resumeSession": "恢复会话：{{displayName}}...",
     "runCommand": "在 {{projectName}} 中运行 {{command}}",
     "openTerminal": "在 {{projectName}} 中打开终端",
-    "startCli": "在 {{projectName}} 中启动 Claude CLI"
+    "startCli": "在 {{projectName}} 中启动 Claude CLI",
+    "workspace": {
+      "newShell": "新建 Shell",
+      "tabTitle": "Shell {{index}}",
+      "closeShell": "关闭 {{title}}"
+    }
   },
   "projectSelection": {
     "startChatWithProvider": "选择一个项目以开始与 {{provider}} 聊天"

@@ -23,6 +23,7 @@ function StandaloneShell({
   session = null,
   command = null,
   isPlainShell = null,
+  shellInstanceId = null,
   autoConnect = true,
   onComplete = null,
   onClose = null,
@@ -94,6 +95,7 @@ function StandaloneShell({
           selectedSession={session}
           initialCommand={command}
           isPlainShell={shouldUsePlainShell}
+          shellInstanceId={shellInstanceId}
           onProcessComplete={handleProcessComplete}
           minimal={minimal}
           autoConnect={minimal ? true : autoConnect}

@@ -216,7 +216,12 @@
     "resumeSession": "세션 재개: {{displayName}}...",
     "runCommand": "{{projectName}}에서 {{command}} 실행",
     "openTerminal": "{{projectName}}에서 터미널 열기",
-    "startCli": "{{projectName}}에서 Claude CLI 시작"
+    "startCli": "{{projectName}}에서 Claude CLI 시작",
+    "workspace": {
+      "newShell": "새 Shell",
+      "tabTitle": "Shell {{index}}",
+      "closeShell": "{{title}} 닫기"
+    }
   },
   "projectSelection": {
     "startChatWithProvider": "{{provider}}와 채팅을 시작하려면 프로젝트를 선택하세요"

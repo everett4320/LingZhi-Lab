@@ -216,7 +216,12 @@
     "resumeSession": "Resume session: {{displayName}}...",
     "runCommand": "Run {{command}} in {{projectName}}",
     "openTerminal": "Open terminal in {{projectName}}",
-    "startCli": "Starting Claude CLI in {{projectName}}"
+    "startCli": "Starting Claude CLI in {{projectName}}",
+    "workspace": {
+      "newShell": "New shell",
+      "tabTitle": "Shell {{index}}",
+      "closeShell": "Close {{title}}"
+    }
   },
   "projectSelection": {
     "startChatWithProvider": "Select a project to start chatting with {{provider}}"

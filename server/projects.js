@@ -261,6 +261,10 @@ async function saveProjectConfig(config) {
   await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
 }
 
+function encodeProjectPath(projectPath) {
+  return path.resolve(projectPath).replace(/[\\/:\s~_]/g, '-');
+}
+
 // Generate better display name from path
 async function generateDisplayName(projectName, actualProjectDir = null) {
   // Use actual project directory if provided, otherwise decode from project name
@@ -435,6 +439,26 @@ async function getProjects(progressCallback = null) {
 
     // Build set of existing project names for later
     directories.forEach(e => existingProjects.add(e.name));
+
+    // Heal config entries whose originalPath points at a different project key.
+    for (const [projectName, projectConfig] of Object.entries(config)) {
+      if (!projectConfig?.originalPath) {
+        continue;
+      }
+
+      const expectedProjectName = encodeProjectPath(projectConfig.originalPath);
+      if (
+        expectedProjectName !== projectName &&
+        existingProjects.has(expectedProjectName) &&
+        !config[expectedProjectName]
+      ) {
+        config[expectedProjectName] = projectConfig;
+        delete config[projectName];
+        projectDirectoryCache.delete(projectName);
+        projectDirectoryCache.delete(expectedProjectName);
+        configDirty = true;
+      }
+    }
 
     // Count manual projects not already in directories
     const manualProjectsCount = Object.entries(config)
@@ -1130,40 +1154,87 @@ async function renameProject(projectName, newDisplayName) {
   } else {
     const trimmedName = newDisplayName.trim();
 
-    // Merge displayName, preserving manuallyAdded, originalPath, etc.
-    config[projectName] = {
-      ...config[projectName],
-      displayName: trimmedName
-    };
+    const existingConfig = config[projectName] || {};
+    const currentPath = existingConfig.originalPath || await extractProjectDirectory(projectName);
+    let finalProjectName = projectName;
+    let finalProjectPath = existingConfig.originalPath || null;
 
-    // Also rename the workspace folder on disk if it exists
-    const currentPath = config[projectName]?.originalPath || await extractProjectDirectory(projectName);
     if (currentPath) {
       const parentDir = path.dirname(currentPath);
-      // Sanitize the new folder name: replace path-unsafe chars with hyphens
-      const safeName = trimmedName.replace(/[/\\:*?"<>|]/g, '-');
-      const newPath = path.join(parentDir, safeName);
+      const safeName = trimmedName.replace(/[/\\:*?"<>|]/g, '-').trim();
+      const newPath = safeName ? path.join(parentDir, safeName) : currentPath;
 
       if (newPath !== currentPath) {
         try {
-          // Check the old directory exists and new path doesn't
           await fs.access(currentPath);
+        } catch (error) {
+          if (error.code !== 'ENOENT') {
+            throw error;
+          }
+        }
+
+        try {
+          await fs.access(currentPath);
+
           try {
             await fs.access(newPath);
-            // newPath already exists, skip rename to avoid data loss
-            console.warn(`[WARN] Cannot rename folder: target path already exists: ${newPath}`);
-          } catch {
-            // newPath doesn't exist — safe to rename
-            await fs.rename(currentPath, newPath);
-            config[projectName].originalPath = newPath;
-            // Clear cache so next lookup picks up the new path
-            projectDirectoryCache.delete(projectName);
+            throw new Error(`Cannot rename folder: target path already exists: ${newPath}`);
+          } catch (error) {
+            if (error.code !== 'ENOENT') {
+              throw error;
+            }
           }
-        } catch {
-          // Current path doesn't exist on disk, skip rename
+
+          await fs.rename(currentPath, newPath);
+          finalProjectPath = newPath;
+          finalProjectName = encodeProjectPath(newPath);
+        } catch (error) {
+          if (error.code !== 'ENOENT') {
+            throw error;
+          }
         }
+      } else {
+        finalProjectPath = currentPath;
       }
     }
+
+    const nextConfigEntry = {
+      ...existingConfig,
+      displayName: trimmedName
+    };
+    if (finalProjectPath) {
+      nextConfigEntry.originalPath = finalProjectPath;
+    }
+
+    if (finalProjectName !== projectName) {
+      const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects');
+      const oldProjectDir = path.join(claudeProjectsDir, projectName);
+      const newProjectDir = path.join(claudeProjectsDir, finalProjectName);
+
+      try {
+        await fs.access(oldProjectDir);
+        try {
+          await fs.access(newProjectDir);
+          throw new Error(`Cannot remap Claude project metadata: target already exists: ${newProjectDir}`);
+        } catch (error) {
+          if (error.code !== 'ENOENT') {
+            throw error;
+          }
+        }
+
+        await fs.rename(oldProjectDir, newProjectDir);
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      delete config[projectName];
+    }
+
+    config[finalProjectName] = nextConfigEntry;
+    projectDirectoryCache.delete(projectName);
+    projectDirectoryCache.delete(finalProjectName);
   }
 
   await saveProjectConfig(config);
