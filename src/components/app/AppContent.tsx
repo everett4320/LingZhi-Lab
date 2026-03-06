@@ -39,6 +39,7 @@ export default function AppContent() {
   } = useSessionProtection();
 
   const {
+    projects,
     selectedProject,
     selectedSession,
     activeTab,
@@ -53,6 +54,7 @@ export default function AppContent() {
     openSettings,
     fetchProjects,
     sidebarSharedProps,
+    handleProjectSelect,
     pendingAutoIntake,
     handleProjectCreatedWithIntake,
     clearPendingAutoIntake,
@@ -217,6 +219,7 @@ export default function AppContent() {
 
       <div className={`flex-1 flex flex-col min-w-0 ${isMobile ? 'pb-mobile-nav' : ''}`}>
         <MainContent
+          projects={projects}
           selectedProject={selectedProject}
           selectedSession={selectedSession}
           activeTab={activeTab}
@@ -239,6 +242,7 @@ export default function AppContent() {
           externalMessageUpdate={externalMessageUpdate}
           pendingAutoIntake={pendingAutoIntake}
           clearPendingAutoIntake={clearPendingAutoIntake}
+          onProjectSelect={handleProjectSelect}
         />
       </div>
 

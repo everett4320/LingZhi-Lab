@@ -47,6 +47,7 @@ export interface PrdFile {
 }
 
 export interface MainContentProps {
+  projects: Project[];
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   activeTab: AppTab;
@@ -69,12 +70,13 @@ export interface MainContentProps {
   externalMessageUpdate: number;
   pendingAutoIntake?: boolean;
   clearPendingAutoIntake?: () => void;
+  onProjectSelect: (project: Project) => void;
 }
 
 export interface MainContentHeaderProps {
   activeTab: AppTab;
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
-  selectedProject: Project;
+  selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   shouldShowTasksTab: boolean;
   isMobile: boolean;

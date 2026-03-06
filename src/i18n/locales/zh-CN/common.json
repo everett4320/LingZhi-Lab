@@ -18,6 +18,7 @@
     "browse": "浏览"
   },
   "tabs": {
+    "dashboard": "仪表盘",
     "chat": "聊天",
     "survey": "调研",
     "shell": "终端",
@@ -154,8 +155,11 @@
   },
   "time": {
     "justNow": "刚刚",
+    "oneMinuteAgo": "1 分钟前",
     "minutesAgo": "{{count}} 分钟前",
+    "oneHourAgo": "1 小时前",
     "hoursAgo": "{{count}} 小时前",
+    "oneDayAgo": "1 天前",
     "daysAgo": "{{count}} 天前",
     "yesterday": "昨天"
   },
@@ -178,6 +182,38 @@
     "newSession": "新会话",
     "untitledSession": "未命名会话",
     "projectFiles": "项目文件"
+  },
+  "projectDashboard": {
+    "title": "项目仪表盘",
+    "subtitle": "集中查看所有工作区进度，并快速回到正在进行的项目。",
+    "emptyTitle": "还没有项目",
+    "emptyDescription": "从侧边栏创建或添加工作区后，这里会显示所有项目及其进度。",
+    "summary": {
+      "projects": "项目数",
+      "sessions": "会话数",
+      "progress": "平均进度",
+      "trackedProjects": "已跟踪 {{count}} 个"
+    },
+    "metrics": {
+      "sessions": "会话",
+      "tasks": "任务",
+      "completed": "已完成"
+    },
+    "actions": {
+      "chat": "打开聊天",
+      "files": "查看文件",
+      "researchLab": "打开实验室",
+      "shell": "打开终端"
+    },
+    "openProject": "打开项目",
+    "progressTitle": "进度",
+    "progressBadge": "已完成 {{progress}}%",
+    "progressValue": "已完成 {{progress}}%",
+    "notTracked": "暂无可跟踪进度",
+    "notTrackedShort": "无",
+    "lastActivity": "最近活动：{{time}}",
+    "pipelineUpdated": "流水线更新于 {{time}}",
+    "noRecentActivity": "暂无最近活动"
   },
   "fileTree": {
     "loading": "正在加载文件...",

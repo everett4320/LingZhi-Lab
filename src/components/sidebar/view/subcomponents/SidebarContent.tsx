@@ -1,6 +1,6 @@
+import type { AppTab, Project } from '../../../../types/app';
 import { ScrollArea } from '../../../ui/scroll-area';
 import type { TFunction } from 'i18next';
-import type { Project } from '../../../../types/app';
 import type { ReleaseInfo } from '../../../../types/sharedTypes';
 import SidebarFooter from './SidebarFooter';
 import SidebarHeader from './SidebarHeader';
@@ -16,6 +16,8 @@ type SidebarContentProps = {
   onClearSearchFilter: () => void;
   onRefresh: () => void;
   isRefreshing: boolean;
+  activeTab: AppTab;
+  onOpenDashboard: () => void;
   onCreateProject: () => void;
   onCollapseSidebar: () => void;
   updateAvailable: boolean;
@@ -37,6 +39,8 @@ export default function SidebarContent({
   onClearSearchFilter,
   onRefresh,
   isRefreshing,
+  activeTab,
+  onOpenDashboard,
   onCreateProject,
   onCollapseSidebar,
   updateAvailable,
@@ -62,6 +66,8 @@ export default function SidebarContent({
         onClearSearchFilter={onClearSearchFilter}
         onRefresh={onRefresh}
         isRefreshing={isRefreshing}
+        activeTab={activeTab}
+        onOpenDashboard={onOpenDashboard}
         onCreateProject={onCreateProject}
         onCollapseSidebar={onCollapseSidebar}
         t={t}

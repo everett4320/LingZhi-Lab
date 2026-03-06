@@ -8,6 +8,7 @@ import SkillsDashboard from '../../SkillsDashboard';
 import ComputePanel from '../../ComputePanel';
 import ErrorBoundary from '../../ErrorBoundary';
 import SurveyPage from '../../survey/view/SurveyPage';
+import ProjectDashboard from '../../project-dashboard/view/ProjectDashboard';
 
 import MainContentHeader from './subcomponents/MainContentHeader';
 import MainContentStateView from './subcomponents/MainContentStateView';
@@ -28,6 +29,7 @@ type TaskMasterContextValue = {
 };
 
 function MainContent({
+  projects,
   selectedProject,
   selectedSession,
   activeTab,
@@ -50,6 +52,7 @@ function MainContent({
   externalMessageUpdate,
   pendingAutoIntake,
   clearPendingAutoIntake,
+  onProjectSelect,
 }: MainContentProps) {
   const { preferences } = useUiPreferences();
   const { autoExpandTools, showRawParameters, showThinking, autoScrollToBottom, sendByCtrlEnter } = preferences;
@@ -85,6 +88,32 @@ function MainContent({
 
   if (isLoading) {
     return <MainContentStateView mode="loading" isMobile={isMobile} onMenuClick={onMenuClick} />;
+  }
+
+  if (activeTab === 'dashboard') {
+    return (
+      <div className="h-full flex flex-col">
+        <MainContentHeader
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          selectedProject={null}
+          selectedSession={null}
+          shouldShowTasksTab={shouldShowTasksTab}
+          isMobile={isMobile}
+          onMenuClick={onMenuClick}
+        />
+
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <ProjectDashboard
+            projects={projects}
+            onProjectAction={(project, tab) => {
+              onProjectSelect(project);
+              setActiveTab(tab);
+            }}
+          />
+        </div>
+      </div>
+    );
   }
 
   if (!selectedProject) {

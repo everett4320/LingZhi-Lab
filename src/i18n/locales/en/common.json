@@ -18,6 +18,7 @@
     "browse": "Browse"
   },
   "tabs": {
+    "dashboard": "Dashboard",
     "chat": "Chat",
     "survey": "Survey",
     "shell": "Shell",
@@ -154,8 +155,11 @@
   },
   "time": {
     "justNow": "Just now",
+    "oneMinuteAgo": "1 min ago",
     "minutesAgo": "{{count}} mins ago",
+    "oneHourAgo": "1 hour ago",
     "hoursAgo": "{{count}} hours ago",
+    "oneDayAgo": "1 day ago",
     "daysAgo": "{{count}} days ago",
     "yesterday": "Yesterday"
   },
@@ -178,6 +182,38 @@
     "newSession": "New Session",
     "untitledSession": "Untitled Session",
     "projectFiles": "Project Files"
+  },
+  "projectDashboard": {
+    "title": "Project Dashboard",
+    "subtitle": "Track every workspace and jump back into active work quickly.",
+    "emptyTitle": "No projects yet",
+    "emptyDescription": "Create or add a workspace from the sidebar to start tracking project progress here.",
+    "summary": {
+      "projects": "Projects",
+      "sessions": "Sessions",
+      "progress": "Average Progress",
+      "trackedProjects": "{{count}} tracked"
+    },
+    "metrics": {
+      "sessions": "Sessions",
+      "tasks": "Tasks",
+      "completed": "Completed"
+    },
+    "actions": {
+      "chat": "Open Chat",
+      "files": "Browse Files",
+      "researchLab": "Open Lab",
+      "shell": "Open Shell"
+    },
+    "openProject": "Open Project",
+    "progressTitle": "Progress",
+    "progressBadge": "{{progress}}% complete",
+    "progressValue": "{{progress}}% complete",
+    "notTracked": "No tracked progress",
+    "notTrackedShort": "N/A",
+    "lastActivity": "Last activity {{time}}",
+    "pipelineUpdated": "Pipeline updated {{time}}",
+    "noRecentActivity": "No recent activity"
   },
   "fileTree": {
     "loading": "Loading files...",

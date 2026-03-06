@@ -37,6 +37,8 @@ function Sidebar({
   settingsInitialTab,
   onCloseSettings,
   isMobile,
+  activeTab,
+  onOpenDashboard,
 }: SidebarProps) {
   const { t } = useTranslation(['sidebar', 'common']);
   const { isPWA } = useDeviceSettings({ trackMobile: false });
@@ -262,6 +264,8 @@ function Sidebar({
               void refreshProjects();
             }}
             isRefreshing={isRefreshing}
+            activeTab={activeTab}
+            onOpenDashboard={onOpenDashboard}
             onCreateProject={() => void handleQuickCreateProject()}
             onCollapseSidebar={handleCollapseSidebar}
             updateAvailable={updateAvailable}

@@ -26,11 +26,13 @@ export default function MainContentHeader({
         </div>
 
         <div className="flex-shrink-0 hidden sm:block">
-          <MainContentTabSwitcher
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            shouldShowTasksTab={shouldShowTasksTab}
-          />
+          {selectedProject && activeTab !== 'dashboard' && (
+            <MainContentTabSwitcher
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              shouldShowTasksTab={shouldShowTasksTab}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -117,7 +117,7 @@ export function useProjectsState({
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedSession, setSelectedSession] = useState<ProjectSession | null>(null);
-  const [activeTab, setActiveTab] = useState<AppTab>('chat');
+  const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState<LoadingProgress | null>(null);
@@ -161,13 +161,6 @@ export function useProjectsState({
   useEffect(() => {
     void fetchProjects();
   }, [fetchProjects]);
-
-  // Auto-select the project when there is only one, so the user lands on the new session page
-  useEffect(() => {
-    if (!isLoadingProjects && projects.length === 1 && !selectedProject && !sessionId) {
-      setSelectedProject(projects[0]);
-    }
-  }, [isLoadingProjects, projects, selectedProject, sessionId]);
 
   useEffect(() => {
     if (!latestMessage) {
@@ -356,6 +349,7 @@ export function useProjectsState({
     (project: Project) => {
       setSelectedProject(project);
       setSelectedSession(null);
+      setActiveTab((currentTab) => (currentTab === 'dashboard' ? 'chat' : currentTab));
       navigate('/');
 
       if (isMobile) {
@@ -419,6 +413,17 @@ export function useProjectsState({
   );
 
   const clearPendingAutoIntake = useCallback(() => setPendingAutoIntake(false), []);
+
+  const handleOpenDashboard = useCallback(() => {
+    setSelectedProject(null);
+    setSelectedSession(null);
+    setActiveTab('dashboard');
+    navigate('/');
+
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
+  }, [isMobile, navigate]);
 
   const handleSessionDelete = useCallback(
     (sessionIdToDelete: string) => {
@@ -518,6 +523,8 @@ export function useProjectsState({
       settingsInitialTab,
       onCloseSettings: () => setShowSettings(false),
       isMobile,
+      activeTab,
+      onOpenDashboard: handleOpenDashboard,
     }),
     [
       handleNewSession,
@@ -530,6 +537,8 @@ export function useProjectsState({
       isMobile,
       loadingProgress,
       projects,
+      activeTab,
+      handleOpenDashboard,
       settingsInitialTab,
       selectedProject,
       selectedSession,
@@ -558,6 +567,7 @@ export function useProjectsState({
     sidebarSharedProps,
     handleProjectSelect,
     handleSessionSelect,
+    handleOpenDashboard,
     handleNewSession,
     handleSessionDelete,
     handleProjectDelete,

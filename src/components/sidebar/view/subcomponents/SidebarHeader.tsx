@@ -1,5 +1,6 @@
-import { FolderPlus, Plus, RefreshCw, Search, X, PanelLeftClose } from 'lucide-react';
+import { FolderPlus, LayoutDashboard, PanelLeftClose, Plus, RefreshCw, Search, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
+import type { AppTab } from '../../../../types/app';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { IS_PLATFORM } from '../../../../constants/config';
@@ -14,6 +15,8 @@ type SidebarHeaderProps = {
   onClearSearchFilter: () => void;
   onRefresh: () => void;
   isRefreshing: boolean;
+  activeTab: AppTab;
+  onOpenDashboard: () => void;
   onCreateProject: () => void;
   onCollapseSidebar: () => void;
   t: TFunction;
@@ -29,6 +32,8 @@ export default function SidebarHeader({
   onClearSearchFilter,
   onRefresh,
   isRefreshing,
+  activeTab,
+  onOpenDashboard,
   onCreateProject,
   onCollapseSidebar,
   t,
@@ -98,23 +103,35 @@ export default function SidebarHeader({
 
         {/* Search bar */}
         {projectsCount > 0 && !isLoading && (
-          <div className="relative mt-2.5">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50 pointer-events-none" />
-            <Input
-              type="text"
-              placeholder={t('projects.searchPlaceholder')}
-              value={searchFilter}
-              onChange={(event) => onSearchFilterChange(event.target.value)}
-              className="nav-search-input pl-9 pr-8 h-9 text-xs rounded-xl border-0 placeholder:text-muted-foreground/40 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all duration-200"
-            />
-            {searchFilter && (
-              <button
-                onClick={onClearSearchFilter}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-accent rounded-md"
-              >
-                <X className="w-3 h-3 text-muted-foreground" />
-              </button>
-            )}
+          <div className="mt-2.5 space-y-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50 pointer-events-none" />
+              <Input
+                type="text"
+                placeholder={t('projects.searchPlaceholder')}
+                value={searchFilter}
+                onChange={(event) => onSearchFilterChange(event.target.value)}
+                className="nav-search-input pl-9 pr-8 h-9 text-xs rounded-xl border-0 placeholder:text-muted-foreground/40 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all duration-200"
+              />
+              {searchFilter && (
+                <button
+                  onClick={onClearSearchFilter}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-accent rounded-md"
+                >
+                  <X className="w-3 h-3 text-muted-foreground" />
+                </button>
+              )}
+            </div>
+
+            <Button
+              variant={activeTab === 'dashboard' ? 'secondary' : 'outline'}
+              size="sm"
+              className="h-9 w-full justify-start rounded-xl"
+              onClick={onOpenDashboard}
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              {t('common:tabs.dashboard')}
+            </Button>
           </div>
         )}
       </div>
@@ -159,23 +176,34 @@ export default function SidebarHeader({
 
         {/* Mobile search */}
         {projectsCount > 0 && !isLoading && (
-          <div className="relative mt-2.5">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50 pointer-events-none" />
-            <Input
-              type="text"
-              placeholder={t('projects.searchPlaceholder')}
-              value={searchFilter}
-              onChange={(event) => onSearchFilterChange(event.target.value)}
-              className="nav-search-input pl-10 pr-9 h-10 text-sm rounded-xl border-0 placeholder:text-muted-foreground/40 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all duration-200"
-            />
-            {searchFilter && (
-              <button
-                onClick={onClearSearchFilter}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 hover:bg-accent rounded-md"
-              >
-                <X className="w-3.5 h-3.5 text-muted-foreground" />
-              </button>
-            )}
+          <div className="mt-2.5 space-y-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50 pointer-events-none" />
+              <Input
+                type="text"
+                placeholder={t('projects.searchPlaceholder')}
+                value={searchFilter}
+                onChange={(event) => onSearchFilterChange(event.target.value)}
+                className="nav-search-input pl-10 pr-9 h-10 text-sm rounded-xl border-0 placeholder:text-muted-foreground/40 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all duration-200"
+              />
+              {searchFilter && (
+                <button
+                  onClick={onClearSearchFilter}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 hover:bg-accent rounded-md"
+                >
+                  <X className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+              )}
+            </div>
+
+            <Button
+              variant={activeTab === 'dashboard' ? 'secondary' : 'outline'}
+              className="h-10 w-full justify-start rounded-xl"
+              onClick={onOpenDashboard}
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              {t('common:tabs.dashboard')}
+            </Button>
           </div>
         )}
       </div>

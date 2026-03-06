@@ -4,7 +4,7 @@ import type { AppTab, Project, ProjectSession } from '../../../../types/app';
 
 type MainContentTitleProps = {
   activeTab: AppTab;
-  selectedProject: Project;
+  selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   shouldShowTasksTab: boolean;
 };
@@ -12,6 +12,10 @@ type MainContentTitleProps = {
 function getTabTitle(activeTab: AppTab, shouldShowTasksTab: boolean, t: (key: string) => string) {
   if (activeTab === 'files') {
     return t('mainContent.projectFiles');
+  }
+
+  if (activeTab === 'dashboard') {
+    return t('projectDashboard.title');
   }
 
   if (activeTab === 'git') {
@@ -55,6 +59,7 @@ export default function MainContentTitle({
 
   const showSessionIcon = activeTab === 'chat' && Boolean(selectedSession);
   const showChatNewSession = activeTab === 'chat' && !selectedSession;
+  const isDashboard = activeTab === 'dashboard';
 
   return (
     <div className="min-w-0 flex items-center gap-2 flex-1 overflow-x-auto scrollbar-hide">
@@ -65,26 +70,35 @@ export default function MainContentTitle({
       )}
 
       <div className="min-w-0 flex-1">
-        {activeTab === 'chat' && selectedSession ? (
+        {isDashboard ? (
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-bold text-foreground leading-tight">
+              {t('projectDashboard.title')}
+            </h2>
+            <div className="text-[12px] text-muted-foreground truncate leading-tight mt-0.5">
+              {t('projectDashboard.subtitle')}
+            </div>
+          </div>
+        ) : activeTab === 'chat' && selectedSession && selectedProject ? (
           <div className="min-w-0">
             <h2 className="text-[15px] font-bold text-foreground whitespace-nowrap overflow-x-auto scrollbar-hide leading-tight">
               {getSessionTitle(selectedSession)}
             </h2>
             <div className="text-[12px] text-muted-foreground truncate leading-tight mt-0.5">{selectedProject.displayName}</div>
           </div>
-        ) : showChatNewSession ? (
+        ) : showChatNewSession && selectedProject ? (
           <div className="min-w-0">
             <h2 className="text-[15px] font-bold text-foreground leading-tight">{t('mainContent.newSession')}</h2>
             <div className="text-[12px] text-muted-foreground truncate leading-tight mt-0.5">{selectedProject.displayName}</div>
           </div>
-        ) : (
+        ) : selectedProject ? (
           <div className="min-w-0">
             <h2 className="text-[15px] font-bold text-foreground leading-tight">
               {getTabTitle(activeTab, shouldShowTasksTab, t)}
             </h2>
             <div className="text-[12px] text-muted-foreground truncate leading-tight mt-0.5">{selectedProject.displayName}</div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
