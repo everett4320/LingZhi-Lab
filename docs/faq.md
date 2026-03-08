@@ -2,7 +2,7 @@
 
 # FAQ — Troubleshooting
 
-Common installation and runtime problems with VibeLab, in **Problem → Cause → Solution** format. See also the [Quickstart](./quickstart.md) and [Configuration Reference](./configuration.md).
+Common installation and runtime problems with VibeLab, in **Problem → Cause → Solution** format. See also the [README](../README.md) and [Configuration Reference](./configuration.md).
 
 ---
 
@@ -63,3 +63,24 @@ npm run dev
 
 If the problem persists, perform a clean reinstall under Node 22.
 
+---
+
+## 4. Web search still fails after enabling permissions
+
+**Problem:** Agent web search still does not work even after you allow the relevant tools or switch to a more permissive mode in Settings.
+
+**Cause:** A runtime network lock may still be active for the current process. In particular, `CODEX_SANDBOX_NETWORK_DISABLED=1` can block network access even when the UI permission settings look correct.
+
+**Solution:** Check whether the environment variable is set, then remove or override it in the place where VibeLab is started.
+
+```sh
+echo "${CODEX_SANDBOX_NETWORK_DISABLED:-0}"
+```
+
+If the command prints `1`, remove or override the variable in your shell profile, systemd unit, Docker config, PM2 config, or other startup layer, then restart VibeLab.
+
+After that, confirm the provider-specific permissions are still enabled:
+
+- Claude Code: allow `WebSearch` and `WebFetch`
+- Gemini CLI: allow `google_web_search` and `web_fetch`
+- Codex: use `Bypass Permissions` when web access is required

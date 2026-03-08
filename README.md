@@ -26,6 +26,19 @@
   <a href="./README.md">English</a> | <a href="./README.zh-CN.md">中文</a>
 </p>
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Highlights](#highlights)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Research Lab - Quick Example](#research-lab-quick-example)
+- [Usage Guide](#usage-guide)
+- [FAQ](./docs/faq.md)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+- [Support & Community](#support--community)
+
 ## Overview
 
 VibeLab is a general-purpose AI research assistant designed to help researchers and builders execute end-to-end projects across different domains. From shaping an initial idea to running experiments and preparing publication-ready outputs, VibeLab keeps the full workflow in one place so teams can focus on research quality and iteration speed.
@@ -35,8 +48,7 @@ VibeLab is a general-purpose AI research assistant designed to help researchers 
 - **🔬 Research Lab** — Structured dashboard for end-to-end research: define your brief, generate a pipeline of tasks, track progress across Survey → Ideation → Experiment → Publication → Promotion, and inspect source papers, ideas (rendered with LaTeX math), and cache artifacts — all at a glance
 - **📚 100+ Research Skills** — A curated library spanning idea generation, code survey, experiment development & analysis, paper writing, review response, and delivery — automatically discovered by agents and applied as task-level assistance
 - **🗂️ Chat-Driven Pipeline** — Describe your research idea in Chat; the agent uses the `inno-pipeline-planner` skill to interactively generate a structured research brief and task list — no manual templates needed
-- **🤖 Multi-Agent Backend** — Seamlessly switch between Claude Code as your execution engine; compatible with Claude Sonnet 4.5, Opus 4.5
-<!-- - Cursor CLI and Codex support coming soon; compatible with GPT-5.2 -->
+- **🤖 Multi-Agent Backend** — Seamlessly switch between Claude Code, Gemini CLI, and Codex as your execution engines
 
 <details>
 <summary><span style="font-size: 1.17em; font-weight: 600;">More Features</span></summary>
@@ -56,8 +68,11 @@ VibeLab is a general-purpose AI research assistant designed to help researchers 
 - [Node.js](https://nodejs.org/) v20 or higher (**v22 LTS recommended**, see `.nvmrc`)
 - At least one of the following CLI tools installed and configured:
   - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
-  <!-- - [Cursor CLI](https://cursor.com/cli) -->
-  <!-- - [Codex](https://developers.openai.com/codex/cli/) -->
+  - [Gemini CLI](https://geminicli.com/docs/get-started/installation/)
+  - [Codex CLI](https://developers.openai.com/codex/cli/)
+- Some systems need native build tools for dependencies like `node-pty` and `better-sqlite3`. If `npm install` fails, see [FAQ](docs/faq.md).
+
+Cursor agent support is in progress and coming soon.
 
 ### Installation
 
@@ -78,48 +93,42 @@ cp .env.example .env
 # Edit .env with your preferred settings (port, etc.)
 ```
 
-4. **Check runtime network lock (important for web search):**
-```bash
-echo "${CODEX_SANDBOX_NETWORK_DISABLED:-0}"
-```
+Need custom ports, auth, or workspace settings? See [docs/configuration.md](docs/configuration.md).
 
-If the output is `1`, network requests can remain blocked even if Settings permissions are opened.
-Remove or override this variable in your deployment/startup layer (shell profile, systemd, Docker, PM2), then restart VibeLab.
-
-5. **Start the application:**
+4. **Start the application:**
 ```bash
 # Development mode (with hot reload)
 npm run dev
 ```
 
-6. **Open your browser** at `http://localhost:5173` (or the port you configured in `.env`)
+5. **Open your browser** at `http://localhost:5173` (or the port you configured in `.env`)
+
+If agent web search does not work later, see **Troubleshooting Web Search** below.
+
+## Configuration
+
+VibeLab reads local settings from `.env`. For most users, the only required step is copying `.env.example` to `.env`, but these are the settings you are most likely to adjust early:
+
+- `PORT`: backend server port
+- `VITE_PORT`: frontend dev server port
+- `HOST`: bind address for the frontend and backend
+- `JWT_SECRET`: required before exposing VibeLab beyond localhost
+- `WORKSPACES_ROOT`: default root for new project workspaces
+
+For the full environment reference and deployment notes, see [docs/configuration.md](docs/configuration.md).
+
+<a id="research-lab-quick-example"></a>
 
 ## Research Lab — Quick Example
 
 The core feature of VibeLab is the **Research Lab**.
 
-### Step 0 — Configure Any One Agent in Settings First
+The typical flow is:
 
-Before generating a pipeline, open **Settings** (gear icon) and configure at least one agent:
-
-- **Claude Code**: complete CLI login and verify the tool is available. If you need web search, allow `WebSearch` and `WebFetch` in Permissions.
-<!-- - **Cursor CLI**: complete CLI login and verify the tool is available. If you need web search, allow network-capable shell commands (for example `Shell(curl)`, `Shell(wget)`, `Shell(python)`). -->
-<!-- - **Codex**: complete CLI login and choose a suitable permission mode. -->
-
-You only need **one** agent configured to continue. For webpage search, you can use Claude as long as network-related permissions are enabled.
-<!-- For webpage search, you can use Claude, Cursor, or Codex as long as network-related permissions are enabled for the selected agent. -->
-
-### Step 1 — Open Chat and Describe Your Research Idea
-
-VibeLab opens **Chat** by default. If no research pipeline exists, an onboarding banner guides you to get started. Click **Use in Chat** to inject a template prompt, or simply describe your research idea in your own words.
-
-### Step 2 — Agent Generates Your Pipeline
-
-The agent runs the `inno-pipeline-planner` skill, asking you a few rounds of questions to understand your topic, scope, and goals. Once enough context is gathered, it generates `.pipeline/docs/research_brief.json` and `.pipeline/tasks/tasks.json` automatically.
-
-### Step 3 — Review Tasks and Execute
-
-Switch to **Research Lab** to review the generated task list and research brief. Click **Go to Chat** or **Use in Chat** on any task to send it to the agent for execution.
+1. Configure one supported agent in **Settings**.
+2. Describe your research idea in **Chat**.
+3. Let the agent generate `.pipeline/docs/research_brief.json` and `.pipeline/tasks/tasks.json`.
+4. Review the pipeline in **Research Lab** and send tasks back to **Chat** for execution.
 
 For full step-by-step operations, see **Usage Guide** below.
 
@@ -131,9 +140,8 @@ After starting VibeLab, open your browser and follow the steps below.
 
 When you first open VibeLab you will see the **Projects** sidebar. You have two options:
 
-- **Open an existing project** — VibeLab auto-discovers projects from Claude Code sessions. Click any listed project to open it.
-<!-- VibeLab also supports Cursor and Codex sessions. -->
-- **Create a new project** — Click the **"+"** button, choose a directory on your machine, and VibeLab will set up the workspace: `.claude/`, `.agents/`, `.cursor/` (with `skills/` symlinked from the app), preset dirs (`Survey/references`, `Survey/reports`, `Ideation/ideas`, `Ideation/references`, `Experiment/code_references`, `Experiment/datasets`, `Experiment/core_code`, `Experiment/analysis`, `Publication/paper`, `Publication/homepage`, `Publication/slide`), and **instance.json** at the project root with absolute paths for those directories.
+- **Open an existing project** — VibeLab auto-discovers registered projects and linked sessions from Claude Code, Codex, and Gemini.
+- **Create a new project** — Click the **"+"** button, choose a directory on your machine, and VibeLab will set up the workspace: agent folders such as `.claude/`, `.agents/`, `.gemini/`, standard workspace metadata, linked `skills/` directories, preset research dirs (`Survey/references`, `Survey/reports`, `Ideation/ideas`, `Ideation/references`, `Experiment/code_references`, `Experiment/datasets`, `Experiment/core_code`, `Experiment/analysis`, `Publication/paper`, `Publication/homepage`, `Publication/slide`), and **instance.json** at the project root with absolute paths for those directories. Cursor agent support is coming soon.
 
 > **Default project storage path:** New projects are stored under `~/vibelab` by default. You can change this in **Settings → Appearance → Default Project Path**, or set the `WORKSPACES_ROOT` environment variable. The setting is persisted in `~/.claude/project-config.json`.
 
@@ -148,33 +156,38 @@ Describe your research idea — even a rough one is fine. The agent uses the `in
 ### Step 3 — Review in Research Lab and Execute Tasks
 
 Switch to **Research Lab** to review the generated tasks, progress metrics, and artifacts. Then execute tasks:
-1. Choose a CLI backend from the **CLI selector** (Claude Code).
-<!-- Also supports Cursor CLI / Codex. -->
+1. Choose a CLI backend from the **CLI selector** (Claude Code, Gemini CLI, or Codex).
 2. In **Research Lab**, click **Go to Chat** or **Use in Chat** on a pending task.
 3. The agent executes the task and writes results back to the project.
 
-### Step 4 — Enable Network Access for Web Search (Claude)
-<!-- Also applies to Cursor / Codex -->
+### Step 4 — Troubleshooting Web Search
 
-If the agent cannot search webpages, your current permission settings are likely too restrictive. If web search still fails after you open permissions, ensure you have checked the **runtime network lock** in **Quick Start** (step 4) — if `CODEX_SANDBOX_NETWORK_DISABLED` is `1`, Settings alone cannot fix it.
+If the agent cannot search webpages, your current permission settings are likely too restrictive. Also check whether a runtime network lock is still active for the process.
 
-1. Open **Settings** (gear icon in sidebar).
-2. Go to **Permissions**, then choose your current agent:
+1. Check the runtime network lock:
+```bash
+echo "${CODEX_SANDBOX_NETWORK_DISABLED:-0}"
+```
+
+If the output is `1`, network requests can remain blocked even if Settings permissions are opened. Remove or override this variable in your deployment or startup layer (shell profile, systemd, Docker, PM2), then restart VibeLab.
+
+2. Open **Settings** (gear icon in sidebar).
+3. Go to **Permissions**, then choose your current agent:
 - **Claude Code**:
   - Enable `WebSearch` and `WebFetch` in **Allowed Tools**.
   - Ensure they are not present in **Blocked Tools**.
   - Optionally enable **Skip permission prompts** if you want fewer confirmations.
-<!-- - **Cursor CLI**:
-  - Add required commands to **Allowed Shell Commands** (for example `Shell(curl)`, `Shell(wget)`, `Shell(python)`, `Shell(node)`).
-  - Ensure they are not present in **Blocked Shell Commands**.
-  - Optionally enable **Skip permission prompts** if you want fewer confirmations.
+- **Gemini CLI**:
+  - Choose an appropriate **Permission Mode**.
+  - Allow `google_web_search` and `web_fetch` in **Allowed Tools** when web access is required.
+  - Ensure they are not present in **Blocked Tools**.
 - **Codex**:
-  - In **Permission Mode**, switch to **Bypass Permissions** when web access is required. -->
-3. Return to **Chat**, start a new message, and retry your web-search prompt.
+  - In **Permission Mode**, switch to **Bypass Permissions** when web access is required.
+4. Return to **Chat**, start a new message, and retry your web-search prompt.
 
-<!-- Codex mode differences:
+Codex permission mode notes:
 - **Default / Accept Edits**: sandboxed execution; network may still be restricted by session policy.
-- **Bypass Permissions**: `sandboxMode=danger-full-access` with full disk and network access. -->
+- **Bypass Permissions**: `sandboxMode=danger-full-access` with full disk and network access.
 
 Security note:
 - Use permissive settings only in trusted projects/environments.
@@ -199,11 +212,14 @@ You can switch tabs at any time:
 
 | Tab | What it does |
 |-----|-------------|
-| **Chat** | **Default first screen.** Describe your research idea to generate the pipeline, or execute tasks with the selected agent. Supports streaming responses, session resume, and message history. |
-| **Research Lab** | Review research brief, task progress, and artifacts. Tasks and briefs are generated via Chat. |
-| **Shell** | Drop directly into the CLI terminal for full command-line control. |
-| **Files** | Browse the project file tree, view and edit files with syntax highlighting, create/rename/delete files. |
-| **Git** | View diffs, stage changes, commit, and switch branches — all from the UI. |
+| **Chat** | Start here. Use it to describe your research idea, generate a pipeline, and run tasks with the selected agent. |
+| **Survey** | Review papers, literature graphs, notes, and survey-stage tasks for the current project. |
+| **Research Lab** | Review the research brief, task list, progress, and generated artifacts in one place. |
+| **Skills** | Browse installed skills, inspect their contents, and import additional local skills. |
+| **Compute** | Manage compute resources and run experiment workloads from one place. |
+| **Shell** | Use the embedded terminal when you need direct CLI access, trust prompts, or manual commands. |
+| **Files** | Browse, open, create, rename, and edit project files with syntax highlighting. |
+| **Git** | Inspect diffs, stage changes, commit, and switch branches without leaving the app. |
 
 #### Research Skills
 
@@ -238,8 +254,7 @@ VibeLab is fully responsive. On mobile devices:
 ### Backend (Node.js + Express)
 - **Express Server** - RESTful API with static file serving
 - **WebSocket Server** - Communication for chats and project refresh
-- **Agent Integration (Claude Code)** - Process spawning and management
-<!-- Also supports Cursor CLI / Codex -->
+- **Agent Integration (Claude Code, Gemini CLI, Codex)** - Process spawning, streaming, and session management
 - **File System API** - Exposing file browser for projects
 
 ### Frontend (React + Vite)
@@ -251,17 +266,18 @@ VibeLab is fully responsive. On mobile devices:
 <details>
 <summary><span style="font-size: 1.17em; font-weight: 600;">Security & Tools Configuration</span></summary>
 
-**🔒 Important Notice**: All Claude Code tools are **disabled by default**. This prevents potentially harmful operations from running automatically.
+**🔒 Important Notice**: Agent permissions are configurable per provider. Review **Settings → Permissions** before enabling broad file, shell, or web access.
 
 ### Enabling Tools
 
-To use Claude Code's full functionality, you'll need to manually enable tools:
+To use web and tool-heavy workflows safely:
 
-1. **Open Tools Settings** - Click the gear icon in the sidebar
-3. **Enable Selectively** - Turn on only the tools you need
+1. **Open Settings** - Click the gear icon in the sidebar
+2. **Choose an Agent** - Claude Code, Gemini CLI, or Codex
+3. **Enable Selectively** - Turn on only the tools or permission mode you need
 4. **Apply Settings** - Your preferences are saved locally
 
-**Recommended approach**: Start with basic tools enabled and add more as needed. You can always adjust these settings later.
+**Recommended approach**: Start with the safest permission mode that still lets you complete the task, then relax settings only when needed.
 
 </details>
 
@@ -279,7 +295,7 @@ We welcome contributions! Please follow these guidelines:
 #### Development Process
 1. **Make your changes** following the existing code style
 2. **Test thoroughly** - ensure all features work correctly
-3. **Run quality checks**: `npm run lint && npm run format`
+3. **Run quality checks**: `npm run typecheck && npm run build`
 4. **Commit** with descriptive messages following [Conventional Commits](https://conventionalcommits.org/)
 5. **Push** to your branch: `git push origin feature/amazing-feature`
 6. **Submit** a Pull Request with:
@@ -308,8 +324,8 @@ This project is open source and free to use, modify, and distribute under the GP
 
 ### Built With
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** - Anthropic's official CLI
-<!-- - **[Cursor CLI](https://docs.cursor.com/en/cli/overview)** - Cursor's official CLI -->
-<!-- - **[Codex](https://developers.openai.com/codex)** - OpenAI Codex -->
+- **[Gemini CLI](https://geminicli.com/docs/get-started/installation/)** - Google's Gemini command-line agent
+- **[Codex](https://developers.openai.com/codex)** - OpenAI Codex
 - **[React](https://react.dev/)** - User interface library
 - **[Vite](https://vitejs.dev/)** - Fast build tool and dev server
 - **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS framework

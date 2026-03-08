@@ -2,7 +2,7 @@
 
 # FAQ — 故障排除
 
-VibeLab 常见的安装和运行问题，采用**问题 → 原因 → 解决方案**格式。另请参阅[快速入门](./quickstart.zh-CN.md)和[配置参考](./configuration.zh-CN.md)。
+VibeLab 常见的安装和运行问题，采用**问题 → 原因 → 解决方案**格式。另请参阅[README](../README.zh-CN.md)和[配置参考](./configuration.zh-CN.md)。
 
 ---
 
@@ -62,3 +62,25 @@ npm run dev
 ```
 
 如果仍然失败，建议在 Node 22 环境下清理并重装依赖。
+
+---
+
+## 4. 已开启权限，但网页搜索仍然失败
+
+**问题：** 即使你已经在 Settings 中允许相关工具，或切换到了更宽松的权限模式，Agent 的网页搜索仍然无法使用。
+
+**原因：** 当前进程可能仍然受到运行时网络锁限制。尤其是当 `CODEX_SANDBOX_NETWORK_DISABLED=1` 时，即使 UI 中的权限设置看起来正确，网络访问仍会被阻止。
+
+**解决方案：** 先检查该环境变量是否被设置，然后在启动 VibeLab 的那一层覆盖或移除它。
+
+```sh
+echo "${CODEX_SANDBOX_NETWORK_DISABLED:-0}"
+```
+
+如果命令输出 `1`，请在 shell 配置、systemd、Docker、PM2 或其他启动配置中移除或覆盖该变量，然后重启 VibeLab。
+
+之后再确认各 Provider 的权限仍然已开启：
+
+- Claude Code：允许 `WebSearch` 和 `WebFetch`
+- Gemini CLI：允许 `google_web_search` 和 `web_fetch`
+- Codex：需要网页访问时使用 `Bypass Permissions`
