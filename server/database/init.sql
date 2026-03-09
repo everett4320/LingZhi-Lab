@@ -50,3 +50,35 @@ CREATE TABLE IF NOT EXISTS user_credentials (
 CREATE INDEX IF NOT EXISTS idx_user_credentials_user_id ON user_credentials(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_credentials_type ON user_credentials(credential_type);
 CREATE INDEX IF NOT EXISTS idx_user_credentials_active ON user_credentials(is_active);
+
+-- Session metadata index table for fast lookup and renaming
+CREATE TABLE IF NOT EXISTS session_metadata (
+    id TEXT PRIMARY KEY,
+    project_name TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    display_name TEXT,
+    last_activity DATETIME,
+    message_count INTEGER DEFAULT 0,
+    is_starred BOOLEAN DEFAULT 0,
+    metadata TEXT, -- JSON storage for extra provider-specific data
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_metadata_project ON session_metadata(project_name);
+CREATE INDEX IF NOT EXISTS idx_session_metadata_provider ON session_metadata(provider);
+
+-- Projects table for unified management across all providers
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER,
+    display_name TEXT,
+    path TEXT NOT NULL,
+    is_starred BOOLEAN DEFAULT 0,
+    last_accessed DATETIME,
+    metadata TEXT, -- JSON for provider-specific info
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_path ON projects(path);

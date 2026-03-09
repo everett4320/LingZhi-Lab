@@ -375,11 +375,156 @@ const githubTokensDb = {
   }
 };
 
+// Session metadata index operations
+const sessionDb = {
+  // Upsert session metadata (insert if not exists, update if exists)
+  upsertSession: (id, projectName, provider, displayName, lastActivity, messageCount = 0, metadata = null) => {
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO session_metadata (id, project_name, provider, display_name, last_activity, message_count, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          display_name = COALESCE(excluded.display_name, session_metadata.display_name),
+          last_activity = COALESCE(excluded.last_activity, session_metadata.last_activity),
+          message_count = COALESCE(excluded.message_count, session_metadata.message_count),
+          metadata = COALESCE(excluded.metadata, session_metadata.metadata)
+      `);
+      stmt.run(id, projectName, provider, displayName, lastActivity, messageCount, metadata ? JSON.stringify(metadata) : null);
+    } catch (err) {
+      console.error('Error upserting session metadata:', err.message);
+    }
+  },
+
+  // Update session name ONLY (priority for manual rename)
+  updateSessionName: (id, displayName) => {
+    try {
+      const stmt = db.prepare('UPDATE session_metadata SET display_name = ? WHERE id = ?');
+      stmt.run(displayName, id);
+    } catch (err) {
+      console.error('Error updating session name:', err.message);
+    }
+  },
+
+  // Get all metadata for sessions in a project
+  getSessionsByProject: (projectName) => {
+    try {
+      const rows = db.prepare('SELECT * FROM session_metadata WHERE project_name = ?').all(projectName);
+      return rows.map(row => ({
+        ...row,
+        metadata: row.metadata ? JSON.parse(row.metadata) : null
+      }));
+    } catch (err) {
+      console.error('Error getting project sessions:', err.message);
+      return [];
+    }
+  },
+
+  // Get metadata for a specific session
+  getSessionById: (id) => {
+    try {
+      const row = db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(id);
+      if (row && row.metadata) {
+        row.metadata = JSON.parse(row.metadata);
+      }
+      return row;
+    } catch (err) {
+      console.error('Error getting session metadata:', err.message);
+      return null;
+    }
+  },
+
+  deleteSession: (id) => {
+    try {
+      db.prepare('DELETE FROM session_metadata WHERE id = ?').run(id);
+    } catch (err) {
+      console.error('Error deleting session metadata:', err.message);
+    }
+  }
+};
+
+// Project index operations
+const projectDb = {
+  // Upsert project (insert if not exists, update if exists)
+  upsertProject: (id, userId, displayName, path, isStarred = 0, lastAccessed = null, metadata = null) => {
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO projects (id, user_id, display_name, path, is_starred, last_accessed, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          display_name = COALESCE(excluded.display_name, projects.display_name),
+          user_id = CASE WHEN projects.user_id IS NULL THEN excluded.user_id ELSE projects.user_id END,
+          is_starred = COALESCE(excluded.is_starred, projects.is_starred),
+          last_accessed = COALESCE(excluded.last_accessed, projects.last_accessed),
+          metadata = COALESCE(excluded.metadata, projects.metadata)
+      `);
+      stmt.run(id, userId, displayName, path, isStarred, lastAccessed, metadata ? JSON.stringify(metadata) : null);
+    } catch (err) {
+      console.error('Error upserting project metadata:', err.message);
+    }
+  },
+
+  // Update project name ONLY
+  updateProjectName: (id, displayName) => {
+    try {
+      db.prepare('UPDATE projects SET display_name = ? WHERE id = ?').run(displayName, id);
+    } catch (err) {
+      console.error('Error updating project name:', err.message);
+    }
+  },
+
+  // Get all projects (can filter by userId later)
+  getAllProjects: (userId = null) => {
+    try {
+      const query = userId ? 'SELECT * FROM projects WHERE user_id = ?' : 'SELECT * FROM projects';
+      const rows = userId ? db.prepare(query).all(userId) : db.prepare(query).all();
+      return rows.map(row => ({
+        ...row,
+        metadata: row.metadata ? JSON.parse(row.metadata) : null
+      }));
+    } catch (err) {
+      console.error('Error getting projects:', err.message);
+      return [];
+    }
+  },
+
+  // Get project by its encoded ID
+  getProjectById: (id) => {
+    try {
+      const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+      if (row && row.metadata) {
+        row.metadata = JSON.parse(row.metadata);
+      }
+      return row;
+    } catch (err) {
+      console.error('Error getting project metadata:', err.message);
+      return null;
+    }
+  },
+
+  toggleStar: (id, isStarred) => {
+    try {
+      db.prepare('UPDATE projects SET is_starred = ? WHERE id = ?').run(isStarred ? 1 : 0, id);
+    } catch (err) {
+      console.error('Error toggling project star:', err.message);
+    }
+  },
+
+  deleteProject: (id) => {
+    try {
+      db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+    } catch (err) {
+      console.error('Error deleting project metadata:', err.message);
+    }
+  }
+};
+
 export {
   db,
   initializeDatabase,
   userDb,
   apiKeysDb,
   credentialsDb,
-  githubTokensDb // Backward compatibility
+  githubTokensDb, // Backward compatibility
+  sessionDb,
+  projectDb
 };

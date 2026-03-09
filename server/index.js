@@ -44,7 +44,7 @@ import pty from 'node-pty';
 import fetch from 'node-fetch';
 import mime from 'mime-types';
 
-import { getProjects, getSessions, getSessionMessages, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache } from './projects.js';
+import { getProjects, getSessions, getSessionMessages, renameProject, renameSession, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache } from './projects.js';
 import { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive, getActiveClaudeSDKSessions, resolveToolApproval } from './claude-sdk.js';
 import { spawnCursor, abortCursorSession, isCursorSessionActive, getActiveCursorSessions } from './cursor-cli.js';
 import { queryCodex, abortCodexSession, isCodexSessionActive, getActiveCodexSessions } from './openai-codex.js';
@@ -516,7 +516,8 @@ app.post('/api/system/update', authenticateToken, async (req, res) => {
 
 app.get('/api/projects', authenticateToken, async (req, res) => {
     try {
-        const projects = await getProjects(broadcastProgress);
+        const userId = req.user?.id;
+        const projects = await getProjects(userId, broadcastProgress);
         res.json(projects);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -525,8 +526,9 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
 
 app.get('/api/projects/:projectName/sessions', authenticateToken, async (req, res) => {
     try {
+        const userId = req.user?.id;
         const { limit = 5, offset = 0 } = req.query;
-        const result = await getSessions(req.params.projectName, parseInt(limit), parseInt(offset));
+        const result = await getSessions(req.params.projectName, parseInt(limit), parseInt(offset), userId);
         res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -536,6 +538,7 @@ app.get('/api/projects/:projectName/sessions', authenticateToken, async (req, re
 // Get messages for a specific session
 app.get('/api/projects/:projectName/sessions/:sessionId/messages', authenticateToken, async (req, res) => {
     try {
+        const userId = req.user?.id;
         const { projectName, sessionId } = req.params;
         const { limit, offset, provider } = req.query;
 
@@ -543,7 +546,7 @@ app.get('/api/projects/:projectName/sessions/:sessionId/messages', authenticateT
         const parsedLimit = limit ? parseInt(limit, 10) : null;
         const parsedOffset = offset ? parseInt(offset, 10) : 0;
 
-        const result = await getSessionMessages(projectName, sessionId, parsedLimit, parsedOffset, provider);
+        const result = await getSessionMessages(projectName, sessionId, parsedLimit, parsedOffset, provider, userId);
 
         // Handle both old and new response formats
         if (Array.isArray(result)) {
@@ -561,8 +564,22 @@ app.get('/api/projects/:projectName/sessions/:sessionId/messages', authenticateT
 // Rename project endpoint
 app.put('/api/projects/:projectName/rename', authenticateToken, async (req, res) => {
     try {
+        const userId = req.user?.id;
         const { displayName } = req.body;
-        await renameProject(req.params.projectName, displayName);
+        await renameProject(req.params.projectName, displayName, userId);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Rename session endpoint
+app.put('/api/projects/:projectName/sessions/:sessionId/rename', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const { projectName, sessionId } = req.params;
+        const { summary, provider } = req.body;
+        await renameSession(projectName, sessionId, summary, provider, userId);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });

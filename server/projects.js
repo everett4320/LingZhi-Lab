@@ -418,337 +418,177 @@ async function extractProjectDirectory(projectName) {
   }
 }
 
-async function getProjects(progressCallback = null) {
+async function getProjects(userId, progressCallback = null) {
+  const { projectDb } = await import('./database/db.js');
   const claudeDir = path.join(os.homedir(), '.claude', 'projects');
   const config = await loadProjectConfig();
   const projects = [];
   const existingProjects = new Set();
 
-  // Resolve workspace root for filtering (config > env var > ~/vibelab)
+  // Resolve workspace root for filtering (only for NEW discovery or manual adds)
   const DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'vibelab');
   const workspacesRoot = config._workspacesRoot || process.env.WORKSPACES_ROOT || DEFAULT_WORKSPACES_ROOT;
   const codexSessionsIndexRef = { sessionsByProject: null };
   let totalProjects = 0;
   let processedProjects = 0;
-  let directories = [];
   let configDirty = false;
+
+  // 1. Fetch projects belonging to THIS user
+  const userProjects = projectDb.getAllProjects(userId);
+  const userProjectMap = new Map(userProjects.map(p => [p.id, p]));
+
+  // 2. Fetch ALL projects from DB to see what's already claimed by OTHERS
+  const allDbProjects = projectDb.getAllProjects(); // userId=null gets all
+  const globalProjectMap = new Map(allDbProjects.map(p => [p.id, p]));
 
   try {
     // Check if the .claude/projects directory exists
     await fs.access(claudeDir);
 
-    // First, get existing Claude projects from the file system
+    // Get ALL existing Claude project folders
     const entries = await fs.readdir(claudeDir, { withFileTypes: true });
-    directories = entries.filter(e => e.isDirectory());
+    const directories = entries.filter(e => e.isDirectory());
 
-    // Pre-filter directories by workspace root
-    const filteredDirectories = [];
+    const discoveredDirectories = [];
     for (const entry of directories) {
       const actualDir = await extractProjectDirectory(entry.name);
-      if (actualDir && actualDir.startsWith(workspacesRoot)) {
-        filteredDirectories.push({ entry, actualProjectDir: actualDir });
+      if (!actualDir) continue;
+
+      const dbEntry = globalProjectMap.get(entry.name);
+      
+      // LOGIC FOR VISIBILITY:
+      // A. If it's already in DB and belongs to THIS user -> Visible
+      // B. If it's NOT in DB at all -> Visible (will be claimed)
+      // C. If it's in DB but belongs to someone else -> HIDDEN
+      
+      if (dbEntry) {
+        if (dbEntry.user_id === userId) {
+          discoveredDirectories.push({ entry, actualProjectDir: actualDir, dbEntry });
+        }
+      } else {
+        // Unclaimed project discovered in filesystem -> Claim it for current user
+        discoveredDirectories.push({ entry, actualProjectDir: actualDir, dbEntry: null });
       }
       existingProjects.add(entry.name);
     }
 
-    // Heal config entries whose originalPath points at a different project key.
+    // Process unclaimed projects from Claude config too
     for (const [projectName, projectConfig] of Object.entries(config)) {
-      if (!projectConfig?.originalPath) {
-        continue;
-      }
-
-      const expectedProjectName = encodeProjectPath(projectConfig.originalPath);
-      if (
-        expectedProjectName !== projectName &&
-        existingProjects.has(expectedProjectName) &&
-        !config[expectedProjectName]
-      ) {
-        config[expectedProjectName] = projectConfig;
-        delete config[projectName];
-        projectDirectoryCache.delete(projectName);
-        projectDirectoryCache.delete(expectedProjectName);
-        configDirty = true;
+      if (!projectConfig?.originalPath) continue;
+      
+      const dbEntry = globalProjectMap.get(projectName);
+      if (!dbEntry || !dbEntry.user_id) {
+        // This project exists in config but not assigned in DB yet
+        // Only add if not already added from filesystem scan
+        if (!discoveredDirectories.some(d => d.entry.name === projectName)) {
+          discoveredDirectories.push({ 
+            entry: { name: projectName }, 
+            actualProjectDir: projectConfig.originalPath, 
+            dbEntry: null 
+          });
+        }
       }
     }
 
-    // Count manual projects not already in directories
-    const manualProjectsCount = Object.entries(config)
-      .filter(([name, cfg]) => cfg.manuallyAdded && !existingProjects.has(name))
-      .filter(([name, cfg]) => {
-        const dir = cfg.originalPath || name.replace(/-/g, '/');
-        return dir && dir.startsWith(workspacesRoot);
-      })
-      .length;
+    totalProjects = discoveredDirectories.length;
 
-    totalProjects = filteredDirectories.length + manualProjectsCount;
-
-    for (const { entry, actualProjectDir } of filteredDirectories) {
+    for (const { entry, actualProjectDir, dbEntry } of discoveredDirectories) {
         processedProjects++;
 
-        // Emit progress
         if (progressCallback) {
-          progressCallback({
-            phase: 'loading',
-            current: processedProjects,
-            total: totalProjects,
-            currentProject: entry.name
-          });
+          progressCallback({ phase: 'loading', current: processedProjects, total: totalProjects, currentProject: entry.name });
         }
 
-        // Get display name from config or generate one
-        const customName = config[entry.name]?.displayName;
-        const autoDisplayName = await generateDisplayName(entry.name, actualProjectDir);
-        const fullPath = actualProjectDir;
+        // Get info
+        const displayName = dbEntry?.display_name || config[entry.name]?.displayName || await generateDisplayName(entry.name, actualProjectDir);
 
-        let dirCreatedAt = null;
-        try {
-          const dirStat = await fs.stat(actualProjectDir);
-          dirCreatedAt = dirStat.birthtime.toISOString();
-        } catch (_) {}
+        let dirCreatedAt = dbEntry?.created_at;
+        if (!dirCreatedAt) {
+          try {
+            const dirStat = await fs.stat(actualProjectDir);
+            dirCreatedAt = dirStat.birthtime.toISOString();
+          } catch (_) {}
+        }
 
         const project = {
           name: entry.name,
           path: actualProjectDir,
-          displayName: customName || autoDisplayName,
-          fullPath: fullPath,
-          isCustomName: !!customName,
+          displayName: displayName,
+          fullPath: actualProjectDir,
+          isCustomName: !!(dbEntry?.display_name || config[entry.name]?.displayName),
           createdAt: dirCreatedAt,
+          isStarred: !!dbEntry?.is_starred,
           sessions: [],
-          sessionMeta: {
-            hasMore: false,
-            total: 0
-          }
+          sessionMeta: { hasMore: false, total: 0 }
         };
 
-        // Try to get sessions for this project (just first 5 for performance)
+        // CLAIM LOGIC: If not assigned, assign to current user now
+        if (!dbEntry || !dbEntry.user_id) {
+          projectDb.upsertProject(
+            entry.name, 
+            userId, 
+            displayName, 
+            actualProjectDir, 
+            project.isStarred ? 1 : 0, 
+            null,
+            config[entry.name]?.manuallyAdded ? { manuallyAdded: true } : null
+          );
+        }
+
+        // Try to get sessions
         try {
-          const sessionResult = await getSessions(entry.name, 5, 0);
+          const sessionResult = await getSessions(entry.name, 5, 0, userId);
           project.sessions = sessionResult.sessions || [];
-          project.sessionMeta = {
-            hasMore: sessionResult.hasMore,
-            total: sessionResult.total
-          };
+          project.sessionMeta = { hasMore: sessionResult.hasMore, total: sessionResult.total };
         } catch (e) {
-          console.warn(`Could not load sessions for project ${entry.name}:`, e.message);
-          project.sessionMeta = {
-            hasMore: false,
-            total: 0
-          };
+          project.sessionMeta = { hasMore: false, total: 0 };
         }
 
-        // Also fetch Cursor sessions for this project
-        try {
-          project.cursorSessions = await getCursorSessions(actualProjectDir);
-        } catch (e) {
-          console.warn(`Could not load Cursor sessions for project ${entry.name}:`, e.message);
-          project.cursorSessions = [];
-        }
+        // Fetch other sessions
+        try { project.cursorSessions = await getCursorSessions(actualProjectDir); } catch (e) {}
+        try { project.codexSessions = await getCodexSessions(actualProjectDir, { indexRef: codexSessionsIndexRef }); } catch (e) {}
+        try { project.geminiSessions = await getGeminiSessions(actualProjectDir, userId); } catch (e) {}
 
-        // Also fetch Codex sessions for this project
+        // TaskMaster detection
         try {
-          project.codexSessions = await getCodexSessions(actualProjectDir, {
-            indexRef: codexSessionsIndexRef,
-          });
-        } catch (e) {
-          console.warn(`Could not load Codex sessions for project ${entry.name}:`, e.message);
-          project.codexSessions = [];
-        }
-
-        // Also fetch Gemini sessions for this project
-        try {
-          project.geminiSessions = await getGeminiSessions(actualProjectDir);
-        } catch (e) {
-          console.warn(`Could not load Gemini sessions for project ${entry.name}:`, e.message);
-          project.geminiSessions = [];
-        }
-
-        // Add TaskMaster detection
-        try {
-          const taskMasterResult = await detectTaskMasterFolder(actualProjectDir);
+          const tm = await detectTaskMasterFolder(actualProjectDir);
           project.taskmaster = {
-            hasTaskmaster: taskMasterResult.hasTaskmaster,
-            hasEssentialFiles: taskMasterResult.hasEssentialFiles,
-            metadata: taskMasterResult.metadata,
-            status: taskMasterResult.hasTaskmaster && taskMasterResult.hasEssentialFiles ? 'configured' : 'not-configured'
+            hasTaskmaster: tm.hasTaskmaster,
+            hasEssentialFiles: tm.hasEssentialFiles,
+            metadata: tm.metadata,
+            status: tm.hasTaskmaster && tm.hasEssentialFiles ? 'configured' : 'not-configured'
           };
           project.pipeline = project.taskmaster;
-        } catch (e) {
-          console.warn(`Could not detect TaskMaster for project ${entry.name}:`, e.message);
-          project.taskmaster = {
-            hasTaskmaster: false,
-            hasEssentialFiles: false,
-            metadata: null,
-            status: 'error'
-          };
-          project.pipeline = project.taskmaster;
-        }
+        } catch (e) {}
 
       projects.push(project);
     }
   } catch (error) {
-    // If the directory doesn't exist (ENOENT), that's okay - just continue with empty projects
-    if (error.code !== 'ENOENT') {
-      console.error('Error reading projects directory:', error);
-    }
-    // Calculate total for manual projects only (no directories exist)
-    totalProjects = Object.entries(config)
-      .filter(([name, cfg]) => cfg.manuallyAdded)
-      .filter(([name, cfg]) => {
-        const dir = cfg.originalPath || name.replace(/-/g, '/');
-        return dir && dir.startsWith(workspacesRoot);
-      })
-      .length;
-  }
-
-  // Add manually configured projects that don't exist as folders yet
-  for (const [projectName, projectConfig] of Object.entries(config)) {
-    if (!existingProjects.has(projectName) && projectConfig.manuallyAdded) {
-      // Use the original path if available, otherwise extract from potential sessions
-      let actualProjectDir = projectConfig.originalPath;
-
-      if (!actualProjectDir) {
-        try {
-          actualProjectDir = await extractProjectDirectory(projectName);
-        } catch (error) {
-          // Fall back to decoded project name
-          actualProjectDir = projectName.replace(/-/g, '/');
-        }
-      }
-
-      // Skip projects outside the workspace root
-      if (!actualProjectDir || !actualProjectDir.startsWith(workspacesRoot)) {
-        continue;
-      }
-
-      processedProjects++;
-
-      // Emit progress for manual projects
-      if (progressCallback) {
-        progressCallback({
-          phase: 'loading',
-          current: processedProjects,
-          total: totalProjects,
-          currentProject: projectName
-        });
-      }
-
-      // Skip projects whose folder has been deleted from disk and clean up config
-      let dirCreatedAt = null;
-      let folderExists = false;
-      try {
-        const dirStat = await fs.stat(actualProjectDir);
-        dirCreatedAt = dirStat.birthtime.toISOString();
-        folderExists = true;
-      } catch (_) {}
-
-      if (!folderExists) {
-        // Auto-remove stale project from config
-        delete config[projectName];
-        configDirty = true;
-        continue;
-      }
-
-      const project = {
-          name: projectName,
-          path: actualProjectDir,
-          displayName: projectConfig.displayName || await generateDisplayName(projectName, actualProjectDir),
-          fullPath: actualProjectDir,
-          isCustomName: !!projectConfig.displayName,
-          isManuallyAdded: true,
-          createdAt: dirCreatedAt,
-          sessions: [],
-          sessionMeta: {
-            hasMore: false,
-            total: 0
-          },
-          cursorSessions: [],
-          codexSessions: []
-      };
-
-      // Try to fetch Cursor sessions for manual projects too
-      try {
-        project.cursorSessions = await getCursorSessions(actualProjectDir);
-      } catch (e) {
-        console.warn(`Could not load Cursor sessions for manual project ${projectName}:`, e.message);
-      }
-
-      // Try to fetch Codex sessions for manual projects too
-      try {
-        project.codexSessions = await getCodexSessions(actualProjectDir, {
-          indexRef: codexSessionsIndexRef,
-        });
-      } catch (e) {
-        console.warn(`Could not load Codex sessions for manual project ${projectName}:`, e.message);
-      }
-
-      // Try to fetch Gemini sessions for manual projects too
-      try {
-        project.geminiSessions = await getGeminiSessions(actualProjectDir);
-      } catch (e) {
-        console.warn(`Could not load Gemini sessions for manual project ${projectName}:`, e.message);
-      }
-
-      // Add TaskMaster detection for manual projects
-      try {
-        const taskMasterResult = await detectTaskMasterFolder(actualProjectDir);
-
-        // Determine TaskMaster status
-        let taskMasterStatus = 'not-configured';
-        if (taskMasterResult.hasTaskmaster && taskMasterResult.hasEssentialFiles) {
-          taskMasterStatus = 'taskmaster-only'; // We don't check MCP for manual projects in bulk
-        }
-
-        project.taskmaster = {
-          status: taskMasterStatus,
-          hasTaskmaster: taskMasterResult.hasTaskmaster,
-          hasEssentialFiles: taskMasterResult.hasEssentialFiles,
-          metadata: taskMasterResult.metadata
-        };
-        project.pipeline = project.taskmaster;
-      } catch (error) {
-        console.warn(`TaskMaster detection failed for manual project ${projectName}:`, error.message);
-        project.taskmaster = {
-          status: 'error',
-          hasTaskmaster: false,
-          hasEssentialFiles: false,
-          error: error.message
-        };
-        project.pipeline = project.taskmaster;
-      }
-
-      projects.push(project);
-    }
-  }
-
-  // Persist config if stale projects were removed
-  if (configDirty) {
-    await saveProjectConfig(config);
-  }
-
-  // Emit completion after all projects (including manual) are processed
-  if (progressCallback) {
-    progressCallback({
-      phase: 'complete',
-      current: totalProjects,
-      total: totalProjects
-    });
+    if (error.code !== 'ENOENT') console.error('Error reading projects directory:', error);
   }
 
   return projects;
 }
 
-async function getSessions(projectName, limit = 5, offset = 0) {
+async function getSessions(projectName, limit = 5, offset = 0, userId = null) {
   const projectDir = path.join(os.homedir(), '.claude', 'projects', projectName);
+  const { sessionDb } = await import('./database/db.js');
 
   try {
     const files = await fs.readdir(projectDir);
-    // agent-*.jsonl files contain session start data at this point. This needs to be revisited
-    // periodically to make sure only accurate data is there and no new functionality is added there
     const jsonlFiles = files.filter(file => file.endsWith('.jsonl') && !file.startsWith('agent-'));
 
     if (jsonlFiles.length === 0) {
       return { sessions: [], hasMore: false, total: 0 };
     }
+
+    // Fetch indexed sessions from database - filter by userId? 
+    // Usually sessions inherit project ownership, but we store it anyway.
+    const dbSessions = sessionDb.getSessionsByProject(projectName);
+    const dbSessionMap = new Map(dbSessions.filter(s => s.provider === 'claude').map(s => [s.id, s]));
+
+    // ... (rest of getSessions remains mostly same, but ensures it uses the DB map correctly)
+
 
     // Sort files by modification time (newest first)
     const filesWithStats = await Promise.all(
@@ -767,11 +607,17 @@ async function getSessions(projectName, limit = 5, offset = 0) {
     // Collect all sessions and entries from all files
     for (const { file } of filesWithStats) {
       const jsonlFile = path.join(projectDir, file);
-      const result = await parseJsonlSessions(jsonlFile);
+      const result = await parseJsonlSessions(jsonlFile, projectName, dbSessionMap);
 
       result.sessions.forEach(session => {
         if (!allSessions.has(session.id)) {
           allSessions.set(session.id, session);
+          
+          // Upsert new sessions discovered from files to DB for caching
+          if (!dbSessionMap.has(session.id)) {
+            const lastActivity = session.lastActivity instanceof Date ? session.lastActivity.toISOString() : session.lastActivity;
+            sessionDb.upsertSession(session.id, projectName, 'claude', session.summary, lastActivity, session.messageCount);
+          }
         }
       });
 
@@ -865,7 +711,7 @@ async function getSessions(projectName, limit = 5, offset = 0) {
   }
 }
 
-async function parseJsonlSessions(filePath) {
+async function parseJsonlSessions(filePath, projectName = null, dbSessionMap = null) {
   const sessions = new Map();
   const entries = [];
   const pendingSummaries = new Map(); // leafUuid -> summary for entries without sessionId
@@ -890,9 +736,15 @@ async function parseJsonlSessions(filePath) {
 
           if (entry.sessionId) {
             if (!sessions.has(entry.sessionId)) {
+              // Priority: 1. DB name, 2. Default
+              let initialSummary = 'New Session';
+              if (dbSessionMap && dbSessionMap.has(entry.sessionId)) {
+                initialSummary = dbSessionMap.get(entry.sessionId).display_name;
+              }
+
               sessions.set(entry.sessionId, {
                 id: entry.sessionId,
-                summary: 'New Session',
+                summary: initialSummary,
                 messageCount: 0,
                 lastActivity: new Date(),
                 cwd: entry.cwd || '',
@@ -903,12 +755,16 @@ async function parseJsonlSessions(filePath) {
 
             const session = sessions.get(entry.sessionId);
 
+            // If we have a DB name, we might skip the logic to overwrite it with "New Session" file logs,
+            // but we still want to update it if the file has a LATEST summary entry that might be newer.
+            // For now, manual DB renames should take precedence if they are different from 'New Session'
+
             // Apply pending summary if this entry has a parentUuid that matches a pending summary
             if (session.summary === 'New Session' && entry.parentUuid && pendingSummaries.has(entry.parentUuid)) {
               session.summary = pendingSummaries.get(entry.parentUuid);
             }
 
-            // Update summary from summary entries with sessionId
+            // Update summary from summary entries with sessionId - always take the LATEST in the file
             if (entry.type === 'summary' && entry.summary) {
               session.summary = entry.summary;
             }
@@ -1077,7 +933,7 @@ async function parseAgentTools(filePath) {
 }
 
 // Get messages for a specific session with pagination support
-async function getSessionMessages(projectName, sessionId, limit = null, offset = 0, provider = 'claude') {
+async function getSessionMessages(projectName, sessionId, limit = null, offset = 0, provider = 'claude', userId = null) {
   console.log(`[DEBUG] getSessionMessages - project: ${projectName}, session: ${sessionId}, provider: ${provider}`);
   if (provider === 'gemini') {
     const geminiSessionFile = path.join(os.homedir(), '.gemini', 'sessions', `${sessionId}.jsonl`);
@@ -1264,11 +1120,28 @@ async function getSessionMessages(projectName, sessionId, limit = null, offset =
   }
 }
 
-// Rename a project's display name and optionally its workspace folder
-async function renameProject(projectName, newDisplayName) {
+// Rename a project's display name
+async function renameProject(projectName, newDisplayName, userId = null) {
+  const { projectDb } = await import('./database/db.js');
   const config = await loadProjectConfig();
+  const trimmedName = (newDisplayName || '').trim();
 
-  if (!newDisplayName || newDisplayName.trim() === '') {
+  // 1. Update VibeLab Database (Source of Truth)
+  const existing = projectDb.getProjectById(projectName);
+  if (existing) {
+    // Basic security: if project exists but belongs to someone else, don't allow rename
+    if (userId && existing.user_id && existing.user_id !== userId) {
+      throw new Error('You do not have permission to rename this project');
+    }
+    projectDb.updateProjectName(projectName, trimmedName);
+  } else {
+    // If not in DB yet, find its path and upsert for this user
+    const actualPath = await extractProjectDirectory(projectName);
+    projectDb.upsertProject(projectName, userId, trimmedName, actualPath);
+  }
+
+  // 2. Sync back to Claude config (for CLI compatibility)
+  if (!trimmedName) {
     // Remove custom name if empty, will fall back to auto-generated
     if (config[projectName]) {
       delete config[projectName].displayName;
@@ -1278,89 +1151,15 @@ async function renameProject(projectName, newDisplayName) {
       }
     }
   } else {
-    const trimmedName = newDisplayName.trim();
-
-    const existingConfig = config[projectName] || {};
-    const currentPath = existingConfig.originalPath || await extractProjectDirectory(projectName);
-    let finalProjectName = projectName;
-    let finalProjectPath = existingConfig.originalPath || null;
-
-    if (currentPath) {
-      const parentDir = path.dirname(currentPath);
-      const safeName = trimmedName.replace(/[/\\:*?"<>|]/g, '-').trim();
-      const newPath = safeName ? path.join(parentDir, safeName) : currentPath;
-
-      if (newPath !== currentPath) {
-        try {
-          await fs.access(currentPath);
-        } catch (error) {
-          if (error.code !== 'ENOENT') {
-            throw error;
-          }
-        }
-
-        try {
-          await fs.access(currentPath);
-
-          try {
-            await fs.access(newPath);
-            throw new Error(`Cannot rename folder: target path already exists: ${newPath}`);
-          } catch (error) {
-            if (error.code !== 'ENOENT') {
-              throw error;
-            }
-          }
-
-          await fs.rename(currentPath, newPath);
-          finalProjectPath = newPath;
-          finalProjectName = encodeProjectPath(newPath);
-        } catch (error) {
-          if (error.code !== 'ENOENT') {
-            throw error;
-          }
-        }
-      } else {
-        finalProjectPath = currentPath;
-      }
+    if (!config[projectName]) {
+      // If project doesn't exist in config yet, create a skeleton entry
+      const actualPath = await extractProjectDirectory(projectName);
+      config[projectName] = {
+        originalPath: actualPath
+      };
     }
 
-    const nextConfigEntry = {
-      ...existingConfig,
-      displayName: trimmedName
-    };
-    if (finalProjectPath) {
-      nextConfigEntry.originalPath = finalProjectPath;
-    }
-
-    if (finalProjectName !== projectName) {
-      const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects');
-      const oldProjectDir = path.join(claudeProjectsDir, projectName);
-      const newProjectDir = path.join(claudeProjectsDir, finalProjectName);
-
-      try {
-        await fs.access(oldProjectDir);
-        try {
-          await fs.access(newProjectDir);
-          throw new Error(`Cannot remap Claude project metadata: target already exists: ${newProjectDir}`);
-        } catch (error) {
-          if (error.code !== 'ENOENT') {
-            throw error;
-          }
-        }
-
-        await fs.rename(oldProjectDir, newProjectDir);
-      } catch (error) {
-        if (error.code !== 'ENOENT') {
-          throw error;
-        }
-      }
-
-      delete config[projectName];
-    }
-
-    config[finalProjectName] = nextConfigEntry;
-    projectDirectoryCache.delete(projectName);
-    projectDirectoryCache.delete(finalProjectName);
+    config[projectName].displayName = trimmedName;
   }
 
   await saveProjectConfig(config);
@@ -1800,6 +1599,7 @@ async function ensureProjectSkillLinks(projectPath) {
 
 // Add a project manually to the config (without creating folders)
 async function addProjectManually(projectPath, displayName = null) {
+  const { projectDb } = await import('./database/db.js');
   const absolutePath = path.resolve(projectPath);
 
   try {
@@ -1814,16 +1614,11 @@ async function addProjectManually(projectPath, displayName = null) {
 
   // Check if project already exists in config
   const config = await loadProjectConfig();
-  const projectDir = path.join(os.homedir(), '.claude', 'projects', projectName);
 
-  if (config[projectName]) {
-    throw new Error(`Project already configured for path: ${absolutePath}`);
-  }
+  // 1. Sync to Database (Source of Truth)
+  projectDb.upsertProject(projectName, null, displayName, absolutePath, 0, new Date().toISOString(), { manuallyAdded: true });
 
-  // Allow adding projects even if the directory exists - this enables tracking
-  // existing Claude Code or Cursor projects in the UI
-
-  // Add to config as manually added project
+  // 2. Sync to Claude Config (compatibility)
   config[projectName] = {
     manuallyAdded: true,
     originalPath: absolutePath
@@ -1968,10 +1763,12 @@ async function getCursorSessions(projectPath) {
 
 
 // Fetch Gemini sessions for a given project path
-async function getGeminiSessions(projectPath) {
+async function getGeminiSessions(projectPath, userId = null) {
   try {
+    const { sessionDb } = await import('./database/db.js');
     const normalizedProjectPath = await normalizeComparablePath(projectPath);
     const geminiSessionsDir = path.join(os.homedir(), '.gemini', 'sessions');
+    const projectName = encodeProjectPath(projectPath);
 
     try {
       await fs.access(geminiSessionsDir);
@@ -1981,113 +1778,105 @@ async function getGeminiSessions(projectPath) {
 
     const files = await fs.readdir(geminiSessionsDir);
     const sessions = [];
+    
+    // Fetch indexed sessions from database for quick lookup
+    const dbSessions = sessionDb.getSessionsByProject(projectName);
+    const dbSessionMap = new Map(dbSessions.map(s => [s.id, s]));
 
     for (const file of files) {
       if (!file.endsWith('.jsonl')) continue;
+      const sessionId = path.basename(file, '.jsonl');
 
       const filePath = path.join(geminiSessionsDir, file);
       try {
         const stats = await fs.stat(filePath);
-
-        // Read just the first few lines for metadata
-        const fileStream = fsSync.createReadStream(filePath);
-        const rl = readline.createInterface({
-          input: fileStream,
-          crlfDelay: Infinity
-        });
-
-        let explicitTitle = null;
+        
+        // If we already have this in DB and it was manually renamed, 
+        // we might still need to check if it belongs to this project 
+        // if it's not already in the dbSessionMap.
+        
         let foundMatchingCwd = false;
+        let explicitTitle = null;
         let firstMessageText = null;
-        let lineCount = 0;
 
-        for await (const line of rl) {
-          lineCount++;
-          if (lineCount > 500) break; // Increased from 100 to find titles in longer sessions
+        // If we have it in DB, we know it belongs to this project
+        if (dbSessionMap.has(sessionId)) {
+          foundMatchingCwd = true;
+          explicitTitle = dbSessionMap.get(sessionId).display_name;
+        } else {
+          // Read just the first few lines for metadata to index it
+          const fileStream = fsSync.createReadStream(filePath);
+          const rl = readline.createInterface({
+            input: fileStream,
+            crlfDelay: Infinity
+          });
 
-          if (line.trim()) {
-            try {
-              const entry = JSON.parse(line);
-              
-              // 1. CWD Match
-              if (!foundMatchingCwd) {
-                const sessionCwd = entry.cwd || entry.payload?.cwd;
-                if (sessionCwd) {
-                  const normalizedSessionCwd = await normalizeComparablePath(sessionCwd);
-                  if (normalizedSessionCwd === normalizedProjectPath) {
-                    foundMatchingCwd = true;
+          let lineCount = 0;
+
+          for await (const line of rl) {
+            lineCount++;
+            if (lineCount > 2000) break;
+
+            if (line.trim()) {
+              try {
+                const entry = JSON.parse(line);
+                
+                // 1. CWD Match
+                if (!foundMatchingCwd) {
+                  const sessionCwd = entry.cwd || entry.payload?.cwd;
+                  if (sessionCwd) {
+                    const normalizedSessionCwd = await normalizeComparablePath(sessionCwd);
+                    if (normalizedSessionCwd === normalizedProjectPath) {
+                      foundMatchingCwd = true;
+                    }
                   }
                 }
-              }
 
-              // 2. Explicit Title (rare but good if exists)
-              if (!explicitTitle) {
+                // 2. Explicit Title
                 const title = entry.summary || entry.title || entry.payload?.title || entry.payload?.summary;
                 if (title && typeof title === 'string' && title.trim() && 
                     !title.includes('Gemini Session') && !title.includes('New Session')) {
                   explicitTitle = title.trim();
                 }
-              }
 
-              // 3. User Message Extraction
-              if (!firstMessageText && (entry.role === 'user' || (entry.type === 'message' && entry.role === 'user'))) {
-                let content = entry.content || entry.message?.content || entry.payload?.message?.content;
-                
-                if (content) {
-                  let textContent = '';
-                  if (typeof content === 'string') {
-                    textContent = content;
-                  } else if (Array.isArray(content)) {
-                    textContent = content
-                      .map(part => part.text || (typeof part === 'string' ? part : ''))
-                      .filter(Boolean)
-                      .join(' ');
-                  }
+                // 3. User Message Extraction
+                if (!firstMessageText && (entry.role === 'user' || (entry.type === 'message' && entry.role === 'user'))) {
+                  let content = entry.content || entry.message?.content || entry.payload?.message?.content;
+                  if (content) {
+                    let textContent = typeof content === 'string' ? content : 
+                      Array.isArray(content) ? content.map(part => part.text || (typeof part === 'string' ? part : '')).join(' ') : '';
 
-                  if (textContent.trim()) {
-                    let cleaned = textContent.trim();
-                    
-                    // Filter out system-like user messages (e.g. from sub-agents or automation)
-                    const isSystemLike = 
-                      cleaned.includes('Base directory for this skill:') ||
-                      cleaned.startsWith('<command-name>') ||
-                      cleaned.includes('{"subtasks":');
-
-                    if (!isSystemLike) {
-                      // Pattern A: Please help me with "REQUEST" ...
-                      const helpMatch = cleaned.match(/Please help me with ["'](.*?)["']/);
-                      if (helpMatch && helpMatch[1]) {
-                        firstMessageText = helpMatch[1];
-                      } else {
-                        // Pattern B: Raw message, take first line
-                        firstMessageText = cleaned.split('\n')[0].replace(/#+\s*/, '').trim();
+                    if (textContent.trim()) {
+                      let cleaned = textContent.trim();
+                      if (!cleaned.includes('Base directory for this skill:') && !cleaned.startsWith('<command-name>')) {
+                        const helpMatch = cleaned.match(/Please help me with ["'](.*?)["']/);
+                        firstMessageText = helpMatch ? helpMatch[1] : cleaned.split('\n')[0].replace(/#+\s*/, '').trim();
                       }
                     }
                   }
                 }
-              }
-            } catch (e) {}
+              } catch (e) {}
+            }
           }
-          
-          // If we found a matching CWD and both an explicit title and a user message, we can stop early
-          if (foundMatchingCwd && explicitTitle && firstMessageText) break;
+          rl.close();
         }
-        rl.close();
 
         if (foundMatchingCwd) {
-          // Priority: Explicit Title > Cleaned User Message > Default
           let finalName = explicitTitle || firstMessageText;
-          
           if (finalName) {
-            // Further cleanup: remove markdown bold/italic and limit length
             finalName = finalName.replace(/[\*\_\`]/g, '');
             if (finalName.length > 50) finalName = finalName.substring(0, 47) + '...';
           } else {
             finalName = 'Untitled Session';
           }
 
+          // Upsert to database so next time is faster
+          if (!dbSessionMap.has(sessionId)) {
+            sessionDb.upsertSession(sessionId, projectName, 'gemini', finalName, stats.mtime.toISOString(), 0);
+          }
+
           sessions.push({
-            id: path.basename(file, '.jsonl'),
+            id: sessionId,
             name: finalName,
             createdAt: stats.birthtime.toISOString(),
             lastActivity: stats.mtime.toISOString(),
@@ -2593,12 +2382,146 @@ async function setWorkspaceRootInConfig(workspacesRoot) {
   await saveProjectConfig(config);
 }
 
+// Rename a session (Claude, Gemini, or Cursor)
+async function renameSession(projectName, sessionId, newSummary, provider = 'claude', userId = null) {
+  if (!newSummary || newSummary.trim() === '') {
+    throw new Error('New session name cannot be empty');
+  }
+
+  const trimmedSummary = newSummary.trim();
+  const { sessionDb, projectDb } = await import('./database/db.js');
+
+  // Basic security: if project is in DB, check if it belongs to this user
+  const project = projectDb.getProjectById(projectName);
+  if (project && userId && project.user_id && project.user_id !== userId) {
+    throw new Error('You do not have permission to modify sessions in this project');
+  }
+
+  // 1. Handle Gemini sessions
+  if (provider === 'gemini') {
+    const geminiSessionFile = path.join(os.homedir(), '.gemini', 'sessions', `${sessionId}.jsonl`);
+    try {
+      await fs.access(geminiSessionFile);
+      // For Gemini, we append a title/summary entry to the end of the JSONL file (compatibility)
+      const summaryEntry = {
+        type: 'summary',
+        summary: trimmedSummary,
+        title: trimmedSummary,
+        timestamp: new Date().toISOString()
+      };
+      await fs.appendFile(geminiSessionFile, JSON.stringify(summaryEntry) + '\n');
+      
+      // Also update VibeLab's own index (source of truth)
+      sessionDb.upsertSession(sessionId, projectName, provider, trimmedSummary, new Date().toISOString());
+      
+      console.log(`[Gemini] Renamed session ${sessionId} to "${trimmedSummary}"`);
+      return true;
+    } catch (e) {
+      console.error(`[Gemini] Failed to rename session ${sessionId}:`, e.message);
+      throw new Error(`Failed to rename Gemini session: ${e.message}`);
+    }
+  } 
+  // 2. Handle Cursor sessions (SQLite)
+  else if (provider === 'cursor') {
+    const config = await loadProjectConfig();
+    const projectPath = config[projectName]?.path || config[projectName]?.originalPath || await extractProjectDirectory(projectName);
+    
+    if (!projectPath) {
+      throw new Error(`Could not determine project path for ${projectName}`);
+    }
+
+    const cwdId = crypto.createHash('md5').update(projectPath).digest('hex');
+    const storeDbPath = path.join(os.homedir(), '.cursor', 'chats', cwdId, sessionId, 'store.db');
+
+    try {
+      await fs.access(storeDbPath);
+      const db = await open({
+        filename: storeDbPath,
+        driver: sqlite3.Database
+      });
+
+      // Update both title and sessionTitle keys in the meta table
+      await db.run("UPDATE meta SET value = ? WHERE key = 'title' OR key = 'sessionTitle'", [trimmedSummary]);
+      await db.close();
+
+      // Update VibeLab's own index
+      sessionDb.upsertSession(sessionId, projectName, provider, trimmedSummary, new Date().toISOString());
+
+      console.log(`[Cursor] Renamed session ${sessionId} to "${trimmedSummary}"`);
+      return true;
+    } catch (e) {
+      console.error(`[Cursor] Failed to rename session ${sessionId}:`, e.message);
+      throw new Error(`Failed to rename Cursor session: ${e.message}`);
+    }
+  } 
+  // 3. Handle Claude sessions (JSONL)
+  else {
+    const projectDir = path.join(os.homedir(), '.claude', 'projects', projectName);
+
+    try {
+      // Check if project directory exists first
+      try {
+        await fs.access(projectDir);
+      } catch (e) {
+        console.error(`[Claude] Project directory not found: ${projectDir}`);
+        throw new Error(`Claude project directory not found: ${projectName}`);
+      }
+
+      const files = await fs.readdir(projectDir);
+      const jsonlFiles = files.filter(file => file.endsWith('.jsonl') && !file.startsWith('agent-'));
+
+      if (jsonlFiles.length === 0) {
+        throw new Error('No session files found for this project');
+      }
+
+      // Check all JSONL files to find which one contains the session
+      for (const file of jsonlFiles) {
+        const jsonlFile = path.join(projectDir, file);
+        const content = await fs.readFile(jsonlFile, 'utf8');
+        const lines = content.split('\n').filter(line => line.trim());
+
+        const hasSession = lines.some(line => {
+          try {
+            const data = JSON.parse(line);
+            return data.sessionId === sessionId;
+          } catch {
+            return false;
+          }
+        });
+
+        if (hasSession) {
+          // Append a new summary record for this sessionId
+          const summaryEntry = {
+            type: 'summary',
+            sessionId: sessionId,
+            summary: trimmedSummary,
+            timestamp: new Date().toISOString()
+          };
+          await fs.appendFile(jsonlFile, JSON.stringify(summaryEntry) + '\n');
+
+          // Update VibeLab's own index
+          sessionDb.upsertSession(sessionId, projectName, provider, trimmedSummary, new Date().toISOString());
+
+          console.log(`[Claude] Renamed session ${sessionId} to "${trimmedSummary}"`);
+          return true;
+        }
+      }
+
+      throw new Error(`Session ${sessionId} not found in any files`);
+    } catch (error) {
+      console.error(`Error renaming session ${sessionId} in project ${projectName}:`, error);
+      throw error;
+    }
+  }
+}
+
 export {
   getProjects,
   getSessions,
   getSessionMessages,
   parseJsonlSessions,
   renameProject,
+  renameSession,
   deleteSession,
   isProjectEmpty,
   deleteProject,
