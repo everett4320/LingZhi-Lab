@@ -53,7 +53,7 @@ const LoginForm = () => {
     setIsLoading(true);
 
     const result = isRegisterMode
-      ? await register(username.trim(), password, true)
+      ? await register(username.trim(), password)
       : await login(username.trim(), password);
 
     if (!result.success) {
@@ -134,9 +134,9 @@ const LoginForm = () => {
             )}
 
             {isRegisterMode && (
-              <div className="rounded-md border border-amber-300/60 bg-amber-50/80 dark:bg-amber-950/20 dark:border-amber-800/60 px-3 py-2">
-                <p className="text-sm text-amber-900 dark:text-amber-200">
-                  {t('register.recoveryWarning')}
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/50 rounded-md">
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  {t('register.description')}
                 </p>
               </div>
             )}
@@ -169,10 +169,10 @@ const LoginForm = () => {
               </div>
               <div className="flex-1">
                 <p className="text-sm font-medium text-foreground">
-                  {isRegisterMode ? t('login.backToLoginTitle') : t('login.recoveryCard.title')}
+                  {isRegisterMode ? t('login.backToLoginTitle') : t('login.registerCard.title')}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {isRegisterMode ? t('login.backToLoginDescription') : t('login.recoveryCard.description')}
+                  {isRegisterMode ? t('login.backToLoginDescription') : t('login.registerCard.description')}
                 </p>
                 <button
                   type="button"
@@ -188,7 +188,7 @@ const LoginForm = () => {
                   ) : (
                     <>
                       <UserPlus className="w-4 h-4" />
-                      {t('login.recoveryCard.button')}
+                      {t('login.registerCard.button')}
                     </>
                   )}
                 </button>

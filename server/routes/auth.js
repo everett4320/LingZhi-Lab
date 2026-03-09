@@ -13,10 +13,10 @@ router.get('/status', async (req, res) => {
   });
 });
 
-// User registration (setup) - only allowed if no users exist
+// User registration (setup)
 router.post('/register', async (req, res) => {
   try {
-    const { username, password, resetExisting = false } = req.body;
+    const { username, password } = req.body;
     
     // Validate input
     if (!username || !password) {
@@ -27,44 +27,30 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Username must be at least 3 characters, password at least 6 characters' });
     }
     
-    // Use a transaction to prevent race conditions
-    db.prepare('BEGIN').run();
-    try {
-      // Check if users already exist (only allow one user)
-      const hasUsers = userDb.hasUsers();
-      if (hasUsers && !resetExisting) {
-        db.prepare('ROLLBACK').run();
-        return res.status(403).json({ error: 'User already exists. This is a single-user system.' });
-      }
-
-      if (hasUsers && resetExisting) {
-        userDb.resetSingleUser();
-      }
-      
-      // Hash password
-      const saltRounds = 12;
-      const passwordHash = await bcrypt.hash(password, saltRounds);
-      
-      // Create user
-      const user = userDb.createUser(username, passwordHash);
-      
-      // Generate token
-      const token = generateToken(user);
-
-      db.prepare('COMMIT').run();
-
-      // Update last login outside transaction (non-fatal)
-      userDb.updateLastLogin(user.id);
-      
-      res.json({
-        success: true,
-        user: { id: user.id, username: user.username },
-        token
-      });
-    } catch (error) {
-      db.prepare('ROLLBACK').run();
-      throw error;
+    // Check if user already exists
+    const existingUser = userDb.getUserByUsername(username);
+    if (existingUser) {
+      return res.status(409).json({ error: 'Username already exists' });
     }
+
+    // Hash password
+    const saltRounds = 12;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+    
+    // Create user
+    const user = userDb.createUser(username, passwordHash);
+    
+    // Generate token
+    const token = generateToken(user);
+
+    // Update last login outside transaction (non-fatal)
+    userDb.updateLastLogin(user.id);
+    
+    res.json({
+      success: true,
+      user: { id: user.id, username: user.username },
+      token
+    });
     
   } catch (error) {
     console.error('Registration error:', error);
