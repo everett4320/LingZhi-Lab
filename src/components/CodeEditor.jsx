@@ -542,27 +542,25 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
     }
   };
 
-  const handleDownload = async () => {
-    let url = blobUrl;
-    let needsRevoke = false;
-    if (!url) {
-      try {
-        const blob = isUnsupported
-          ? await api.getFileContentBlob(file.projectName, file.path)
-          : new Blob([content], { type: 'text/plain' });
-        url = URL.createObjectURL(blob);
-        needsRevoke = true;
-      } catch {
-        return;
-      }
+  const handleDownload = () => {
+    if (blobUrl) {
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
     }
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = file.name;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    if (needsRevoke) URL.revokeObjectURL(url);
+    URL.revokeObjectURL(url);
   };
 
   const toggleFullscreen = () => {
@@ -855,13 +853,6 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
               <FileText className="w-12 h-12 text-muted-foreground/50 mb-3" />
               <p className="text-sm font-medium text-foreground mb-1">{t('preview.unsupported')}</p>
               <p className="text-xs text-muted-foreground mb-4">.{fileExt} {t('preview.unsupportedHint')}</p>
-              <button
-                onClick={handleDownload}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                <Download className="w-3.5 h-3.5" />
-                {t('actions.download')}
-              </button>
             </div>
           ) : isPdf && blobUrl ? (
             <iframe src={blobUrl} className="w-full h-full border-0" title={file.name} />
