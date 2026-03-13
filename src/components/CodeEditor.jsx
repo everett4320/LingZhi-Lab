@@ -11,7 +11,7 @@ import { StreamLanguage } from '@codemirror/language';
 import { EditorView, showPanel, ViewPlugin } from '@codemirror/view';
 import { unifiedMergeView, getChunks } from '@codemirror/merge';
 import { showMinimap } from '@replit/codemirror-minimap';
-import { X, Save, Download, Maximize2, Minimize2, Settings as SettingsIcon } from 'lucide-react';
+import { X, Save, Download, Maximize2, Minimize2, Settings as SettingsIcon, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -142,6 +142,13 @@ function MarkdownPreview({ content }) {
   );
 }
 
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']);
+const UNSUPPORTED_EXTENSIONS = new Set([
+  'zip', 'gz', 'tar', 'tgz', '7z', 'rar',
+  'ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx',
+  'bin', 'exe', 'dll', 'npy', 'npz', 'pkl', 'pt', 'pth', 'ckpt', 'onnx',
+]);
+
 function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded = false, onToggleExpand = null, onPopOut = null }) {
   const { t } = useTranslation('codeEditor');
   const [content, setContent] = useState('');
@@ -175,9 +182,13 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
     return ext === 'md' || ext === 'markdown';
   }, [file.name]);
 
-  // Check if file is PDF
-  const isPdf = useMemo(() => file.name.toLowerCase().endsWith('.pdf'), [file.name]);
-  const [pdfUrl, setPdfUrl] = useState(null);
+  // File type detection
+  const fileExt = useMemo(() => file.name.split('.').pop()?.toLowerCase() || '', [file.name]);
+  const isPdf = useMemo(() => fileExt === 'pdf', [fileExt]);
+  const isImage = useMemo(() => IMAGE_EXTENSIONS.has(fileExt), [fileExt]);
+  const isUnsupported = useMemo(() => UNSUPPORTED_EXTENSIONS.has(fileExt), [fileExt]);
+  const isBinary = isPdf || isImage;
+  const [blobUrl, setBlobUrl] = useState(null);
 
   // Create minimap extension with chunk-based gutters
   const minimapExtension = useMemo(() => {
@@ -439,11 +450,17 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
       try {
         setLoading(true);
 
-        // PDF files: fetch as blob and create object URL
-        if (isPdf) {
+        // Unsupported binary files: skip loading
+        if (isUnsupported) {
+          setLoading(false);
+          return;
+        }
+
+        // Binary files (PDF, image): fetch as blob
+        if (isBinary) {
           const blob = await api.getFileContentBlob(file.projectName, file.path);
           const url = URL.createObjectURL(blob);
-          setPdfUrl(url);
+          setBlobUrl(url);
           setLoading(false);
           return;
         }
@@ -478,9 +495,9 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
     loadFileContent();
 
     return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
-  }, [file, projectPath, isPdf]);
+  }, [file, projectPath, isBinary, isUnsupported]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -526,6 +543,15 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
   };
 
   const handleDownload = () => {
+    if (blobUrl) {
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -747,7 +773,7 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
           </div>
 
           <div className="flex items-center gap-0.5 md:gap-1 flex-shrink-0">
-            {!isPdf && isMarkdownFile && (
+            {!isBinary && !isUnsupported && isMarkdownFile && (
               <button
                 onClick={() => setMarkdownPreview(!markdownPreview)}
                 className={`p-1.5 rounded-md min-w-[36px] min-h-[36px] md:min-w-0 md:min-h-0 flex items-center justify-center transition-colors ${
@@ -761,7 +787,7 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
               </button>
             )}
 
-            {!isPdf && (
+            {!isBinary && !isUnsupported && (
               <button
                 onClick={() => window.openSettings?.('appearance')}
                 className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 min-w-[36px] min-h-[36px] md:min-w-0 md:min-h-0 flex items-center justify-center"
@@ -779,7 +805,7 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
               <Download className="w-4 h-4" />
             </button>
 
-            {!isPdf && (
+            {!isBinary && !isUnsupported && (
               <button
                 onClick={handleSave}
                 disabled={saving}
@@ -822,8 +848,18 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
 
         {/* Editor / Markdown Preview / PDF Preview */}
         <div className="flex-1 overflow-hidden">
-          {isPdf && pdfUrl ? (
-            <iframe src={pdfUrl} className="w-full h-full border-0" title={file.name} />
+          {isUnsupported ? (
+            <div className="h-full flex flex-col items-center justify-center bg-muted/30 p-8 text-center">
+              <FileText className="w-12 h-12 text-muted-foreground/50 mb-3" />
+              <p className="text-sm font-medium text-foreground mb-1">{t('preview.unsupported')}</p>
+              <p className="text-xs text-muted-foreground mb-4">.{fileExt} {t('preview.unsupportedHint')}</p>
+            </div>
+          ) : isPdf && blobUrl ? (
+            <iframe src={blobUrl} className="w-full h-full border-0" title={file.name} />
+          ) : isImage && blobUrl ? (
+            <div className="h-full overflow-auto flex items-center justify-center bg-muted/30 p-4">
+              <img src={blobUrl} alt={file.name} className="max-w-full max-h-full object-contain rounded" />
+            </div>
           ) : markdownPreview && isMarkdownFile ? (
             <div className="h-full overflow-y-auto bg-white dark:bg-gray-900">
               <div className="max-w-4xl mx-auto px-8 py-6 prose prose-sm dark:prose-invert prose-headings:font-semibold prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-code:text-sm prose-pre:bg-gray-900 prose-img:rounded-lg max-w-none">
@@ -879,7 +915,7 @@ function CodeEditor({ file, onClose, projectPath, isSidebar = false, isExpanded 
         </div>
 
         {/* Footer */}
-        {!isPdf && (
+        {!isBinary && !isUnsupported && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-border bg-muted flex-shrink-0">
             <div className="flex items-center gap-3 text-xs text-gray-600 dark:text-gray-400">
               <span>{t('footer.lines')} {content.split('\n').length}</span>

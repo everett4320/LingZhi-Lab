@@ -28,5 +28,9 @@
     "lines": "줄:",
     "characters": "문자:",
     "shortcuts": "Ctrl+S로 저장 • Esc로 닫기"
+  },
+  "preview": {
+    "unsupported": "이 파일 형식은 미리 볼 수 없습니다",
+    "unsupportedHint": "파일은 미리보기를 지원하지 않습니다"
   }
 }

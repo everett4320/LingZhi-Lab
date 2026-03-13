@@ -28,5 +28,9 @@
     "lines": "行数：",
     "characters": "字符数：",
     "shortcuts": "按 Ctrl+S 保存 • Esc 关闭"
+  },
+  "preview": {
+    "unsupported": "无法预览此文件类型",
+    "unsupportedHint": "文件不支持预览"
   }
 }

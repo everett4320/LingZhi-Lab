@@ -28,5 +28,9 @@
     "lines": "Lines:",
     "characters": "Characters:",
     "shortcuts": "Press Ctrl+S to save • Esc to close"
+  },
+  "preview": {
+    "unsupported": "This file type cannot be previewed",
+    "unsupportedHint": "files are not supported for preview"
   }
 }
