@@ -48,43 +48,15 @@ ARXIV_CATEGORY_KEYWORDS = {
 }
 
 # ---------------------------------------------------------------------------
-# 评分常量  —— 修改权重时只需编辑这里
+# 评分常量与函数（从 scoring_utils 导入）
 # ---------------------------------------------------------------------------
-
-# 各维度原始评分的满分值（归一化基准）
-SCORE_MAX = 3.0
-
-# 相关性评分：关键词在标题 / 摘要中匹配的加分
-RELEVANCE_TITLE_KEYWORD_BOOST = 0.5
-RELEVANCE_SUMMARY_KEYWORD_BOOST = 0.3
-RELEVANCE_CATEGORY_MATCH_BOOST = 1.0
-
-# 新近性阈值（天） -> 对应评分
-RECENCY_THRESHOLDS = [
-    (30, 3.0),
-    (90, 2.0),
-    (180, 1.0),
-]
-RECENCY_DEFAULT = 0.0
-
-# 热门度：高影响力引用数归一化到 0-SCORE_MAX
-# 含义：达到此引用数时视为满分
-POPULARITY_INFLUENTIAL_CITATION_FULL_SCORE = 100
-
-# 综合推荐评分权重（普通论文）
-WEIGHTS_NORMAL = {
-    'relevance': 0.40,
-    'recency': 0.20,
-    'popularity': 0.30,
-    'quality': 0.10,
-}
-# 综合推荐评分权重（高影响力论文：提高热门度，降低新近性）
-WEIGHTS_HOT = {
-    'relevance': 0.35,
-    'recency': 0.10,
-    'popularity': 0.45,
-    'quality': 0.10,
-}
+from scoring_utils import (
+    SCORE_MAX, RELEVANCE_TITLE_KEYWORD_BOOST, RELEVANCE_SUMMARY_KEYWORD_BOOST,
+    RELEVANCE_CATEGORY_MATCH_BOOST, RECENCY_THRESHOLDS, RECENCY_DEFAULT,
+    POPULARITY_INFLUENTIAL_CITATION_FULL_SCORE, WEIGHTS_NORMAL, WEIGHTS_HOT,
+    calculate_relevance_score, calculate_recency_score, calculate_quality_score,
+    calculate_recommendation_score,
+)
 
 # Semantic Scholar 速率限制等待时间（秒）
 S2_RATE_LIMIT_WAIT = 30
@@ -93,19 +65,27 @@ S2_CATEGORY_REQUEST_INTERVAL = 3
 
 def load_research_config(config_path: str) -> Dict:
     """
-    从 YAML 文件加载研究兴趣配置
-    
+    从 JSON 或 YAML 文件加载研究兴趣配置
+
     Args:
         config_path: 配置文件路径
-        
+
     Returns:
         研究配置字典
     """
-    import yaml
-    
+    import json
+
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
+            if config_path.endswith('.json'):
+                config = json.load(f)
+            else:
+                try:
+                    import yaml
+                    config = yaml.safe_load(f)
+                except ImportError:
+                    # Fallback: try parsing as JSON even if extension is .yaml
+                    config = json.load(f)
         return config
     except Exception as e:
         logger.error("Error loading config: %s", e)
@@ -481,184 +461,6 @@ def parse_arxiv_xml(xml_content: str) -> List[Dict]:
     return papers
 
 
-def calculate_relevance_score(
-    paper: Dict,
-    domains: Dict,
-    excluded_keywords: List[str]
-) -> Tuple[float, Optional[str], List[str]]:
-    """
-    计算论文与研究兴趣的相关性评分
-    
-    Args:
-        paper: 论文信息
-        domains: 研究领域配置
-        excluded_keywords: 排除关键词
-        
-    Returns:
-        (相关性评分, 匹配的领域, 匹配的关键词列表)
-    """
-    title = paper.get('title', '').lower()
-    summary = paper.get('summary', '').lower() if 'summary' in paper else paper.get('abstract', '').lower()
-    categories = set(paper.get('categories', []))
-    
-    # 检查排除关键词
-    for keyword in excluded_keywords:
-        if keyword.lower() in title or keyword.lower() in summary:
-            return 0, None, []
-    
-    max_score = 0
-    best_domain = None
-    matched_keywords = []
-    
-    # 遍历所有领域
-    for domain_name, domain_config in domains.items():
-        score = 0
-        domain_matched_keywords = []
-        
-        # 关键词匹配
-        keywords = domain_config.get('keywords', [])
-        for keyword in keywords:
-            keyword_lower = keyword.lower()
-            if keyword_lower in title:
-                score += RELEVANCE_TITLE_KEYWORD_BOOST
-                domain_matched_keywords.append(keyword)
-            elif keyword_lower in summary:
-                score += RELEVANCE_SUMMARY_KEYWORD_BOOST
-                domain_matched_keywords.append(keyword)
-        
-        # 类别匹配
-        domain_categories = domain_config.get('arxiv_categories', [])
-        for cat in domain_categories:
-            if cat in categories:
-                score += RELEVANCE_CATEGORY_MATCH_BOOST
-                domain_matched_keywords.append(cat)
-        
-        if score > max_score:
-            max_score = score
-            best_domain = domain_name
-            matched_keywords = domain_matched_keywords
-    
-    return max_score, best_domain, matched_keywords
-
-
-def calculate_recency_score(published_date: Optional[datetime]) -> float:
-    """
-    根据发布日期计算新近性评分
-    
-    Args:
-        published_date: 发布日期
-        
-    Returns:
-        新近性评分 (0-3)
-    """
-    if published_date is None:
-        return 0
-    
-    now = datetime.now(published_date.tzinfo) if published_date.tzinfo else datetime.now()
-    days_diff = (now - published_date).days
-    
-    for max_days, score in RECENCY_THRESHOLDS:
-        if days_diff <= max_days:
-            return score
-    return RECENCY_DEFAULT
-
-
-def calculate_quality_score(summary: str) -> float:
-    """
-    从摘要推断质量评分
-
-    采用更细粒度的指标：强创新词权重高于弱创新词，
-    量化结果和对比实验也加分。
-
-    Args:
-        summary: 论文摘要
-
-    Returns:
-        质量评分 (0-3)
-    """
-    score = 0.0
-    summary_lower = summary.lower()
-
-    strong_innovation = [
-        'state-of-the-art', 'sota', 'breakthrough', 'first',
-        'surpass', 'outperform', 'pioneering'
-    ]
-    weak_innovation = [
-        'novel', 'propose', 'introduce', 'new approach',
-        'new method', 'innovative'
-    ]
-    method_indicators = [
-        'framework', 'architecture', 'algorithm', 'mechanism',
-        'pipeline', 'end-to-end'
-    ]
-    quantitative_indicators = [
-        'outperforms', 'improves by', 'achieves', 'accuracy',
-        'f1', 'bleu', 'rouge', 'beats', 'surpasses'
-    ]
-    experiment_indicators = [
-        'experiment', 'evaluation', 'benchmark', 'ablation',
-        'baseline', 'comparison'
-    ]
-
-    strong_count = sum(1 for ind in strong_innovation if ind in summary_lower)
-    if strong_count >= 2:
-        score += 1.0
-    elif strong_count == 1:
-        score += 0.7
-    else:
-        weak_count = sum(1 for ind in weak_innovation if ind in summary_lower)
-        if weak_count > 0:
-            score += 0.3
-
-    if any(ind in summary_lower for ind in method_indicators):
-        score += 0.5
-
-    if any(ind in summary_lower for ind in quantitative_indicators):
-        score += 0.8
-    elif any(ind in summary_lower for ind in experiment_indicators):
-        score += 0.4
-
-    return min(score, SCORE_MAX)
-
-
-def calculate_recommendation_score(
-    relevance_score: float,
-    recency_score: float,
-    popularity_score: float,
-    quality_score: float,
-    is_hot_paper: bool = False
-) -> float:
-    """
-    计算综合推荐评分
-
-    权重定义在模块顶部常量 WEIGHTS_NORMAL / WEIGHTS_HOT 中。
-    对于高影响力论文（来自 Semantic Scholar），使用 WEIGHTS_HOT 提高热门度权重。
-
-    Args:
-        relevance_score: 相关性评分 (0-SCORE_MAX)
-        recency_score: 新近性评分 (0-SCORE_MAX)
-        popularity_score: 热门度评分 (0-SCORE_MAX)
-        quality_score: 质量评分 (0-SCORE_MAX)
-        is_hot_paper: 是否是高影响力论文
-
-    Returns:
-        综合推荐评分 (0-10)
-    """
-    scores = {
-        'relevance': relevance_score,
-        'recency': recency_score,
-        'popularity': popularity_score,
-        'quality': quality_score,
-    }
-    # 归一化到 0-10 分
-    normalized = {k: (v / SCORE_MAX) * 10 for k, v in scores.items()}
-
-    weights = WEIGHTS_HOT if is_hot_paper else WEIGHTS_NORMAL
-    final_score = sum(normalized[k] * weights[k] for k in weights)
-
-    return round(final_score, 2)
-
-
 def filter_and_score_papers(
     papers: List[Dict],
     config: Dict,
@@ -737,6 +539,15 @@ def filter_and_score_papers(
             'quality': round(quality, 2),
             'recommendation': recommendation_score
         }
+        # Flat score fields for the frontend
+        paper['relevance_score'] = round(relevance, 2)
+        paper['recency_score'] = round(recency, 2)
+        paper['popularity_score'] = round(popularity, 2)
+        paper['quality_score'] = round(quality, 2)
+        paper['final_score'] = recommendation_score
+        # Ensure 'abstract' field exists for the frontend
+        if 'abstract' not in paper and 'summary' in paper:
+            paper['abstract'] = paper['summary']
         paper['matched_domain'] = matched_domain
         paper['matched_keywords'] = matched_keywords
         paper['is_hot_paper'] = is_hot_paper_batch
@@ -816,18 +627,36 @@ def main():
     recent_papers = []
     hot_papers = []
 
+    def _write_intermediate(papers_so_far, stage, total_recent=0, total_hot=0):
+        """Write intermediate results to the output file so the UI can poll progress."""
+        sorted_papers = sorted(papers_so_far, key=lambda x: x.get('scores', {}).get('recommendation', 0), reverse=True)
+        top = sorted_papers[:args.top_n]
+        intermediate = {
+            'target_date': args.target_date or target_date.strftime('%Y-%m-%d'),
+            'search_date': target_date.strftime('%Y-%m-%d'),
+            'stage': stage,
+            'total_found': total_recent + total_hot,
+            'total_filtered': len(papers_so_far),
+            'top_papers': top,
+        }
+        try:
+            with open(args.output, 'w', encoding='utf-8') as f:
+                json.dump(intermediate, f, ensure_ascii=False, indent=2, default=str)
+        except Exception:
+            pass
+
     # ========== 第一步：搜索最近30天的论文（arXiv）==========
     logger.info("=" * 70)
     logger.info("Step 1: Searching recent papers (last 30 days) from arXiv")
     logger.info("=" * 70)
-    
+
     recent_papers = search_arxiv_by_date_range(
         categories=categories,
         start_date=window_30d_start,
         end_date=window_30d_end,
         max_results=args.max_results
     )
-    
+
     if recent_papers:
         scored_recent = filter_and_score_papers(
             papers=recent_papers,
@@ -837,35 +666,39 @@ def main():
         )
         logger.info("Scored %d recent papers", len(scored_recent))
         all_scored_papers.extend(scored_recent)
+        _write_intermediate(all_scored_papers, 'recent_done', total_recent=len(recent_papers))
     else:
         logger.warning("No recent papers found")
 
     # ========== 第二步：搜索过去一年的高影响力论文（Semantic Scholar）==========
-    if not args.skip_hot_papers:
-        logger.info("=" * 70)
-        logger.info("Step 2: Searching hot papers (past year) from Semantic Scholar")
-        logger.info("=" * 70)
-        
-        hot_papers = search_hot_papers_from_categories(
-            categories=categories,
-            start_date=window_1y_start,
-            end_date=window_1y_end,
-            top_k_per_category=5
-        )
-        
-        if hot_papers:
-            scored_hot = filter_and_score_papers(
-                papers=hot_papers,
-                config=config,
-                target_date=target_date,
-                is_hot_paper_batch=True
-            )
-            logger.info("Scored %d hot papers", len(scored_hot))
-            all_scored_papers.extend(scored_hot)
-        else:
-            logger.warning("No hot papers found from Semantic Scholar")
-    else:
-        logger.info("Skipping hot paper search (disabled by user)")
+    # NOTE: Disabled — currently only fetching from arXiv directly.
+    # if not args.skip_hot_papers:
+    #     logger.info("=" * 70)
+    #     logger.info("Step 2: Searching hot papers (past year) from Semantic Scholar")
+    #     logger.info("=" * 70)
+    #
+    #     hot_papers = search_hot_papers_from_categories(
+    #         categories=categories,
+    #         start_date=window_1y_start,
+    #         end_date=window_1y_end,
+    #         top_k_per_category=5
+    #     )
+    #
+    #     if hot_papers:
+    #         scored_hot = filter_and_score_papers(
+    #             papers=hot_papers,
+    #             config=config,
+    #             target_date=target_date,
+    #             is_hot_paper_batch=True
+    #         )
+    #         logger.info("Scored %d hot papers", len(scored_hot))
+    #         all_scored_papers.extend(scored_hot)
+    #         _write_intermediate(all_scored_papers, 'hot_done', total_recent=len(recent_papers), total_hot=len(hot_papers))
+    #     else:
+    #         logger.warning("No hot papers found from Semantic Scholar")
+    # else:
+    #     logger.info("Skipping hot paper search (disabled by user)")
+    logger.info("Skipping Semantic Scholar hot paper search (disabled)")
 
     # ========== 第三步：合并结果并排序 ==========
     logger.info("=" * 70)

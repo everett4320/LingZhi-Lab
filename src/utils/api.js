@@ -288,15 +288,16 @@ export const api = {
 
   // News dashboard endpoints
   news: {
-    getConfig: () => authenticatedFetch('/api/news/config'),
-    updateConfig: (config) =>
-      authenticatedFetch('/api/news/config', {
+    getSources: () => authenticatedFetch('/api/news/sources'),
+    getConfig: (source = 'arxiv') => authenticatedFetch(`/api/news/config/${source}`),
+    updateConfig: (source, config) =>
+      authenticatedFetch(`/api/news/config/${source}`, {
         method: 'PUT',
         body: JSON.stringify(config),
       }),
-    search: () =>
-      authenticatedFetch('/api/news/search', { method: 'POST' }),
-    getResults: () => authenticatedFetch('/api/news/results'),
+    search: (source = 'arxiv') =>
+      authenticatedFetch(`/api/news/search/${source}`, { method: 'POST' }),
+    getResults: (source = 'arxiv') => authenticatedFetch(`/api/news/results/${source}`),
   },
 
   // Generic GET method for any endpoint
