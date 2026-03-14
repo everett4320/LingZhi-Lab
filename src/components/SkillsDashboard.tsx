@@ -271,7 +271,7 @@ const NON_SKILL_DIRECTORY_NAMES = new Set([
 ]);
 
 const FACET_PREFIX_PATTERN = /^(Domain|Stage|Category|Source|领域|阶段|类别|来源|영역|단계|카테고리):\s*/i;
-const SOURCE_PLATFORM_PATTERN = /^(来源: 平台自研|Source: VibeLab)$/i;
+const SOURCE_PLATFORM_PATTERN = /^(来源: 平台自研|Source: Dr\. Claw)$/i;
 
 const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
   zh: {
@@ -292,7 +292,7 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     fallbackNoSkillMd: 'No SKILL.md detected at the root. Contains {{count}} files (likely script- or workflow-based skill).',
     defaultDomain: '领域: 通用',
     sourcePlatform: '来源: 平台自研',
-    sourcePlatformShort: 'VibeLab',
+    sourcePlatformShort: 'Dr. Claw',
     sourceImportedShort: '导入',
     headerCount: '{{shown}}/{{total}} skills',
     summaryIntents: '{{count}} 个主意图',
@@ -370,8 +370,8 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     fallbackDesc: 'Skill available, but description could not be extracted from SKILL.md.',
     fallbackNoSkillMd: 'No SKILL.md detected at the root. Contains {{count}} files (likely script- or workflow-based skill).',
     defaultDomain: 'Domain: General',
-    sourcePlatform: 'Source: VibeLab',
-    sourcePlatformShort: 'VibeLab',
+    sourcePlatform: 'Source: Dr. Claw',
+    sourcePlatformShort: 'Dr. Claw',
     sourceImportedShort: 'Imported',
     headerCount: '{{shown}}/{{total}} skills',
     summaryIntents: '{{count}} primary intents',
@@ -380,7 +380,7 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     summaryVerified: '{{count}} verified skills',
     quickViews: 'Quick Views',
     allSkills: 'All Skills',
-    nativeSkills: 'VibeLab',
+    nativeSkills: 'Dr. Claw',
     communitySkills: 'Imported',
     verifiedSkills: 'Verified',
     intents: 'Primary Intent',
@@ -449,8 +449,8 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     fallbackDesc: 'Skill available, but description could not be extracted from SKILL.md.',
     fallbackNoSkillMd: 'No SKILL.md detected at the root. Contains {{count}} files (likely script- or workflow-based skill).',
     defaultDomain: 'Domain: General',
-    sourcePlatform: 'Source: VibeLab',
-    sourcePlatformShort: 'VibeLab',
+    sourcePlatform: 'Source: Dr. Claw',
+    sourcePlatformShort: 'Dr. Claw',
     sourceImportedShort: 'Imported',
     headerCount: '{{shown}}/{{total}} skills',
     summaryIntents: '{{count}} primary intents',
@@ -459,7 +459,7 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     summaryVerified: '{{count}} verified skills',
     quickViews: 'Quick Views',
     allSkills: 'All Skills',
-    nativeSkills: 'VibeLab',
+    nativeSkills: 'Dr. Claw',
     communitySkills: 'Imported',
     verifiedSkills: 'Verified',
     intents: 'Primary Intent',

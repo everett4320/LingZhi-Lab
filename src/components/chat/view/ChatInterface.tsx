@@ -14,7 +14,7 @@ import { useChatRealtimeHandlers } from '../hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '../hooks/useChatComposerState';
 import type { Provider } from '../types/types';
 
-const INTAKE_GREETING = `Hello! I'm your VibeLab research assistant, here to help you set up your research pipeline.\n\nTo get started, could you tell me about your research field or topic?`;
+const INTAKE_GREETING = `Hello! I'm your Dr. Claw research assistant, here to help you set up your research pipeline.\n\nTo get started, could you tell me about your research field or topic?`;
 
 type PendingViewSession = {
   sessionId: string | null;

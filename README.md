@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/drclaw.jpg" alt="VibeLab" width="96" height="128">
+  <img src="public/drclaw.jpg" alt="Dr. Claw" width="96" height="128">
   <h1>Dr. Claw: Your AI Research Assistant</h1>
   <p><strong>Full-stack research workspace.</strong></p>
 </div>
@@ -41,7 +41,7 @@
 
 ## Overview
 
-VibeLab is a general-purpose AI research assistant designed to help researchers and builders execute end-to-end projects across different domains. From shaping an initial idea to running experiments and preparing publication-ready outputs, VibeLab keeps the full workflow in one place so teams can focus on research quality and iteration speed.
+Dr. Claw is a general-purpose AI research assistant designed to help researchers and builders execute end-to-end projects across different domains. From shaping an initial idea to running experiments and preparing publication-ready outputs, Dr. Claw keeps the full workflow in one place so teams can focus on research quality and iteration speed.
 
 ## Highlights
 
@@ -107,12 +107,12 @@ If agent web search does not work later, see **Troubleshooting Web Search** belo
 
 ## Configuration
 
-VibeLab reads local settings from `.env`. For most users, the only required step is copying `.env.example` to `.env`, but these are the settings you are most likely to adjust early:
+Dr. Claw reads local settings from `.env`. For most users, the only required step is copying `.env.example` to `.env`, but these are the settings you are most likely to adjust early:
 
 - `PORT`: backend server port
 - `VITE_PORT`: frontend dev server port
 - `HOST`: bind address for the frontend and backend
-- `JWT_SECRET`: required before exposing VibeLab beyond localhost
+- `JWT_SECRET`: required before exposing Dr. Claw beyond localhost
 - `WORKSPACES_ROOT`: default root for new project workspaces
 
 For the full environment reference and deployment notes, see [docs/configuration.md](docs/configuration.md).
@@ -121,7 +121,7 @@ For the full environment reference and deployment notes, see [docs/configuration
 
 ## Research Lab — Quick Example
 
-The core feature of VibeLab is the **Research Lab**.
+The core feature of Dr. Claw is the **Research Lab**.
 
 The typical flow is:
 
@@ -134,20 +134,20 @@ For full step-by-step operations, see **Usage Guide** below.
 
 ## Usage Guide
 
-After starting VibeLab, open your browser and follow the steps below.
+After starting Dr. Claw, open your browser and follow the steps below.
 
 ### Step 1 — Create or Open a Project
 
-When you first open VibeLab you will see the **Projects** sidebar. You have two options:
+When you first open Dr. Claw you will see the **Projects** sidebar. You have two options:
 
-- **Open an existing project** — VibeLab auto-discovers registered projects and linked sessions from Claude Code, Codex, and Gemini.
-- **Create a new project** — Click the **"+"** button, choose a directory on your machine, and VibeLab will set up the workspace: agent folders such as `.claude/`, `.agents/`, `.gemini/`, standard workspace metadata, linked `skills/` directories, preset research dirs (`Survey/references`, `Survey/reports`, `Ideation/ideas`, `Ideation/references`, `Experiment/code_references`, `Experiment/datasets`, `Experiment/core_code`, `Experiment/analysis`, `Publication/paper`, `Promotion/homepage`, `Promotion/slides`, `Promotion/audio`, `Promotion/video`), and **instance.json** at the project root with absolute paths for those directories. Cursor agent support is coming soon.
+- **Open an existing project** — Dr. Claw auto-discovers registered projects and linked sessions from Claude Code, Codex, and Gemini.
+- **Create a new project** — Click the **"+"** button, choose a directory on your machine, and Dr. Claw will set up the workspace: agent folders such as `.claude/`, `.agents/`, `.gemini/`, standard workspace metadata, linked `skills/` directories, preset research dirs (`Survey/references`, `Survey/reports`, `Ideation/ideas`, `Ideation/references`, `Experiment/code_references`, `Experiment/datasets`, `Experiment/core_code`, `Experiment/analysis`, `Publication/paper`, `Promotion/homepage`, `Promotion/slides`, `Promotion/audio`, `Promotion/video`), and **instance.json** at the project root with absolute paths for those directories. Cursor agent support is coming soon.
 
 > **Default project storage path:** New projects are stored under `~/vibelab` by default. You can change this in **Settings → Appearance → Default Project Path**, or set the `WORKSPACES_ROOT` environment variable. The setting is persisted in `~/.claude/project-config.json`.
 
 ### Step 2 — Generate Your Research Pipeline via Chat
 
-After creating or opening a project, VibeLab opens **Chat** by default. If no research pipeline exists yet, an onboarding banner appears with a **Use in Chat** button that injects a starter prompt.
+After creating or opening a project, Dr. Claw opens **Chat** by default. If no research pipeline exists yet, an onboarding banner appears with a **Use in Chat** button that injects a starter prompt.
 
 Describe your research idea — even a rough one is fine. The agent uses the `inno-pipeline-planner` skill to ask clarifying questions and then generates:
 - `.pipeline/docs/research_brief.json` (your structured research brief)
@@ -169,7 +169,7 @@ If the agent cannot search webpages, your current permission settings are likely
 echo "${CODEX_SANDBOX_NETWORK_DISABLED:-0}"
 ```
 
-If the output is `1`, network requests can remain blocked even if Settings permissions are opened. Remove or override this variable in your deployment or startup layer (shell profile, systemd, Docker, PM2), then restart VibeLab.
+If the output is `1`, network requests can remain blocked even if Settings permissions are opened. Remove or override this variable in your deployment or startup layer (shell profile, systemd, Docker, PM2), then restart Dr. Claw.
 
 2. Open **Settings** (gear icon in sidebar).
 3. Go to **Permissions**, then choose your current agent:
@@ -195,14 +195,14 @@ Security note:
 
 ### Step 5 — Resolve "Workspace Trust" or First-Run Errors
 
-Each agent may require a one-time trust confirmation before it can execute code in your project directory. If Chat freezes or shows a trust prompt, switch to the **Shell** tab inside VibeLab and approve the prompt there.
+Each agent may require a one-time trust confirmation before it can execute code in your project directory. If Chat freezes or shows a trust prompt, switch to the **Shell** tab inside Dr. Claw and approve the prompt there.
 
 Steps:
-1. Switch to the **Shell** tab in VibeLab.
+1. Switch to the **Shell** tab in Dr. Claw.
 2. Approve the trust/auth prompt shown in Shell.
 3. Return to **Chat** and resend your message.
 
-By default, trust flow is already enabled in VibeLab, so you usually do **not** need to manually run extra trust commands.
+By default, trust flow is already enabled in Dr. Claw, so you usually do **not** need to manually run extra trust commands.
 
 The trust decision is persisted per directory — you only need to do this once per project.
 
@@ -223,14 +223,14 @@ You can switch tabs at any time:
 
 #### Research Skills
 
-VibeLab now uses the generated **Pipeline Task List** as the execution flow.
+Dr. Claw now uses the generated **Pipeline Task List** as the execution flow.
 The project includes **100+ skills** under `skills/` to support research tasks (idea exploration, code survey, experiment development/analysis, writing, review, and delivery).
 These skills are discovered by the agent and can be applied as task-level assistance throughout the workflow.
 
 <details>
 <summary><span style="font-size: 1.17em; font-weight: 600;">Mobile & Tablet</span></summary>
 
-VibeLab is fully responsive. On mobile devices:
+Dr. Claw is fully responsive. On mobile devices:
 
 - **Bottom tab bar** for thumb-friendly navigation
 - **Swipe gestures** and touch-optimized controls
@@ -332,7 +332,7 @@ This project is open source and free to use, modify, and distribute under the GP
 - **[CodeMirror](https://codemirror.net/)** - Advanced code editor
 
 ### Also Thanks To
-- **[Claude Code UI](https://github.com/siteboon/claudecodeui)** — VibeLab is based on it. See [NOTICE](NOTICE) for details.
+- **[Claude Code UI](https://github.com/siteboon/claudecodeui)** — Dr. Claw is based on it. See [NOTICE](NOTICE) for details.
 - **[AI Researcher](https://github.com/HKUDS/AI-Researcher/)** (HKUDS) — Inspiration for research workflow and agentic research.
 
 ## Support & Community
@@ -345,5 +345,5 @@ This project is open source and free to use, modify, and distribute under the GP
 ---
 
 <div align="center">
-  <strong>VibeLab — From idea to paper.</strong>
+  <strong>Dr. Claw — From idea to paper.</strong>
 </div>

@@ -1,20 +1,20 @@
-# Vibe Lab Beta User Confirmation Agreement (Beta)
+# Dr. Claw Beta User Confirmation Agreement (Beta)
 
-> This Agreement applies to the internal beta testing (“Beta”) phase of Vibe Lab and is used for in‑product popup consent. By clicking “Confirm and Join Beta”, you are deemed to have read and agreed to this Agreement.
+> This Agreement applies to the internal beta testing (“Beta”) phase of Dr. Claw and is used for in-product popup consent. By clicking “Confirm and Join Beta”, you are deemed to have read and agreed to this Agreement.
 
 ## 0. Agreement Information
 
-1. Agreement name: Vibe Lab Beta User Confirmation Agreement (Beta).
+1. Agreement name: Dr. Claw Beta User Confirmation Agreement (Beta).
 2. Current version: `v0.2`.
 3. Effective date: `2026-03-13`.
-4. Publisher (Platform): `Vibe Lab Development Team`.
+4. Publisher (Platform): `Dr. Claw Development Team`.
 5. Contact: `dingjiesong.cs@gmail.com`.
 
 ## 1. How You Confirm This Agreement
 
 You complete your confirmation of this Agreement by:
 
-1. Opening this “Vibe Lab Beta User Confirmation Agreement (Beta)” within the product;
+1. Opening this “Dr. Claw Beta User Confirmation Agreement (Beta)” within the product;
 2. Checking the box “I have read and agree”;
 3. Clicking the “Confirm and Join Beta” button.
 
@@ -28,7 +28,7 @@ The platform will automatically record information related to your confirmation 
 
 ## 3. Description of the Beta Service
 
-1. Vibe Lab is currently in beta. Features may be unstable and subject to defects, changes, interruptions, rollbacks, or removal.
+1. Dr. Claw is currently in beta. Features may be unstable and subject to defects, changes, interruptions, rollbacks, or removal.
 2. The beta service is provided on an “as is” basis and does not constitute any formal commercial SLA or availability commitment.
 3. You are discouraged from processing highly sensitive or irreplaceable data in the beta environment (for example, production keys, unpublished trade secrets, or regulated sensitive personal information).
 4. Features, models, APIs, and product strategies in the beta version may iterate rapidly and are not guaranteed to be backward‑compatible.
@@ -47,7 +47,7 @@ During the beta, you understand and agree that:
 2. When discovering issues, you will provide reproducible feedback as far as reasonably possible (including observed behavior, steps, timestamps, and environment) to facilitate diagnosis and fixes.
 3. Where feasible, you will cooperate with necessary surveys or follow‑ups to help improve product experience and stability.
 4. You will not use the platform to perform unauthorized access, malicious scanning, distribution of malicious code, interference with system stability, or similar behavior.
-5. Without the platform’s prior written consent, you may not conduct any secondary development, repackaging, plugin-style integration, mirrored deployment, feature decomposition, API cloning, workflow reuse, or any other derivative development based on Vibe Lab or any part of it, nor may you use it to develop, train, support, or optimize any product or service that is identical, similar, or competitive with Vibe Lab.
+5. Without the platform's prior written consent, you may not conduct any secondary development, repackaging, plugin-style integration, mirrored deployment, feature decomposition, API cloning, workflow reuse, or any other derivative development based on Dr. Claw or any part of it, nor may you use it to develop, train, support, or optimize any product or service that is identical, similar, or competitive with Dr. Claw.
 
 ## 6. Data Processing and Privacy
 
@@ -69,7 +69,7 @@ The above data is mainly used for:
 
 ### 6.2 Optional Data Use to Improve Product and Models
 
-To improve Vibe Lab’s model performance and product capabilities, you may choose whether to allow your beta‑period usage data (including chat content, operation logs, and feedback, etc.) to be used for product analytics and model optimization.
+To improve Dr. Claw's model performance and product capabilities, you may choose whether to allow your beta-period usage data (including chat content, operation logs, and feedback, etc.) to be used for product analytics and model optimization.
 
 1. In settings such as “Settings > Compliance & Privacy”, you can explicitly choose to **agree** or **disagree** to this additional data use for improving product and models.
 2. If you choose to disagree, you can still continue to use the beta features. In that case, the platform will only process your data within the scope necessary to provide core functionality and security/risk control.
@@ -91,12 +91,12 @@ To improve Vibe Lab’s model performance and product capabilities, you may choo
 
 ## 8. Confidentiality, Compliance, and Conduct Boundaries
 
-1. Information related to the Vibe Lab beta (including but not limited to unreleased feature details, performance metrics, defect information, and roadmaps) is by default treated as confidential information.
+1. Information related to the Dr. Claw beta (including but not limited to unreleased feature details, performance metrics, defect information, and roadmaps) is by default treated as confidential information.
 2. Without the platform’s prior written consent, you must not publicly disclose such unreleased information or use it for purposes beyond those defined in this Agreement.
-3. You undertake to comply with applicable laws, regulations, and regulatory requirements when using Vibe Lab, and you must not use the platform to engage in illegal, infringing, fraudulent, or otherwise improper activities. If you violate the above obligations, you will bear all resulting responsibilities and consequences.
+3. You undertake to comply with applicable laws, regulations, and regulatory requirements when using Dr. Claw, and you must not use the platform to engage in illegal, infringing, fraudulent, or otherwise improper activities. If you violate the above obligations, you will bear all resulting responsibilities and consequences.
 4. Without the platform’s prior written consent, you may not reverse engineer, decompile, disassemble, scrape, export, organize, reuse, imitate, or use for training, fine-tuning, or evaluating any other model or system any part of the platform software, model integration methods, agent configurations, system prompts, workflow orchestration, interface designs, interaction logic, API protocols, outputs, or related documentation.
-5. You may not use any functional observations, test conclusions, output samples, prompt structures, operational paths, or other know-how obtained through Vibe Lab to build, validate, market, sell, or operate any secondary-development product, substitute product, or competitive solution.
-6. Without the platform’s prior written consent, you may not publish any benchmark, comparative evaluation, teardown analysis, or capability conclusions regarding Vibe Lab.
+5. You may not use any functional observations, test conclusions, output samples, prompt structures, operational paths, or other know-how obtained through Dr. Claw to build, validate, market, sell, or operate any secondary-development product, substitute product, or competitive solution.
+6. Without the platform's prior written consent, you may not publish any benchmark, comparative evaluation, teardown analysis, or capability conclusions regarding Dr. Claw.
 
 ## 9. AI Output and Professional Risk Notice
 
@@ -110,18 +110,18 @@ To improve Vibe Lab’s model performance and product capabilities, you may choo
 2. Ownership of your original content, data, and materials submitted to the platform does not automatically transfer as a result of using the platform.
 3. In order to provide, maintain, and improve the beta service, and within the scope of this Agreement and your configuration choices, you grant the platform a non‑exclusive, revocable (for future processing), and reasonably necessary license to use such content and data.
 4. Feedback you submit (such as bug reports and improvement suggestions) may be used by the platform for product improvement without additional payment.
-5. Except for the beta access rights expressly granted under this Agreement, the platform grants you no intellectual property license of any kind. In particular, the platform does not authorize you to conduct any secondary development, derivative development, sublicensing, resale, commercial exploitation, or external provision of Vibe Lab as part of any other product or service.
-6. You agree that any unauthorized secondary development, derivative works, interface adaptation layers, automated wrappers, mirror services, training materials, commercial proposals, or other reuse results based on Vibe Lab may not be asserted against the platform, and the platform may require you to immediately cease use, delete, take down, and implement remedial measures.
+5. Except for the beta access rights expressly granted under this Agreement, the platform grants you no intellectual property license of any kind. In particular, the platform does not authorize you to conduct any secondary development, derivative development, sublicensing, resale, commercial exploitation, or external provision of Dr. Claw as part of any other product or service.
+6. You agree that any unauthorized secondary development, derivative works, interface adaptation layers, automated wrappers, mirror services, training materials, commercial proposals, or other reuse results based on Dr. Claw may not be asserted against the platform, and the platform may require you to immediately cease use, delete, take down, and implement remedial measures.
 
 ## 11. Publications and Acknowledgments (Beta Period)
 
-1. During the beta, if you publish work based on results derived from using Vibe Lab (including but not limited to papers, blog posts, reports, presentation materials, public repository README files, etc.), the platform recommends that you acknowledge Vibe Lab.
+1. During the beta, if you publish work based on results derived from using Dr. Claw (including but not limited to papers, blog posts, reports, presentation materials, public repository README files, etc.), the platform recommends that you acknowledge Dr. Claw.
 2. Recommended minimum acknowledgment:
-   1. Explicitly mention “Vibe Lab” as a research or development support platform; and
+   1. Explicitly mention “Dr. Claw” as a research or development support platform; and
    2. Place the acknowledgment in the main acknowledgments section, footnotes, README, or other similarly visible locations.
 3. Example acknowledgment (you may adapt it as needed):
 
-   “Part of this work was conducted with support from Vibe Lab during its beta testing phase.”
+   “Part of this work was conducted with support from Dr. Claw during its beta testing phase.”
 
 4. If you do not wish to accept the publication and acknowledgment rules described in this section, please send an explanation to the contact email listed in Section 0 (“Agreement Information”) and briefly state your reasons. The platform may assess whether to continue providing all or part of the beta access accordingly.
 5. The above publication and acknowledgment provisions apply only to the beta period. Rules for the general availability (GA) phase will be defined in separate documentation published at that time.

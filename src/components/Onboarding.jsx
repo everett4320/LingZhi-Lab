@@ -221,8 +221,8 @@ const Onboarding = ({ onComplete }) => {
       if (!agreedToBetaTerms) {
         setError(
           isChinese
-            ? '请先勾选同意《Vibe Lab 内测用户确认协议（Beta）》'
-            : 'Please check the box to accept the Vibe Lab Beta User Confirmation Agreement first.'
+            ? '请先勾选同意《Dr. Claw 内测用户确认协议（Beta）》'
+            : 'Please check the box to accept the Dr. Claw Beta User Confirmation Agreement first.'
         );
         return;
       }
@@ -292,7 +292,7 @@ const Onboarding = ({ onComplete }) => {
                 <FileText className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
               </div>
               <h2 className="text-2xl font-bold text-foreground mb-2">
-                {isChinese ? 'Vibe Lab 内测用户确认' : 'Vibe Lab Beta User Confirmation'}
+                {isChinese ? 'Dr. Claw 内测用户确认' : 'Dr. Claw Beta User Confirmation'}
               </h2>
               <p className="text-muted-foreground">
                 {isChinese
@@ -364,8 +364,8 @@ const Onboarding = ({ onComplete }) => {
                 />
                 <span>
                   {isChinese
-                    ? '我已阅读并同意《Vibe Lab 内测用户确认协议（Beta）》，理解本服务处于内测阶段。'
-                    : 'I have read and agree to the Vibe Lab Beta User Confirmation Agreement and understand this service is in beta.'}
+                    ? '我已阅读并同意《Dr. Claw 内测用户确认协议（Beta）》，理解本服务处于内测阶段。'
+                    : 'I have read and agree to the Dr. Claw Beta User Confirmation Agreement and understand this service is in beta.'}
                 </span>
               </label>
 
@@ -379,8 +379,8 @@ const Onboarding = ({ onComplete }) => {
                 />
                 <span>
                   {isChinese
-                    ? '同意将我的使用数据用于改进 Vibe Lab 的模型和功能（推荐）。如不同意，你仍可继续使用，并可在设置中随时修改。'
-                    : 'Allow my usage data to improve Vibe Lab models and features (recommended). You can still continue without this and change it anytime in Settings.'}
+                    ? '同意将我的使用数据用于改进 Dr. Claw 的模型和功能（推荐）。如不同意，你仍可继续使用，并可在设置中随时修改。'
+                    : 'Allow my usage data to improve Dr. Claw models and features (recommended). You can still continue without this and change it anytime in Settings.'}
                 </span>
               </label>
             </div>

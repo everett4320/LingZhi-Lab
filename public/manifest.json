@@ -1,7 +1,7 @@
 {
-  "name": "Vibe Lab",
-  "short_name": "Vibe Lab",
-  "description": "Vibe Lab web application",
+  "name": "Dr. Claw",
+  "short_name": "Dr. Claw",
+  "description": "Dr. Claw web application",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1e3048",

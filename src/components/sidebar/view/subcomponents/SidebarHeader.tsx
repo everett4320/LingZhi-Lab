@@ -42,7 +42,7 @@ export default function SidebarHeader({
 }: SidebarHeaderProps) {
   const LogoBlock = () => (
     <div className="flex items-center gap-2.5 min-w-0">
-      <img src="/logo.svg" alt="Vibe Lab" className="w-7 h-7 rounded-lg shadow-sm flex-shrink-0" />
+      <img src="/logo.svg" alt="Dr. Claw" className="w-7 h-7 rounded-lg shadow-sm flex-shrink-0" />
       <h1 className="text-[15px] font-bold text-foreground tracking-tight truncate">{t('app.title')}</h1>
     </div>
   );

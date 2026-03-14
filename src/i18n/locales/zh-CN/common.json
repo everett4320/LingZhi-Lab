@@ -30,7 +30,7 @@
     "compute": "计算节点"
   },
   "researchLabGuide": {
-    "title": "如何使用 VibeLab",
+    "title": "如何使用 Dr. Claw",
     "description": "先在 Chat 中使用 inno-pipeline-planner 技能启动 5 阶段研究流水线，再在 Research Lab 中查看任务与产物。",
     "step1": "前往 Chat，围绕你的研究主题、目标或论文构想，请求 Agent 使用 inno-pipeline-planner 技能。",
     "step2": "回答澄清性问题，让 Agent 能准确整理研究 Brief 与流水线。",
@@ -173,7 +173,7 @@
     "openInEditor": "在编辑器中打开"
   },
   "mainContent": {
-    "loading": "正在加载 Vibe Lab",
+    "loading": "正在加载 Dr. Claw",
     "settingUpWorkspace": "正在设置您的工作空间...",
     "chooseProject": "选择您的项目",
     "selectProjectDescription": "从侧边栏选择一个项目以开始使用 Claude 进行编程。每个项目包含您的聊天会话和文件历史。",

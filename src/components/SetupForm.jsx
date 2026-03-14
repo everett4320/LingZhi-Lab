@@ -50,7 +50,7 @@ const SetupForm = () => {
             <div className="flex justify-center mb-4">
               <ClaudeLogo size={64} />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">Welcome to Vibe Lab</h1>
+            <h1 className="text-2xl font-bold text-foreground">Welcome to Dr. Claw</h1>
             <p className="text-muted-foreground mt-2">
               Set up your account to get started
             </p>
@@ -123,7 +123,7 @@ const SetupForm = () => {
 
           <div className="text-center">
             <p className="text-sm text-muted-foreground">
-              Create the first account to initialize your Vibe Lab workspace.
+              Create the first account to initialize your Dr. Claw workspace.
             </p>
           </div>
         </div>

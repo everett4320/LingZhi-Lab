@@ -520,7 +520,7 @@ export function useChatComposerState({
             timestamp: new Date(),
           },
         ]);
-        messageContent = `[Context: You have already greeted me as VibeLab's research assistant and asked about my research project. Continue the intake conversation without re-greeting.]\n\n${messageContent}`;
+        messageContent = `[Context: You have already greeted me as Dr. Claw's research assistant and asked about my research project. Continue the intake conversation without re-greeting.]\n\n${messageContent}`;
         setIntakeGreeting(null);
       }
 
