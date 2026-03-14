@@ -4,6 +4,16 @@ import { enqueueTelemetryEvents, isTelemetryEnabled } from '../telemetry.js';
 const router = express.Router();
 
 const MAX_EVENT_TEXT_LENGTH = 10000;
+const BLOCKED_EVENT_KEYS = new Set([
+  'content',
+  'contentLength',
+  'prompt',
+  'output',
+  'message',
+  'input_context',
+  'output_context',
+  'context',
+]);
 
 const truncateText = (value, max = MAX_EVENT_TEXT_LENGTH) => {
   if (typeof value !== 'string') {
@@ -13,6 +23,22 @@ const truncateText = (value, max = MAX_EVENT_TEXT_LENGTH) => {
     return value;
   }
   return value.slice(0, max);
+};
+
+const stripBlockedKeys = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(stripBlockedKeys);
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !BLOCKED_EVENT_KEYS.has(key))
+      .map(([key, nestedValue]) => [key, stripBlockedKeys(nestedValue)]),
+  );
 };
 
 const sanitizeEvent = (event, req) => {
@@ -26,10 +52,10 @@ const sanitizeEvent = (event, req) => {
     null;
 
   return {
-    ...event,
+    ...stripBlockedKeys(event),
     name: truncateText(String(event.name || 'unknown_event'), 128),
     source: truncateText(String(event.source || 'frontend'), 64),
-    data: event.data && typeof event.data === 'object' ? event.data : null,
+    data: event.data && typeof event.data === 'object' ? stripBlockedKeys(event.data) : null,
     userId: req.user?.id ?? null,
     username: req.user?.username ?? null,
     ip,

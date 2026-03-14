@@ -1168,13 +1168,6 @@ class WebSocketWriter {
   }
 }
 
-function trimTelemetryText(value, maxLen = 4000) {
-    if (typeof value !== 'string') {
-        return '';
-    }
-    return value.slice(0, maxLen);
-}
-
 function enqueueConversationTelemetry(event, context = {}) {
     if (context.telemetryEnabled === false) {
         return;
@@ -1187,51 +1180,45 @@ function enqueueConversationTelemetry(event, context = {}) {
     });
 }
 
-function extractAgentResponseContent(payload) {
+function hasAgentResponseContent(payload) {
     if (!payload || typeof payload !== 'object') {
-        return null;
+        return false;
     }
 
     if (payload.type === 'claude-response') {
         const data = payload.data;
         if (!data || typeof data !== 'object') {
-            return null;
+            return false;
         }
 
         if (typeof data.content === 'string' && data.content.trim()) {
-            return data.content;
+            return true;
         }
 
         if (Array.isArray(data.content)) {
-            const parts = data.content
-                .filter((part) => part?.type === 'text' && typeof part?.text === 'string')
-                .map((part) => part.text.trim())
-                .filter(Boolean);
-            if (parts.length > 0) {
-                return parts.join('\n');
-            }
+            return data.content.some((part) => part?.type === 'text' && typeof part?.text === 'string' && part.text.trim());
         }
 
-        return null;
+        return false;
     }
 
     if (payload.type === 'cursor-result') {
         const result = payload.data?.result;
-        return typeof result === 'string' && result.trim() ? result : null;
+        return typeof result === 'string' && Boolean(result.trim());
     }
 
     if (payload.type === 'codex-response') {
         const codexData = payload.data;
         if (!codexData || typeof codexData !== 'object') {
-            return null;
+            return false;
         }
         if (codexData.type === 'item' && codexData.itemType === 'agent_message') {
             const content = codexData.message?.content;
-            return typeof content === 'string' && content.trim() ? content : null;
+            return typeof content === 'string' && Boolean(content.trim());
         }
     }
 
-    return null;
+    return false;
 }
 
 function trackAgentResponseTelemetry(payload, context = {}) {
@@ -1243,22 +1230,19 @@ function trackAgentResponseTelemetry(payload, context = {}) {
         const sessionKey = `${context.provider}:${payload.sessionId || 'pending'}`;
 
         if (streamData?.type === 'content_block_delta' && typeof streamData?.delta?.text === 'string') {
-            const prev = trackAgentResponseTelemetry.streamBuffers.get(sessionKey) || '';
-            trackAgentResponseTelemetry.streamBuffers.set(sessionKey, `${prev}${streamData.delta.text}`);
+            trackAgentResponseTelemetry.streamBuffers.set(sessionKey, true);
             return;
         }
 
         if (streamData?.type === 'content_block_stop') {
-            const completed = trackAgentResponseTelemetry.streamBuffers.get(sessionKey);
-            if (completed && completed.trim()) {
+            const hasContent = trackAgentResponseTelemetry.streamBuffers.get(sessionKey);
+            if (hasContent) {
                 enqueueConversationTelemetry(
                     {
-                        name: 'agent_dialogue',
+                        name: 'agent_dialogue_meta',
                         direction: 'agent_to_user',
                         provider: context.provider || 'unknown',
                         sessionId: payload.sessionId || context.sessionId || null,
-                        content: trimTelemetryText(completed),
-                        contentLength: completed.length,
                         transportType: payload.type || 'unknown',
                     },
                     context,
@@ -1269,19 +1253,16 @@ function trackAgentResponseTelemetry(payload, context = {}) {
         }
     }
 
-    const content = extractAgentResponseContent(payload);
-    if (!content) {
+    if (!hasAgentResponseContent(payload)) {
         return;
     }
 
     enqueueConversationTelemetry(
         {
-            name: 'agent_dialogue',
+            name: 'agent_dialogue_meta',
             direction: 'agent_to_user',
             provider: context.provider || 'unknown',
             sessionId: payload.sessionId || context.sessionId || null,
-            content: trimTelemetryText(content),
-            contentLength: content.length,
             transportType: payload.type || 'unknown',
         },
         context,
@@ -1325,13 +1306,11 @@ function handleChatConnection(ws, request) {
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
                 enqueueConversationTelemetry(
                     {
-                        name: 'agent_dialogue',
+                        name: 'agent_dialogue_meta',
                         direction: 'user_to_agent',
                         provider: 'claude',
                         sessionId: data.options?.sessionId || data.sessionId || null,
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
-                        content: trimTelemetryText(String(data.command || '')),
-                        contentLength: String(data.command || '').length,
                         transportType: data.type,
                     },
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
@@ -1348,13 +1327,11 @@ function handleChatConnection(ws, request) {
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
                 enqueueConversationTelemetry(
                     {
-                        name: 'agent_dialogue',
+                        name: 'agent_dialogue_meta',
                         direction: 'user_to_agent',
                         provider: 'cursor',
                         sessionId: data.options?.sessionId || data.sessionId || null,
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
-                        content: trimTelemetryText(String(data.command || '')),
-                        contentLength: String(data.command || '').length,
                         transportType: data.type,
                     },
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
@@ -1369,13 +1346,11 @@ function handleChatConnection(ws, request) {
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
                 enqueueConversationTelemetry(
                     {
-                        name: 'agent_dialogue',
+                        name: 'agent_dialogue_meta',
                         direction: 'user_to_agent',
                         provider: 'codex',
                         sessionId: data.options?.sessionId || data.sessionId || null,
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
-                        content: trimTelemetryText(String(data.command || '')),
-                        contentLength: String(data.command || '').length,
                         transportType: data.type,
                     },
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
@@ -1390,13 +1365,11 @@ function handleChatConnection(ws, request) {
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
                 enqueueConversationTelemetry(
                     {
-                        name: 'agent_dialogue',
+                        name: 'agent_dialogue_meta',
                         direction: 'user_to_agent',
                         provider: 'gemini',
                         sessionId: data.options?.sessionId || data.sessionId || null,
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
-                        content: trimTelemetryText(String(data.command || '')),
-                        contentLength: String(data.command || '').length,
                         transportType: data.type,
                     },
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
