@@ -1304,6 +1304,7 @@ async function isProjectEmpty(projectName) {
 
 // Delete a project (force=true to delete even with sessions)
 async function deleteProject(projectName, force = false) {
+  const { projectDb } = await import('./database/db.js');
   const projectDir = path.join(os.homedir(), '.claude', 'projects', projectName);
 
   try {
@@ -1360,6 +1361,8 @@ async function deleteProject(projectName, force = false) {
     // Remove from project config
     delete config[projectName];
     await saveProjectConfig(config);
+    projectDb.deleteProject(projectName);
+    projectDirectoryCache.delete(projectName);
 
     return true;
   } catch (error) {
