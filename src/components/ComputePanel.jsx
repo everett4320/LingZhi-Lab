@@ -164,7 +164,15 @@ const NodeFormDialog = ({ node, onSave, onClose }) => {
           </div>
           <div className="grid grid-cols-[1fr_80px_1fr] gap-3">
             <div><Label>Host</Label><Input placeholder="bridges2.psc.edu" value={form.host} onChange={e => setForm({...form, host: e.target.value})} required /></div>
-            <div><Label>Port</Label><Input type="number" min="1" max="65535" placeholder="22" className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={form.port} onChange={e => setForm({...form, port: e.target.value})} /></div>
+            <div>
+              <Label>Port</Label>
+              <Input type="number" min="1" max="65535" placeholder="22"
+                className={`[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${form.port !== '' && (parseInt(form.port) < 1 || parseInt(form.port) > 65535 || isNaN(parseInt(form.port))) ? 'border-red-500 focus:ring-red-500' : ''}`}
+                value={form.port} onChange={e => setForm({...form, port: e.target.value})} />
+              {form.port !== '' && (parseInt(form.port) < 1 || parseInt(form.port) > 65535 || isNaN(parseInt(form.port))) && (
+                <p className="text-xs text-red-500 mt-0.5">1–65535</p>
+              )}
+            </div>
             <div><Label>Username</Label><Input placeholder="root" value={form.user} onChange={e => setForm({...form, user: e.target.value})} required /></div>
           </div>
           <div><Label>Work Directory</Label><Input placeholder="/ocean/projects/..." value={form.workDir} onChange={e => setForm({...form, workDir: e.target.value})} /></div>
@@ -197,7 +205,7 @@ const NodeFormDialog = ({ node, onSave, onClose }) => {
             </div>
           )}
           {error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
-          <Button type="submit" className="w-full" disabled={saving || !form.host || !form.user}>
+          <Button type="submit" className="w-full" disabled={saving || !form.host || !form.user || parseInt(form.port) < 1 || parseInt(form.port) > 65535 || isNaN(parseInt(form.port))}>
             {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
             {saving ? 'Saving...' : (isEdit ? 'Update Node' : 'Add Node')}
           </Button>
