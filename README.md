@@ -381,6 +381,8 @@ See [LICENSE](LICENSE) and [NOTICE](NOTICE) for the full license texts and scope
 ### Also Thanks To
 - **[Claude Code UI](https://github.com/siteboon/claudecodeui)** — Dr. Claw is based on it. See [NOTICE](NOTICE) for details.
 - **[AI Researcher](https://github.com/HKUDS/AI-Researcher/)** (HKUDS) — Inspiration for research workflow and agentic research.
+- **[Vibe-Scholar](https://github.com/Mr-Tieguigui/Vibe-Scholar)** — Inspiration for the AI-native research workspace direction.
+- **[autoresearch](https://github.com/karpathy/autoresearch)** — Inspiration for autonomous research orchestration and end-to-end execution.
 
 ## Support & Community
 
