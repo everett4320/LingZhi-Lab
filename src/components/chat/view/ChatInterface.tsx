@@ -462,6 +462,8 @@ function ChatInterface({
                 ? t('messageTypes.cursor')
                 : provider === 'codex'
                 ? t('messageTypes.codex')
+                : provider === 'gemini'
+                ? t('messageTypes.gemini')
                 : t('messageTypes.claude'),
           })}
           isTextareaExpanded={isTextareaExpanded}
