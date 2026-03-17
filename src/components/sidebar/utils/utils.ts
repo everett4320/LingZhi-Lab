@@ -68,7 +68,18 @@ export const getSessionName = (session: SessionWithProvider, t: TFunction): stri
 };
 
 export const getSessionMode = (session: SessionWithProvider) => {
-  return session.mode === 'workspace_qa' ? 'workspace_qa' : 'research';
+  if (session.mode === 'workspace_qa') {
+    return 'workspace_qa';
+  }
+
+  if (typeof window !== 'undefined' && session.__projectName) {
+    const storedMode = window.localStorage.getItem(`session_mode_${session.__projectName}_${session.id}`);
+    if (storedMode === 'workspace_qa') {
+      return 'workspace_qa';
+    }
+  }
+
+  return 'research';
 };
 
 export const getSessionTime = (session: SessionWithProvider): string => {
@@ -110,21 +121,24 @@ export const getAllSessions = (
   const claudeSessions = [
     ...(project.sessions || []),
     ...(additionalSessions[project.name] || []),
-  ].map((session) => ({ ...session, __provider: 'claude' as const }));
+  ].map((session) => ({ ...session, __provider: 'claude' as const, __projectName: project.name }));
 
   const cursorSessions = (project.cursorSessions || []).map((session) => ({
     ...session,
     __provider: 'cursor' as const,
+    __projectName: project.name,
   }));
 
   const codexSessions = (project.codexSessions || []).map((session) => ({
     ...session,
     __provider: 'codex' as const,
+    __projectName: project.name,
   }));
 
   const geminiSessions = (project.geminiSessions || []).map((session) => ({
     ...session,
     __provider: 'gemini' as const,
+    __projectName: project.name,
   }));
 
   return [...claudeSessions, ...cursorSessions, ...codexSessions, ...geminiSessions].sort(

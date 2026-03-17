@@ -197,6 +197,60 @@ export function useProjectsState({
       return;
     }
 
+    if (latestMessage.type === 'session-created' && latestMessage.sessionId && latestMessage.provider) {
+      const rawMode = latestMessage.mode;
+      const modeValue = typeof rawMode === 'string' ? rawMode : null;
+      const sessionMode: SessionMode = isSessionMode(modeValue) ? modeValue : 'research';
+
+      setProjects((prevProjects) => prevProjects.map((project) => {
+        const updateSessionList = (
+          sessions: ProjectSession[] | undefined,
+          provider: ProjectSession['__provider'],
+        ): ProjectSession[] | undefined => {
+          if (!Array.isArray(sessions)) {
+            return sessions;
+          }
+
+          let changed = false;
+          const nextSessions = sessions.map((session) => {
+            if (session.id !== latestMessage.sessionId) {
+              return session;
+            }
+
+            changed = true;
+            return {
+              ...session,
+              mode: sessionMode,
+              __provider: session.__provider || provider,
+            };
+          });
+
+          return changed ? nextSessions : sessions;
+        };
+
+        const nextProject = {
+          ...project,
+          sessions: updateSessionList(project.sessions, 'claude'),
+          cursorSessions: updateSessionList(project.cursorSessions, 'cursor'),
+          codexSessions: updateSessionList(project.codexSessions, 'codex'),
+          geminiSessions: updateSessionList(project.geminiSessions, 'gemini'),
+        };
+
+        return nextProject;
+      }));
+
+      setSelectedSession((previous) => {
+        if (!previous || previous.id !== latestMessage.sessionId) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          mode: sessionMode,
+        };
+      });
+    }
+
     if (latestMessage.type === 'loading_progress') {
       if (loadingProgressTimeoutRef.current) {
         clearTimeout(loadingProgressTimeoutRef.current);
