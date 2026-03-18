@@ -162,7 +162,7 @@ Dr. Claw reads local settings from `.env`. For most users, the only required ste
 
 For the full environment reference and deployment notes, see [docs/configuration.md](docs/configuration.md).
 
-Auto Research email notifications are configured inside the app at **Settings → Email**. The current v1 flow uses Claude to run research tasks unattended, and interrupted runs are automatically reconciled so they do not remain stuck in `running`.
+Auto Research email notifications are configured inside the app at **Settings → Email**. The v1 flow supports Claude Code, Codex, and Gemini engines for unattended task execution, and interrupted runs are automatically reconciled so they do not remain stuck in `running`.
 
 <a id="research-lab-quick-example"></a>
 

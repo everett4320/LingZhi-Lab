@@ -14,10 +14,18 @@ import { api } from '../../../utils/api';
 import { Button } from '../../ui/button';
 import { formatTimeAgo } from '../../../utils/dateUtils';
 import type { AppTab, Project, ProjectSession } from '../../../types/app';
+import { CLAUDE_MODELS, CODEX_MODELS, GEMINI_MODELS } from '../../../../shared/modelConstants';
+
+type AutoResearchProvider = 'claude' | 'codex' | 'gemini';
 
 type ProjectDashboardProps = {
   projects: Project[];
-  onProjectAction: (project: Project, tab: AppTab, sessionId?: string | null) => void;
+  onProjectAction: (
+    project: Project,
+    tab: AppTab,
+    sessionId?: string | null,
+    sessionProvider?: AutoResearchProvider,
+  ) => void;
 };
 
 type TaskmasterMetadata = {
@@ -41,15 +49,19 @@ type ProjectTokenUsageSummary = {
 type AutoResearchRun = {
   id: string;
   status: string;
+  provider?: AutoResearchProvider;
   sessionId?: string | null;
   currentTaskId?: string | null;
   completedTasks?: number;
   totalTasks?: number;
   error?: string | null;
+  metadata?: {
+    autoResearchModel?: string | null;
+  } | null;
 };
 
 type AutoResearchStatus = {
-  provider?: string;
+  provider?: AutoResearchProvider;
   eligibility?: {
     eligible: boolean;
     reasons: string[];
@@ -73,6 +85,72 @@ type AutoResearchStatus = {
   };
   activeRun?: AutoResearchRun | null;
   latestRun?: AutoResearchRun | null;
+};
+
+type AutoResearchConfig = {
+  provider: AutoResearchProvider;
+  model: string;
+};
+
+function getDefaultModelForProvider(provider: AutoResearchProvider): string {
+  if (provider === 'codex') {
+    return CODEX_MODELS.DEFAULT || 'gpt-5.4';
+  }
+  if (provider === 'gemini') {
+    return GEMINI_MODELS.DEFAULT || 'gemini-3-flash-preview';
+  }
+  return CLAUDE_MODELS.DEFAULT || 'sonnet';
+}
+
+function getDefaultConfig(provider: AutoResearchProvider = 'claude'): AutoResearchConfig {
+  return {
+    provider,
+    model: getDefaultModelForProvider(provider),
+  };
+}
+
+function getModelOptions(provider: AutoResearchProvider) {
+  return AUTO_RESEARCH_MODELS_BY_PROVIDER[provider] ?? [];
+}
+
+function isModelValidForProvider(provider: AutoResearchProvider, model?: string | null) {
+  if (!model) {
+    return false;
+  }
+  return getModelOptions(provider).some((option) => option.value === model);
+}
+
+function getModelFromStatus(status?: AutoResearchStatus, provider: AutoResearchProvider = 'claude') {
+  const candidateModel =
+    status?.activeRun?.metadata?.autoResearchModel || status?.latestRun?.metadata?.autoResearchModel || '';
+  return isModelValidForProvider(provider, candidateModel)
+    ? candidateModel
+    : getDefaultModelForProvider(provider);
+}
+
+function resolveAutoResearchConfig(currentConfig: AutoResearchConfig | undefined, status?: AutoResearchStatus): AutoResearchConfig {
+  const provider = currentConfig?.provider ?? status?.provider ?? 'claude';
+  const statusModel = getModelFromStatus(status, provider);
+  const model = isModelValidForProvider(provider, currentConfig?.model)
+    ? currentConfig?.model ?? statusModel
+    : statusModel;
+
+  return {
+    provider,
+    model,
+  };
+}
+
+const AUTO_RESEARCH_PROVIDER_OPTIONS: Array<{ value: AutoResearchProvider; label: string }> = [
+  { value: 'claude', label: 'Claude' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'gemini', label: 'Gemini' },
+];
+
+const AUTO_RESEARCH_MODELS_BY_PROVIDER: Record<AutoResearchProvider, { value: string; label: string }[]> = {
+  claude: CLAUDE_MODELS.OPTIONS,
+  codex: CODEX_MODELS.OPTIONS,
+  gemini: GEMINI_MODELS.OPTIONS,
 };
 
 const PROJECT_TONES = [
@@ -208,6 +286,7 @@ export default function ProjectDashboard({
   const [tokenUsageSummary, setTokenUsageSummary] = useState<ProjectTokenUsageSummary | null>(null);
   const [autoResearchStatuses, setAutoResearchStatuses] = useState<Record<string, AutoResearchStatus>>({});
   const [autoResearchLoading, setAutoResearchLoading] = useState<Record<string, boolean>>({});
+  const [autoResearchConfigByProject, setAutoResearchConfigByProject] = useState<Record<string, AutoResearchConfig>>({});
 
   const totals = useMemo(() => {
     const projectCount = projects.length;
@@ -288,6 +367,7 @@ export default function ProjectDashboard({
       if (projects.length === 0) {
         if (!cancelled) {
           setAutoResearchStatuses({});
+          setAutoResearchConfigByProject({});
         }
         return;
       }
@@ -309,8 +389,16 @@ export default function ProjectDashboard({
       );
 
       if (!cancelled) {
+        const statusEntries = entries.filter((entry): entry is readonly [string, AutoResearchStatus] => Boolean(entry[1]));
+        setAutoResearchConfigByProject((current) => {
+          const next = { ...current };
+          for (const [projectName, status] of statusEntries) {
+            next[projectName] = resolveAutoResearchConfig(next[projectName], status);
+          }
+          return next;
+        });
         setAutoResearchStatuses(
-          Object.fromEntries(entries.filter((entry): entry is readonly [string, AutoResearchStatus] => Boolean(entry[1]))),
+          Object.fromEntries(statusEntries),
         );
       }
     };
@@ -333,6 +421,10 @@ export default function ProjectDashboard({
         return;
       }
       const data = await response.json() as AutoResearchStatus;
+      setAutoResearchConfigByProject((current) => ({
+        ...current,
+        [projectName]: resolveAutoResearchConfig(current[projectName], data),
+      }));
       setAutoResearchStatuses((current) => ({
         ...current,
         [projectName]: data,
@@ -345,7 +437,11 @@ export default function ProjectDashboard({
   const handleAutoResearchStart = async (projectName: string) => {
     setAutoResearchLoading((current) => ({ ...current, [projectName]: true }));
     try {
-      const response = await api.autoResearch.start(projectName);
+      const config = autoResearchConfigByProject[projectName] ?? getDefaultConfig();
+      const response = await api.autoResearch.start(projectName, {
+        provider: config.provider,
+        model: config.model,
+      });
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error?.error || 'Failed to start Auto Research');
@@ -381,11 +477,11 @@ export default function ProjectDashboard({
       case 'notification_email_missing':
         return 'Add a notification email in Settings';
       case 'research_brief_missing':
-        return 'Missing research_brief.json';
+        return 'Research Brief is missing. Open Research Lab to generate one before starting Auto Research.';
       case 'tasks_file_missing':
-        return 'Missing tasks.json';
+        return 'Task list is missing. Open Research Lab and generate tasks before starting Auto Research.';
       case 'no_actionable_tasks':
-        return 'No pending tasks left';
+        return 'No pending tasks found. Add pending tasks in Research Lab and then start again.';
       case 'run_in_progress':
         return 'Run already in progress';
       default:
@@ -401,6 +497,35 @@ export default function ProjectDashboard({
       return 'Set the AutoResearch sender email in Settings before expecting email delivery.';
     }
     return 'Completion emails will use the saved sender and notification email settings.';
+  };
+
+  const handleAutoResearchProviderChange = (projectName: string, provider: AutoResearchProvider) => {
+    setAutoResearchConfigByProject((current) => {
+      const currentConfig = current[projectName] ?? getDefaultConfig(provider);
+      const model = isModelValidForProvider(provider, currentConfig.model)
+        ? currentConfig.model
+        : getDefaultModelForProvider(provider);
+      return {
+        ...current,
+        [projectName]: {
+          provider,
+          model,
+        },
+      };
+    });
+  };
+
+  const handleAutoResearchModelChange = (projectName: string, model: string, provider: AutoResearchProvider) => {
+    setAutoResearchConfigByProject((current) => {
+      const nextModel = isModelValidForProvider(provider, model) ? model : getDefaultModelForProvider(provider);
+      return {
+        ...current,
+        [projectName]: {
+          provider,
+          model: nextModel,
+        },
+      };
+    });
   };
 
   if (projects.length === 0) {
@@ -527,6 +652,12 @@ export default function ProjectDashboard({
             const autoResearchDisabledReason = autoResearch?.eligibility?.reasons?.[0];
             const autoResearchBusy = Boolean(autoResearchLoading[project.name]);
             const tone = PROJECT_TONES[index % PROJECT_TONES.length];
+            const autoResearchConfig = autoResearchConfigByProject[project.name] ?? getDefaultConfig(autoResearch?.provider || 'claude');
+            const autoResearchConfigWithDefaults = isModelValidForProvider(autoResearchConfig.provider, autoResearchConfig.model)
+              ? autoResearchConfig
+              : getDefaultConfig(autoResearchConfig.provider);
+            const openableSessionId = activeRun?.sessionId || latestRun?.sessionId;
+            const hasAutoResearchRun = Boolean(activeRun || latestRun);
 
             return (
               <article
@@ -656,18 +787,76 @@ export default function ProjectDashboard({
                         {getAutoResearchHint(autoResearch)}
                       </div>
                     ) : null}
-                    {activeRun?.sessionId ? (
-                      <div className="mt-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-full bg-white/60 backdrop-blur dark:bg-slate-950/35"
-                          onClick={() => onProjectAction(project, 'chat', activeRun.sessionId ?? null)}
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <label className="min-w-[150px] flex-1">
+                        <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Provider</span>
+                        <select
+                          value={autoResearchConfigWithDefaults.provider}
+                          onChange={(event) => {
+                            handleAutoResearchProviderChange(project.name, event.target.value as AutoResearchProvider);
+                          }}
+                          className="w-full rounded-full border border-border/60 bg-white px-3 py-2 text-xs dark:bg-slate-950"
+                          disabled={autoResearchBusy || Boolean(activeRun)}
                         >
-                          <MessageSquare className="h-4 w-4" />
-                          Open Session
-                        </Button>
-                      </div>
+                          {AUTO_RESEARCH_PROVIDER_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="min-w-[180px] flex-1">
+                        <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Model</span>
+                        <select
+                          value={autoResearchConfigWithDefaults.model}
+                          onChange={(event) => {
+                            handleAutoResearchModelChange(project.name, event.target.value, autoResearchConfigWithDefaults.provider);
+                          }}
+                          className="w-full rounded-full border border-border/60 bg-white px-3 py-2 text-xs dark:bg-slate-950"
+                          disabled={autoResearchBusy || Boolean(activeRun)}
+                        >
+                          {AUTO_RESEARCH_MODELS_BY_PROVIDER[autoResearchConfigWithDefaults.provider].map((modelOption) => (
+                            <option key={modelOption.value} value={modelOption.value}>
+                              {modelOption.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    {hasAutoResearchRun ? (
+                      (() => {
+                        const openableSessionProvider =
+                          activeRun?.provider || latestRun?.provider || autoResearch?.provider || 'claude';
+                        const sessionButtonLabel = openableSessionId
+                          ? 'Open Session'
+                          : activeRun
+                            ? 'Preparing Session...'
+                            : 'Session Unavailable';
+                        return (
+                          <div className="mt-3" key="openable-session-action">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full bg-white/60 backdrop-blur dark:bg-slate-950/35"
+                              disabled={!openableSessionId}
+                              onClick={() => {
+                                if (!openableSessionId) {
+                                  return;
+                                }
+                                onProjectAction(
+                                  project,
+                                  'chat',
+                                  openableSessionId,
+                                  openableSessionProvider,
+                                );
+                              }}
+                            >
+                              <MessageSquare className="h-4 w-4" />
+                              {sessionButtonLabel}
+                            </Button>
+                          </div>
+                        );
+                      })()
                     ) : null}
                   </div>
 

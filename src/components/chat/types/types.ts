@@ -1,4 +1,11 @@
-import type { ImportedProjectAnalysisPrompt, PendingAutoIntake, Project, ProjectSession, SessionMode, SessionProvider } from '../../../types/app';
+import type {
+  ImportedProjectAnalysisPrompt,
+  PendingAutoIntake,
+  Project,
+  ProjectSession,
+  SessionMode,
+  SessionProvider,
+} from '../../../types/app';
 
 export type Provider = SessionProvider;
 
@@ -107,7 +114,11 @@ export interface ChatInterfaceProps {
   onSessionNotProcessing?: (sessionId?: string | null) => void;
   processingSessions?: Set<string>;
   onReplaceTemporarySession?: (sessionId?: string | null) => void;
-  onNavigateToSession?: (targetSessionId: string) => void;
+  onNavigateToSession?: (
+    targetSessionId: string,
+    targetProvider?: SessionProvider,
+    targetProjectName?: string,
+  ) => void;
   onShowSettings?: () => void;
   autoExpandTools?: boolean;
   showRawParameters?: boolean;

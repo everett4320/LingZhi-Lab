@@ -5,7 +5,10 @@ import { promises as fs } from 'fs';
 
 import { appSettingsDb, autoResearchDb, userDb } from '../database/db.js';
 import { extractProjectDirectory } from '../projects.js';
+import { CLAUDE_MODELS, CODEX_MODELS, GEMINI_MODELS } from '../../shared/modelConstants.js';
 import { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive } from '../claude-sdk.js';
+import { queryCodex, abortCodexSession, isCodexSessionActive } from '../openai-codex.js';
+import { spawnGemini, abortGeminiSession, isGeminiSessionActive } from '../gemini-cli.js';
 import { sendAutoResearchCompletionEmail } from '../utils/auto-research-mailer.js';
 
 const router = express.Router();
@@ -14,6 +17,52 @@ const activeRuns = new Map();
 const TASK_TIMEOUT_MS = Number.parseInt(process.env.AUTO_RESEARCH_TASK_TIMEOUT_MS || '', 10) || 30 * 60 * 1000;
 const AUTO_RESEARCH_SENDER_EMAIL_KEY = 'auto_research_sender_email';
 const AUTO_RESEARCH_RESEND_API_KEY = 'auto_research_resend_api_key';
+const AUTO_RESEARCH_DEFAULT_PERMISSION_MODE = 'bypassPermissions';
+const AUTO_RESEARCH_PERMISSION_MODES = new Set(['default', 'acceptEdits', 'bypassPermissions', 'plan']);
+
+function getDefaultModelForProvider(provider) {
+  if (provider === 'codex') {
+    return CODEX_MODELS.DEFAULT || 'gpt-5.4';
+  }
+  if (provider === 'gemini') {
+    return GEMINI_MODELS.DEFAULT || 'gemini-3-flash-preview';
+  }
+  return CLAUDE_MODELS.DEFAULT || 'sonnet';
+}
+
+function normalizeAutoResearchProvider(provider) {
+  if (provider === 'claude' || provider === 'codex' || provider === 'gemini') {
+    return provider;
+  }
+  return 'claude';
+}
+
+function normalizePermissionMode(permissionMode) {
+  if (AUTO_RESEARCH_PERMISSION_MODES.has(permissionMode)) {
+    return permissionMode;
+  }
+  return AUTO_RESEARCH_DEFAULT_PERMISSION_MODE;
+}
+
+function abortActiveSession(provider, sessionId) {
+  if (provider === 'codex') {
+    return abortCodexSession(sessionId);
+  }
+  if (provider === 'gemini') {
+    return abortGeminiSession(sessionId);
+  }
+  return abortClaudeSDKSession(sessionId);
+}
+
+function isSessionActiveForProvider(provider, sessionId) {
+  if (provider === 'codex') {
+    return isCodexSessionActive(sessionId);
+  }
+  if (provider === 'gemini') {
+    return isGeminiSessionActive(sessionId);
+  }
+  return isClaudeSDKSessionActive(sessionId);
+}
 
 function getPipelinePaths(projectPath) {
   return {
@@ -96,15 +145,15 @@ async function readPipelineState(projectPath) {
   };
 }
 
-function serializeRun(run) {
+function serializeRun(run, runtime = null) {
   if (!run) return null;
   return {
     id: run.id,
     projectName: run.project_name,
     projectPath: run.project_path,
-    provider: run.provider,
+    provider: runtime?.provider || run.provider,
     status: run.status,
-    sessionId: run.session_id,
+    sessionId: runtime?.sessionId || run.session_id,
     currentTaskId: run.current_task_id,
     completedTasks: run.completed_tasks,
     totalTasks: run.total_tasks,
@@ -211,11 +260,7 @@ async function deliverCompletionEmail(runId, userId, projectName) {
 }
 
 function isRunSessionStillActive(run) {
-  const sessionId = run?.session_id;
-  if (!sessionId) {
-    return false;
-  }
-  return isClaudeSDKSessionActive(sessionId);
+  return isSessionActiveForProvider(run?.provider, run?.session_id);
 }
 
 function reconcileActiveRun(run) {
@@ -276,18 +321,37 @@ async function runAutoResearch(runId, userId, projectName, projectPath) {
           autoResearchDb.updateRun(runId, { sessionId });
         }
       });
+      const provider = runState.provider || 'claude';
+      const model = runState.model || getDefaultModelForProvider(provider);
+      const permissionMode = runState.permissionMode || AUTO_RESEARCH_DEFAULT_PERMISSION_MODE;
 
       await withTimeout(
-        queryClaudeSDK(prompt, {
-          cwd: projectPath,
-          projectPath,
-          sessionId: runState.sessionId,
-          permissionMode: 'bypassPermissions',
-        }, writer),
+        provider === 'codex'
+          ? queryCodex(prompt, {
+            cwd: projectPath,
+            projectPath,
+            sessionId: runState.sessionId,
+            model,
+            permissionMode,
+          }, writer)
+          : provider === 'gemini'
+            ? spawnGemini(prompt, {
+              cwd: projectPath,
+              projectPath,
+              sessionId: runState.sessionId,
+              model,
+              permissionMode,
+            }, writer)
+            : queryClaudeSDK(prompt, {
+              cwd: projectPath,
+              projectPath,
+              sessionId: runState.sessionId,
+              permissionMode,
+            }, writer),
         TASK_TIMEOUT_MS,
         async () => {
           if (runState.sessionId) {
-            await abortClaudeSDKSession(runState.sessionId);
+            await abortActiveSession(provider, runState.sessionId);
           }
         },
       );
@@ -335,11 +399,14 @@ router.get('/:projectName/status', async (req, res) => {
     const profile = userDb.getProfile(userId);
     const activeRun = reconcileActiveRun(autoResearchDb.getActiveRunForProject(userId, projectName));
     const latestRun = autoResearchDb.getLatestRunForProject(userId, projectName);
+    const activeRuntime = activeRun ? activeRuns.get(activeRun.id) || null : null;
+    const latestRuntime = latestRun ? activeRuns.get(latestRun.id) || null : null;
     const eligibility = buildEligibility(profile, pipelineState, activeRun);
 
+    const activeProvider = activeRuntime?.provider || activeRun?.provider || latestRuntime?.provider || latestRun?.provider || 'claude';
     res.json({
       success: true,
-      provider: 'claude',
+      provider: activeProvider,
       eligibility,
       profile: {
         notificationEmail: profile?.notification_email || null,
@@ -356,8 +423,8 @@ router.get('/:projectName/status', async (req, res) => {
         totalTaskCount: pipelineState.tasks.length,
         nextTask: pipelineState.nextTask,
       },
-      activeRun: serializeRun(activeRun),
-      latestRun: serializeRun(latestRun),
+      activeRun: serializeRun(activeRun, activeRuntime),
+      latestRun: serializeRun(latestRun, latestRuntime),
     });
   } catch (error) {
     console.error('[AutoResearch] Failed to get status:', error);
@@ -369,6 +436,14 @@ router.post('/:projectName/start', async (req, res) => {
   try {
     const userId = req.user.id;
     const { projectName } = req.params;
+    const {
+      provider: rawProvider,
+      model: rawModel,
+      permissionMode: rawPermissionMode,
+    } = req.body || {};
+    const provider = normalizeAutoResearchProvider(rawProvider);
+    const permissionMode = normalizePermissionMode(rawPermissionMode);
+    const model = rawModel || getDefaultModelForProvider(provider);
     const projectPath = await extractProjectDirectory(projectName);
     const profile = userDb.getProfile(userId);
     const existingRun = autoResearchDb.getActiveRunForProject(userId, projectName);
@@ -388,18 +463,23 @@ router.post('/:projectName/start', async (req, res) => {
       userId,
       projectName,
       projectPath,
-      provider: 'claude',
+      provider,
       status: 'queued',
       completedTasks: pipelineState.completedTaskCount,
       totalTasks: pipelineState.tasks.length,
       metadata: {
         mode: 'auto_research_v1',
+        autoResearchModel: model,
+        autoResearchPermissionMode: permissionMode,
       },
     });
 
     activeRuns.set(runId, {
       cancelRequested: false,
       sessionId: null,
+      provider,
+      model,
+      permissionMode,
     });
 
     void runAutoResearch(runId, userId, projectName, projectPath);
@@ -429,7 +509,7 @@ router.post('/:projectName/cancel', async (req, res) => {
     if (runtime) {
       runtime.cancelRequested = true;
       if (runtime.sessionId || activeRun.session_id) {
-        await abortClaudeSDKSession(runtime.sessionId || activeRun.session_id);
+        await abortActiveSession(runtime.provider || activeRun.provider || 'claude', runtime.sessionId || activeRun.session_id);
       }
     }
 

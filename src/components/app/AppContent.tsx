@@ -58,6 +58,7 @@ export default function AppContent() {
     fetchProjects,
     sidebarSharedProps,
     handleProjectSelect,
+    handleNavigateToSession,
     handleStartWorkspaceQa,
     pendingAutoIntake,
     handleProjectCreatedWithIntake,
@@ -244,7 +245,8 @@ export default function AppContent() {
           onSessionNotProcessing={markSessionAsNotProcessing}
           processingSessions={processingSessions}
           onReplaceTemporarySession={replaceTemporarySession}
-          onNavigateToSession={(targetSessionId: string) => navigate(`/session/${targetSessionId}`)}
+          onNavigateToSession={(targetSessionId: string, targetProvider?, targetProjectName?) =>
+            handleNavigateToSession(targetSessionId, targetProvider, targetProjectName)}
           onShowSettings={() => setShowSettings(true)}
           externalMessageUpdate={externalMessageUpdate}
           pendingAutoIntake={pendingAutoIntake}

@@ -162,7 +162,7 @@ Dr. Claw 会从 `.env` 读取本地配置。对大多数用户来说，只需要
 
 完整环境变量说明和部署注意事项见 [docs/configuration.zh-CN.md](docs/configuration.zh-CN.md)。
 
-Auto Research 的邮件通知配置在应用内的 **Settings → Email**。当前 v1 会使用 Claude 无人值守地顺序执行研究任务；如果运行中断，系统会自动回收僵尸 run，避免其长期停留在 `running` 状态。
+Auto Research 的邮件通知配置在应用内的 **Settings → Email**。当前 v1 支持 Claude Code、Codex、Gemini 作为执行引擎进行无人值守研究任务执行；如果运行中断，系统会自动回收僵尸 run，避免其长期停留在 `running` 状态。
 
 <a id="research-lab-quick-example"></a>
 

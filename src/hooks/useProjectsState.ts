@@ -135,6 +135,21 @@ const isUpdateAdditive = (
   );
 };
 
+  const buildTransientSession = (
+    sessionId: string,
+    provider: ProjectSession['__provider'] = 'claude',
+    projectName?: string,
+  ): ProjectSession => ({
+    id: sessionId,
+    name: 'Auto Research Session',
+    summary: 'Auto Research Session',
+    mode: 'research',
+    __provider: provider,
+    __projectName: projectName,
+    createdAt: new Date().toISOString(),
+    lastActivity: new Date().toISOString(),
+  });
+
 export function useProjectsState({
   sessionId,
   navigate,
@@ -365,87 +380,83 @@ export function useProjectsState({
     };
   }, []);
 
+  const handleNavigateToSession = useCallback((
+    targetSessionId: string,
+    targetProvider?: ProjectSession['__provider'],
+    targetProjectName?: string,
+  ) => {
+    if (!targetSessionId) {
+      return;
+    }
+
+    const shouldSwitchTab = !selectedSession || selectedSession.id !== targetSessionId;
+    let matchedProject: Project | null = null;
+    let matchedSession: ProjectSession | null = null;
+
+    const targetProject = targetProjectName
+      ? projects.find((project) => project.name === targetProjectName)
+      : null;
+
+    for (const project of projects) {
+      const claudeSession = project.sessions?.find((session) => session.id === targetSessionId);
+      if (claudeSession) {
+        matchedProject = project;
+        matchedSession = { ...claudeSession, __provider: 'claude' };
+        break;
+      }
+
+      const cursorSession = project.cursorSessions?.find((session) => session.id === targetSessionId);
+      if (cursorSession) {
+        matchedProject = project;
+        matchedSession = { ...cursorSession, __provider: 'cursor' };
+        break;
+      }
+
+      const codexSession = project.codexSessions?.find((session) => session.id === targetSessionId);
+      if (codexSession) {
+        matchedProject = project;
+        matchedSession = { ...codexSession, __provider: 'codex' };
+        break;
+      }
+
+      const geminiSession = project.geminiSessions?.find((session) => session.id === targetSessionId);
+      if (geminiSession) {
+        matchedProject = project;
+        matchedSession = { ...geminiSession, __provider: 'gemini' };
+        break;
+      }
+    }
+
+    const providerHint = targetProvider ?? matchedSession?.__provider;
+    const sessionToSelect =
+      matchedSession
+      || (targetProvider ? buildTransientSession(targetSessionId, providerHint, targetProject?.name || selectedProject?.name) : null);
+
+    const projectToSelect = matchedProject || targetProject;
+    if (projectToSelect && selectedProject?.name !== projectToSelect.name) {
+      setSelectedProject(projectToSelect);
+    }
+
+    if (sessionToSelect && (selectedSession?.id !== targetSessionId || selectedSession.__provider !== sessionToSelect.__provider)) {
+      setSelectedSession(sessionToSelect);
+    }
+
+    if (shouldSwitchTab) {
+      setActiveTab('chat');
+    }
+
+    if (sessionToSelect) {
+      navigate(`/session/${targetSessionId}`);
+    }
+  }, [navigate, projects, selectedProject?.name, selectedSession?.id, selectedSession?.__provider]);
+
   useEffect(() => {
     if (!sessionId || projects.length === 0) {
       return;
     }
 
-    const shouldSwitchTab = !selectedSession || selectedSession.id !== sessionId;
-
-    for (const project of projects) {
-      const claudeSession = project.sessions?.find((session) => session.id === sessionId);
-      if (claudeSession) {
-        const shouldUpdateProject = selectedProject?.name !== project.name;
-        const shouldUpdateSession =
-          selectedSession?.id !== sessionId || selectedSession.__provider !== 'claude';
-
-        if (shouldUpdateProject) {
-          setSelectedProject(project);
-        }
-        if (shouldUpdateSession) {
-          setSelectedSession({ ...claudeSession, __provider: 'claude' });
-        }
-        if (shouldSwitchTab) {
-          setActiveTab('chat');
-        }
-        return;
-      }
-
-      const cursorSession = project.cursorSessions?.find((session) => session.id === sessionId);
-      if (cursorSession) {
-        const shouldUpdateProject = selectedProject?.name !== project.name;
-        const shouldUpdateSession =
-          selectedSession?.id !== sessionId || selectedSession.__provider !== 'cursor';
-
-        if (shouldUpdateProject) {
-          setSelectedProject(project);
-        }
-        if (shouldUpdateSession) {
-          setSelectedSession({ ...cursorSession, __provider: 'cursor' });
-        }
-        if (shouldSwitchTab) {
-          setActiveTab('chat');
-        }
-        return;
-      }
-
-      const codexSession = project.codexSessions?.find((session) => session.id === sessionId);
-      if (codexSession) {
-        const shouldUpdateProject = selectedProject?.name !== project.name;
-        const shouldUpdateSession =
-          selectedSession?.id !== sessionId || selectedSession.__provider !== 'codex';
-
-        if (shouldUpdateProject) {
-          setSelectedProject(project);
-        }
-        if (shouldUpdateSession) {
-          setSelectedSession({ ...codexSession, __provider: 'codex' });
-        }
-        if (shouldSwitchTab) {
-          setActiveTab('chat');
-        }
-        return;
-      }
-
-      const geminiSession = project.geminiSessions?.find((session) => session.id === sessionId);
-      if (geminiSession) {
-        const shouldUpdateProject = selectedProject?.name !== project.name;
-        const shouldUpdateSession =
-          selectedSession?.id !== sessionId || selectedSession.__provider !== 'gemini';
-
-        if (shouldUpdateProject) {
-          setSelectedProject(project);
-        }
-        if (shouldUpdateSession) {
-          setSelectedSession({ ...geminiSession, __provider: 'gemini' });
-        }
-        if (shouldSwitchTab) {
-          setActiveTab('chat');
-        }
-        return;
-      }
-    }
-  }, [sessionId, projects, selectedProject?.name, selectedSession?.id, selectedSession?.__provider]);
+    handleNavigateToSession(sessionId);
+  }, [sessionId, projects, handleNavigateToSession]);
 
   const handleProjectSelect = useCallback(
     (project: Project) => {
@@ -736,6 +747,7 @@ export function useProjectsState({
     sidebarSharedProps,
     handleProjectSelect,
     handleSessionSelect,
+    handleNavigateToSession,
     handleOpenDashboard,
     handleOpenSkills,
     handleOpenNews,

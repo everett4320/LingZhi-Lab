@@ -1,5 +1,13 @@
 import type { Dispatch, MouseEvent, RefObject, SetStateAction } from 'react';
-import type { AppTab, ImportedProjectAnalysisPrompt, PendingAutoIntake, Project, ProjectSession, SessionMode } from '../../../types/app';
+import type {
+  AppTab,
+  ImportedProjectAnalysisPrompt,
+  PendingAutoIntake,
+  Project,
+  ProjectSession,
+  SessionMode,
+  SessionProvider,
+} from '../../../types/app';
 
 export type SessionLifecycleHandler = (sessionId?: string | null) => void;
 
@@ -65,7 +73,11 @@ export interface MainContentProps {
   onSessionNotProcessing: SessionLifecycleHandler;
   processingSessions: Set<string>;
   onReplaceTemporarySession: SessionLifecycleHandler;
-  onNavigateToSession: (targetSessionId: string) => void;
+  onNavigateToSession: (
+    targetSessionId: string,
+    targetProvider?: SessionProvider,
+    targetProjectName?: string,
+  ) => void;
   onShowSettings: () => void;
   externalMessageUpdate: number;
   pendingAutoIntake?: PendingAutoIntake | null;

@@ -222,9 +222,14 @@ export const api = {
   autoResearch: {
     status: (projectName) =>
       authenticatedFetch(`/api/auto-research/${encodeURIComponent(projectName)}/status`),
-    start: (projectName) =>
+    start: (projectName, { provider, model, permissionMode } = {}) =>
       authenticatedFetch(`/api/auto-research/${encodeURIComponent(projectName)}/start`, {
         method: 'POST',
+        body: JSON.stringify({
+          provider,
+          model,
+          permissionMode,
+        }),
       }),
     cancel: (projectName) =>
       authenticatedFetch(`/api/auto-research/${encodeURIComponent(projectName)}/cancel`, {

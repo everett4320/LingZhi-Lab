@@ -112,11 +112,11 @@ function MainContent({
         <div className="flex-1 min-h-0 overflow-hidden">
           <ProjectDashboard
             projects={projects}
-            onProjectAction={(project, tab, sessionId) => {
+            onProjectAction={(project, tab, sessionId, sessionProvider) => {
               onProjectSelect(project);
               setActiveTab(tab);
               if (sessionId && tab === 'chat') {
-                onNavigateToSession(sessionId);
+                onNavigateToSession(sessionId, sessionProvider, project.name);
               }
             }}
           />

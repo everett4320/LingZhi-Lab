@@ -48,7 +48,11 @@ interface UseChatRealtimeHandlersArgs {
   onSessionProcessing?: (sessionId?: string | null) => void;
   onSessionNotProcessing?: (sessionId?: string | null) => void;
   onReplaceTemporarySession?: (sessionId?: string | null) => void;
-  onNavigateToSession?: (sessionId: string) => void;
+  onNavigateToSession?: (
+    sessionId: string,
+    sessionProvider?: SessionProvider,
+    targetProjectName?: string,
+  ) => void;
 }
 
 const appendStreamingChunk = (
