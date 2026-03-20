@@ -107,10 +107,52 @@ def _cli_cmd(command: str = "") -> str:
     return f"{_PRIMARY_CLI_NAME} {command}" if command else _PRIMARY_CLI_NAME
 
 
+_TRANSLATIONS = {
+    "en": {
+        "status": "Status",
+        "progress": "Progress",
+        "next_step": "Next",
+        "stage": "Stage",
+        "suggestion": "Guidance",
+        "inputs": "Inputs",
+        "skills": "Skills",
+        "prompt": "Prompt",
+        "updated_at": "Updated",
+        "no_pending": "No pending tasks",
+        "action": "Action",
+        "provider": "Provider",
+        "session": "Session",
+        "reply": "Reply",
+        "empty": "(empty)",
+    },
+    "zh": {
+        "status": "状态",
+        "progress": "进度",
+        "next_step": "下一步",
+        "stage": "阶段",
+        "suggestion": "建议",
+        "inputs": "输入",
+        "skills": "技能",
+        "prompt": "提示词",
+        "updated_at": "更新于",
+        "no_pending": "无待处理任务",
+        "action": "动作",
+        "provider": "服务商",
+        "session": "会话",
+        "reply": "回复",
+        "empty": "(空)",
+    },
+}
+
+
 class Context:
-    def __init__(self, json_mode: bool, client: DrClaw) -> None:
+    def __init__(self, json_mode: bool, client: DrClaw, lang: str = "en") -> None:
         self.json_mode = json_mode
         self.client = client
+        self.lang = lang if lang in _TRANSLATIONS else "en"
+
+    def t(self, key: str) -> str:
+        return _TRANSLATIONS[self.lang].get(key, key)
 
 
 pass_context = click.make_pass_decorator(Context)
@@ -525,72 +567,127 @@ def _truncate_text(value: Any, max_len: int = 220) -> str:
     return text[: max_len - 3] + "..."
 
 
+def _make_progress_bar(rate: int, length: int = 10) -> str:
+    """Create a beautiful block-style progress bar."""
+    filled = max(0, min(length, int(rate * length / 100)))
+    bar = "█" * filled + "░" * (length - filled)
+    
+    color = "green"
+    if rate < 30:
+        color = "red"
+    elif rate < 70:
+        color = "yellow"
+        
+    return click.style(bar, fg=color)
+
+
+def _get_status_style(status: str) -> tuple[str, str]:
+    """Get color and emoji for a given status string."""
+    s = str(status or "").lower()
+    if "configured" in s or "done" in s or "success" in s:
+        return "green", "🟢"
+    if "pending" in s or "in-progress" in s or "active" in s:
+        return "blue", "🔵"
+    if "blocked" in s or "error" in s or "fail" in s:
+        return "red", "🔴"
+    if "waiting" in s or "review" in s:
+        return "yellow", "🟡"
+    return "white", "⚪"
+
+
 def _build_openclaw_report(
     project: Dict[str, Any],
     summary: Dict[str, Any],
+    ctx: Context,
     include_prompt: bool = False,
 ) -> str:
     counts = summary.get("counts") or {}
     next_task = summary.get("next_task") or {}
     guidance = summary.get("guidance") or {}
 
-    lines = [f"[Dr. Claw] {_project_label(project)}"]
-    lines.append(f"Status: {summary.get('status', 'unknown')}")
-    lines.append(
-        "Progress: "
-        f"{counts.get('completed', 0)}/{counts.get('total', 0)} done "
-        f"({counts.get('completion_rate', 0)}%), "
-        f"in-progress {counts.get('in_progress', 0)}, pending {counts.get('pending', 0)}"
-    )
-
+    project_label = _project_label(project)
+    header = click.style(f"📊 [Dr. Claw] {project_label}", bold=True, fg="cyan")
+    
+    lines = [header]
+    
+    status = summary.get('status', 'unknown')
+    color, emoji = _get_status_style(status)
+    lines.append(f"{emoji} {click.style(ctx.t('status'), bold=True)}: {click.style(status, fg=color)}")
+    
+    done = counts.get('completed', 0)
+    total = counts.get('total', 0)
+    rate = int(counts.get('completion_rate', 0))
+    progress_bar = _make_progress_bar(rate)
+    lines.append(f"📈 {click.style(ctx.t('progress'), bold=True)}: {progress_bar} {click.style(f'{done}/{total} ({rate}%)', fg='bright_black')}")
+    
     if next_task:
-        next_bits = [f"#{next_task.get('id', '?')}", next_task.get("title") or "Untitled task"]
-        if next_task.get("stage"):
-            next_bits.append(f"stage={next_task['stage']}")
-        if next_task.get("status"):
-            next_bits.append(f"status={next_task['status']}")
-        lines.append("Next: " + " | ".join(str(bit) for bit in next_bits if bit))
+        task_id = next_task.get('id', '?')
+        task_title = next_task.get("title") or "Untitled task"
+        lines.append(f"⏩ {click.style(ctx.t('next_step'), bold=True)}: {click.style(f'#{task_id}', fg='yellow')} {task_title}")
+        
+        stage = next_task.get("stage")
+        if stage:
+            lines.append(f"   📍 {click.style(ctx.t('stage'), bold=True)}: {click.style(stage, italic=True)}")
     else:
-        lines.append("Next: no pending task")
+        lines.append(f"⏩ {click.style(ctx.t('next_step'), bold=True)}: {click.style(ctx.t('no_pending'), fg='bright_black')}")
 
     why_next = guidance.get("whyNext")
     if why_next:
-        lines.append(f"Why next: {_truncate_text(why_next, 180)}")
+        lines.append(f"💡 {click.style(ctx.t('suggestion'), bold=True)}: {_truncate_text(why_next, 180)}")
 
     required_inputs = guidance.get("requiredInputs") or []
     if required_inputs:
-        lines.append("Inputs: " + ", ".join(str(item) for item in required_inputs[:4]))
+        inputs_str = click.style(", ".join(str(item) for item in required_inputs[:4]), fg="magenta")
+        lines.append(f"📥 {click.style(ctx.t('inputs'), bold=True)}: {inputs_str}")
 
     suggested_skills = guidance.get("suggestedSkills") or []
     if suggested_skills:
-        lines.append("Skills: " + ", ".join(str(item) for item in suggested_skills[:4]))
+        skills_str = click.style(", ".join(str(item) for item in suggested_skills[:4]), fg="green")
+        lines.append(f"🛠️ {click.style(ctx.t('skills'), bold=True)}: {skills_str}")
 
     if include_prompt and guidance.get("nextActionPrompt"):
-        lines.append(f"Prompt: {_truncate_text(guidance['nextActionPrompt'], 320)}")
+        lines.append(f"💬 {click.style(ctx.t('prompt'), bold=True)}: \n{click.style('> ', fg='bright_black')}{click.style(_truncate_text(guidance['nextActionPrompt'], 320), italic=True)}")
 
     updated_at = summary.get("updated_at")
     if updated_at:
-        lines.append(f"Updated: {updated_at}")
+        display_time = updated_at
+        if "T" in updated_at and "." in updated_at:
+            try:
+                display_time = updated_at.split(".")[0].replace("T", " ")
+            except: pass
+        lines.append(f"🕒 {click.style(ctx.t('updated_at'), bold=True)}: {click.style(display_time, fg='bright_black')}")
 
     return "\n".join(lines)
 
 
-def _build_openclaw_chat_notification(payload: Dict[str, Any], action: str) -> str:
+def _build_openclaw_chat_notification(payload: Dict[str, Any], action: str, ctx: Context) -> str:
     project_name = payload.get("project_display_name") or payload.get("project") or payload.get("project_path") or "unknown"
     provider = payload.get("provider") or "unknown"
     session_id = payload.get("session_id") or ""
-    reply = _truncate_text(payload.get("reply") or "", 320)
+    reply = _truncate_text(payload.get("reply") or "", 400)
 
-    lines = [f"[Dr. Claw] {project_name}"]
-    lines.append(f"Action: {action}")
-    lines.append(f"Provider: {provider}")
+    # Emoji based on provider
+    provider_emojis = {
+        "claude": "🎭",
+        "cursor": "🛰️",
+        "codex": "🔮",
+        "gemini": "♊"
+    }
+    emoji = provider_emojis.get(provider.lower(), "🤖")
+
+    title = click.style(f"💬 [Dr. Claw] {project_name}", bold=True, fg="cyan")
+    lines = [title]
+    lines.append(f"🎬 {click.style(ctx.t('action'), bold=True)}: {click.style(action, fg='yellow')}")
+    lines.append(f"{emoji} {click.style(ctx.t('provider'), bold=True)}: {click.style(provider, fg='green')}")
     if session_id:
-        lines.append(f"Session: {session_id}")
+        lines.append(f"🆔 {click.style(ctx.t('session'), bold=True)}: {click.style(session_id, fg='bright_black')}")
+    
     if reply:
-        lines.append(f"Reply: {reply}")
+        lines.append(f"📝 {click.style(ctx.t('reply'), bold=True)}: \n{click.style('> ', fg='bright_black')}{reply}")
     else:
-        lines.append("Reply: (empty)")
+        lines.append(f"📝 {click.style(ctx.t('reply'), bold=True)}: {click.style(ctx.t('empty'), italic=True, fg='bright_black')}")
     return "\n".join(lines)
+
 
 
 def _compact_waiting_sessions(sessions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -764,31 +861,56 @@ def _format_portfolio_digest(payload: Dict[str, Any]) -> str:
     recommendations = payload.get("recommendations") or []
     projects = payload.get("projects") or []
 
-    lines = ["[Dr. Claw Portfolio Digest]"]
-    lines.append(
-        f"Projects: {summary.get('project_count', 0)} | Waiting: {summary.get('waiting_sessions', 0)} | Tasks: {summary.get('tasks_completed', 0)}/{summary.get('tasks_total', 0)} done"
+    header = click.style("📋 [Dr. Claw Portfolio Digest]", bold=True, fg="cyan")
+    lines = [header]
+    
+    stats_line = (
+        f"{click.style('Projects:', bold=True)} {summary.get('project_count', 0)} | "
+        f"{click.style('Waiting:', bold=True)} {summary.get('waiting_sessions', 0)} | "
+        f"{click.style('Tasks:', bold=True)} {summary.get('tasks_completed', 0)}/{summary.get('tasks_total', 0)} done"
     )
-    lines.append(
-        f"Attention: high {summary.get('high_priority_projects', 0)} | medium {summary.get('medium_priority_projects', 0)}"
+    lines.append(stats_line)
+    
+    attn_line = (
+        f"{click.style('Attention:', bold=True)} "
+        f"{click.style('high', fg='red')} {summary.get('high_priority_projects', 0)} | "
+        f"{click.style('medium', fg='yellow')} {summary.get('medium_priority_projects', 0)}"
     )
+    lines.append(attn_line)
 
     if recommendations:
-        lines.append("Focus:")
+        lines.append(f"\n{click.style('🎯 Focus:', bold=True)}")
         for row in recommendations[:5]:
-            segment = f"- [{row.get('priority')}] {row.get('project_display_name')}: {row.get('reason')}"
+            priority = row.get('priority', 'low')
+            p_color = "red" if priority == "high" else ("yellow" if priority == "medium" else "bright_black")
+            
+            p_label = click.style(f"[{priority.upper()}]", fg=p_color, bold=True)
+            proj_name = click.style(row.get('project_display_name', 'unknown'), fg="cyan")
+            segment = f"{p_label} {proj_name}: {row.get('reason')}"
+            
             if row.get("session_id"):
-                segment += f" session={row['session_id']}"
+                session_info = click.style(f"session={row['session_id']}", fg="bright_black")
+                segment += f" {session_info}"
             lines.append(segment)
             if row.get("suggested_reply"):
-                lines.append(f"  {row['suggested_reply']}")
+                lines.append(f"  {click.style('↳', fg='bright_black')} {click.style(row['suggested_reply'], italic=True, fg='green')}")
 
     if projects:
-        lines.append("Progress:")
+        lines.append(f"\n{click.style('📈 Progress:', bold=True)}")
         for item in projects[:8]:
             counts = item.get("counts") or {}
-            lines.append(
-                f"- {item.get('project_display_name')}: status={item.get('status')} done {counts.get('completed', 0)}/{counts.get('total', 0)}, in-progress {counts.get('in_progress', 0)}, pending {counts.get('pending', 0)}, blocked {counts.get('blocked', 0)}"
-            )
+            rate = int(counts.get('completion_rate', 0)) if counts.get('completion_rate') is not None else 0
+            if counts.get('total') and not rate:
+                rate = int(counts.get('completed', 0) * 100 / counts['total'])
+            
+            bar = _make_progress_bar(rate, length=5)
+            name = click.style(f"{item.get('project_display_name'):<20}", fg="cyan")
+            status = item.get('status', 'unknown')
+            s_color, s_emoji = _get_status_style(status)
+            
+            counts_str = click.style(f"{counts.get('completed', 0)}/{counts.get('total', 0)}", fg="bright_black")
+            status_str = click.style(status, fg=s_color)
+            lines.append(f"{s_emoji} {name} {bar} {counts_str} {status_str}")
     return "\n".join(lines)
 
 def _format_project_progress(payload: Dict[str, Any]) -> str:
@@ -796,22 +918,45 @@ def _format_project_progress(payload: Dict[str, Any]) -> str:
     next_task = payload.get("next_task") or {}
     latest = payload.get("latest_session") or {}
 
-    lines = [f"[Dr. Claw Project Progress] {payload.get('project_display_name') or payload.get('project')}"]
-    lines.append(f"Status: {payload.get('status') or 'unknown'}")
+    title = click.style(f"🚀 [Dr. Claw Project Progress] {payload.get('project_display_name') or payload.get('project')}", bold=True, fg="cyan")
+    lines = [title]
+    
+    status = payload.get('status') or 'unknown'
+    s_color, s_emoji = _get_status_style(status)
+    lines.append(f"{s_emoji} {click.style('Status:', bold=True)} {click.style(status, fg=s_color)}")
+    
+    done = counts.get('completed', 0)
+    total = counts.get('total', 0)
+    rate = int(counts.get('completion_rate', 0)) if counts.get('completion_rate') is not None else 0
+    if total and not rate:
+        rate = int(done * 100 / total)
+        
+    bar = _make_progress_bar(rate)
+    progress_str = click.style(f"{done}/{total} done", fg="bright_black")
     lines.append(
-        f"Progress: {counts.get('completed', 0)}/{counts.get('total', 0)} done, "
-        f"in-progress {counts.get('in_progress', 0)}, pending {counts.get('pending', 0)}, blocked {counts.get('blocked', 0)}"
+        f"📊 {click.style('Progress:', bold=True)} {bar} {progress_str} | "
+        f"{click.style('in-progress', fg='blue')} {counts.get('in_progress', 0)} | "
+        f"{click.style('pending', fg='bright_black')} {counts.get('pending', 0)} | "
+        f"{click.style('blocked', fg='red')} {counts.get('blocked', 0)}"
     )
+    
     if next_task:
-        lines.append(f"Next: #{next_task.get('id', '?')} {next_task.get('title') or 'Untitled task'}")
+        task_id_str = click.style(f"#{next_task.get('id', '?')}", fg="yellow")
+        lines.append(f"⏩ {click.style('Next:', bold=True)} {task_id_str} {next_task.get('title') or 'Untitled task'}")
+    
     if latest:
-        lines.append(f"Latest session: {latest.get('provider')} {latest.get('session_id')}")
-        if latest.get('last_assistant_message'):
-            lines.append(f"Last assistant: {_truncate_text(latest.get('last_assistant_message'), 220)}")
-        elif latest.get('last_user_message'):
-            lines.append(f"Last user: {_truncate_text(latest.get('last_user_message'), 220)}")
+        p_emojis = {"claude": "🎭", "cursor": "🛰️", "codex": "🔮", "gemini": "♊"}
+        p_emoji = p_emojis.get(str(latest.get('provider')).lower(), "🤖")
+        lines.append(f"{p_emoji} {click.style('Latest session:', bold=True)} {click.style(latest.get('provider', 'unknown'), fg='green')} {click.style(latest.get('session_id', ''), fg='bright_black')}")
+        
+        msg = latest.get('last_assistant_message') or latest.get('last_user_message')
+        prefix = "Assistant" if latest.get('last_assistant_message') else "User"
+        if msg:
+            lines.append(f"   {click.style(f'{prefix}:', bold=True)} {click.style(_truncate_text(msg, 220), italic=True, fg='bright_black')}")
+            
     if payload.get("updated_at"):
-        lines.append(f"Updated: {payload['updated_at']}")
+        lines.append(f"🕒 {click.style('Updated:', bold=True)} {click.style(payload['updated_at'], fg='bright_black')}")
+    
     return "\n".join(lines)
 
 def _build_daily_digest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -835,43 +980,87 @@ def _format_project_digest(payload: Dict[str, Any]) -> str:
     waiting = payload.get("waiting") or []
     artifact_info = payload.get("artifacts") or {}
 
-    lines = [f"[Dr. Claw Digest] {payload.get('project_display_name') or payload.get('project')}"]
-    lines.append(f"Status: {payload.get('status') or 'unknown'}")
+    title = click.style(f"📑 [Dr. Claw Digest] {payload.get('project_display_name') or payload.get('project')}", bold=True, fg="cyan")
+    lines = [title]
+    
+    status = payload.get('status') or 'unknown'
+    s_color, s_emoji = _get_status_style(status)
+    lines.append(f"{s_emoji} {click.style('Status:', bold=True)} {click.style(status, fg=s_color)}")
+    
+    done = counts.get('completed', 0)
+    total = counts.get('total', 0)
+    rate = int(counts.get('completion_rate', 0)) if counts.get('completion_rate') is not None else 0
+    if total and not rate:
+        rate = int(done * 100 / total)
+    bar = _make_progress_bar(rate)
+    progress_str = click.style(f"{done}/{total} done", fg="bright_black")
+    
     lines.append(
-        f"Progress: {counts.get('completed', 0)}/{counts.get('total', 0)} done, "
-        f"in-progress {counts.get('in_progress', 0)}, pending {counts.get('pending', 0)}, blocked {counts.get('blocked', 0)}"
+        f"📊 {click.style('Progress:', bold=True)} {bar} {progress_str} | "
+        f"{click.style('in-progress', fg='blue')} {counts.get('in_progress', 0)} | "
+        f"{click.style('blocked', fg='red')} {counts.get('blocked', 0)}"
     )
+    
     if next_task:
-        lines.append(f"Next: #{next_task.get('id', '?')} {next_task.get('title') or 'Untitled task'}")
-    lines.append(f"Waiting: {len(waiting)} session(s)")
+        task_id_str = click.style(f"#{next_task.get('id', '?')}", fg="yellow")
+        lines.append(f"⏩ {click.style('Next:', bold=True)} {task_id_str} {next_task.get('title') or 'Untitled task'}")
+    
+    w_color = "yellow" if waiting else "bright_black"
+    lines.append(f"⏳ {click.style('Waiting:', bold=True)} {click.style(f'{len(waiting)} session(s)', fg=w_color)}")
+    
     if waiting:
         first = waiting[0]
         lines.append(
-            f"Top waiting: {first.get('provider')} {first.get('session_id')} { _truncate_text(first.get('summary'), 100) }"
+            f"   {click.style('↳ Top:', bold=True)} {click.style(first.get('provider', 'unknown'), fg='green')} "
+            f"{click.style(first.get('session_id', ''), fg='bright_black')} {click.style(_truncate_text(first.get('summary'), 100), italic=True)}"
         )
+        
     if artifact_info.get("latest_artifact"):
-        lines.append(f"Latest artifact: {artifact_info['latest_artifact']}")
+        lines.append(f"📦 {click.style('Latest artifact:', bold=True)} {click.style(artifact_info['latest_artifact'], fg='magenta')}")
+        
     if payload.get("updated_at"):
-        lines.append(f"Updated: {payload['updated_at']}")
+        lines.append(f"🕒 {click.style('Updated:', bold=True)} {click.style(payload['updated_at'], fg='bright_black')}")
+        
     return "\n".join(lines)
 
 
 def _format_daily_digest(payload: Dict[str, Any]) -> str:
     summary = payload.get("summary") or {}
     items = payload.get("projects") or []
-    lines = ["[Dr. Claw Daily Digest]"]
-    lines.append(
-        f"Projects: {summary.get('project_count', 0)} | Waiting sessions: {summary.get('waiting_sessions', 0)} | Tasks: {summary.get('tasks_completed', 0)}/{summary.get('tasks_total', 0)} done"
+    
+    header = click.style("📅 [Dr. Claw Daily Digest]", bold=True, fg="cyan")
+    lines = [header]
+    
+    stats = (
+        f"{click.style('Projects:', bold=True)} {summary.get('project_count', 0)} | "
+        f"{click.style('Waiting:', bold=True)} {summary.get('waiting_sessions', 0)} | "
+        f"{click.style('Tasks:', bold=True)} {summary.get('tasks_completed', 0)}/{summary.get('tasks_total', 0)} done"
     )
-    for item in items[:6]:
+    lines.append(stats)
+    lines.append("") # Spacer
+    
+    for item in items[:10]:
         counts = item.get("counts") or {}
-        lines.append(
-            f"- {item.get('project_display_name')}: {counts.get('completed', 0)}/{counts.get('total', 0)} done, waiting {len(item.get('waiting') or [])}"
-        )
+        done = counts.get('completed', 0)
+        total = counts.get('total', 0)
+        rate = int(done * 100 / total) if total else 0
+        bar = _make_progress_bar(rate, length=5)
+        
+        waiting_count = len(item.get('waiting') or [])
+        w_str = f"waiting {waiting_count}"
+        if waiting_count > 0:
+            w_str = click.style(w_str, fg="yellow", bold=True)
+        else:
+            w_str = click.style(w_str, fg="bright_black")
+            
+        name = click.style(f"{item.get('project_display_name'):<20}", fg="cyan")
+        progress_str = click.style(f"{done}/{total}", fg="bright_black")
+        lines.append(f"- {name} {bar} {progress_str} | {w_str}")
     return "\n".join(lines)
 
 
 def _maybe_send_openclaw_chat_notification(
+    ctx: Context,
     payload: Dict[str, Any],
     action: str,
     notify_openclaw: bool,
@@ -886,7 +1075,7 @@ def _maybe_send_openclaw_chat_notification(
             "OpenClaw notification requested, but no channel is configured. Use --notify-to <channel> or run `drclaw openclaw configure --push-channel <channel>` first."
         )
 
-    message_text = _build_openclaw_chat_notification(payload, action)
+    message_text = _build_openclaw_chat_notification(payload, action, ctx)
     cmd_output = _send_openclaw_message(message_text, resolved_channel)
     return {
         "enabled": True,
@@ -900,11 +1089,13 @@ def _maybe_send_openclaw_chat_notification(
 @click.group(invoke_without_command=True)
 @click.option("--json", "json_mode", is_flag=True, default=False, help="Output results as JSON.")
 @click.option("--url", "url_override", default=None, metavar="URL", help="Override the Dr. Claw server URL.")
+@click.option("--lang", "lang", default=None, help="Language for output (en, zh). Defaults to en or DRCLAW_LANG.")
 @click.pass_context
-def cli(ctx: click.Context, json_mode: bool, url_override: Optional[str]) -> None:
+def cli(ctx: click.Context, json_mode: bool, url_override: Optional[str], lang: Optional[str]) -> None:
     """Dr. Claw CLI harness - manage projects, sessions, workflows, and OpenClaw integration."""
+    effective_lang = lang or os.environ.get("DRCLAW_LANG") or "en"
     client = DrClaw(url_override=url_override)
-    ctx.obj = Context(json_mode=json_mode, client=client)
+    ctx.obj = Context(json_mode=json_mode, client=client, lang=effective_lang)
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
@@ -1456,11 +1647,13 @@ def workflow_continue(
             "reply": result.get("reply", ""),
         }
         payload["openclaw_notification"] = _maybe_send_openclaw_chat_notification(
+            ctx,
             payload,
-            action="workflow_continue",
+            action="reply",
             notify_openclaw=notify_openclaw,
             notify_channel=notify_channel,
         )
+
         output(payload, json_mode=ctx.json_mode, title=f"Workflow Continue: {_project_label(project)}")
     except Exception as exc:
         _handle_error(exc, ctx.json_mode)
@@ -1601,7 +1794,8 @@ def taskmaster_summary(ctx: Context, project_ref: str, include_prompt: bool) -> 
         if ctx.json_mode:
             output(summary, json_mode=True)
         else:
-            click.echo(_build_openclaw_report(project, summary, include_prompt=include_prompt))
+            click.echo(_build_openclaw_report(project, summary, ctx, include_prompt=include_prompt))
+
     except Exception as exc:
         _handle_error(exc, ctx.json_mode)
 
@@ -1815,11 +2009,13 @@ def chat_send(
             "reply": result.get("reply", ""),
         }
         payload["openclaw_notification"] = _maybe_send_openclaw_chat_notification(
+            ctx,
             payload,
-            action="chat_send",
+            action="reply",
             notify_openclaw=notify_openclaw,
             notify_channel=notify_channel,
         )
+
         if ctx.json_mode:
             output(payload, json_mode=True)
         else:
@@ -1876,11 +2072,13 @@ def chat_reply(
             "reply": result.get("reply", ""),
         }
         payload["openclaw_notification"] = _maybe_send_openclaw_chat_notification(
+            ctx,
             payload,
-            action="chat_reply",
+            action="reply",
             notify_openclaw=notify_openclaw,
             notify_channel=notify_channel,
         )
+
         if ctx.json_mode:
             output(payload, json_mode=True)
         else:
@@ -2066,6 +2264,7 @@ def chat_watch(
                     "reply": json.dumps(event, ensure_ascii=False),
                 }
                 _maybe_send_openclaw_chat_notification(
+                    ctx,
                     payload,
                     action=f"event:{event.get('type')}",
                     notify_openclaw=notify_openclaw,
@@ -2338,7 +2537,7 @@ def openclaw_report(
         project = _resolve_project_ref(ctx.client, project_ref)
         project_name = _require_project_name(project, project_ref)
         summary = taskmaster_mod.build_summary(ctx.client, project_name)
-        report_text = _build_openclaw_report(project, summary, include_prompt=include_prompt)
+        report_text = _build_openclaw_report(project, summary, ctx, include_prompt=include_prompt)
 
         resolved_channel = _resolve_push_channel(channel)
         sent = False
