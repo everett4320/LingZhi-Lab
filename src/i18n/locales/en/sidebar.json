@@ -44,7 +44,7 @@
     "createProject": "Create new project",
     "refresh": "Refresh projects and sessions (Ctrl+R)",
     "renameProject": "Rename project (F2)",
-    "deleteProject": "Delete empty project (Delete)",
+    "deleteProject": "Move project to trash",
     "addToFavorites": "Add to favorites",
     "removeFromFavorites": "Remove from favorites",
     "editSessionName": "Manually edit session name",
@@ -111,7 +111,7 @@
     "confirmDelete": "Are you sure you want to delete",
     "sessionCount_one": "This project contains {{count}} conversation.",
     "sessionCount_other": "This project contains {{count}} conversations.",
-    "allConversationsDeleted": "All conversations will be permanently deleted.",
-    "cannotUndo": "This action cannot be undone."
+    "allConversationsDeleted": "The project folder will be moved to Trash together with its conversations.",
+    "cannotUndo": "You can restore it later from Trash unless you permanently remove it there."
   }
 }

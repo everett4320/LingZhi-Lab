@@ -18,6 +18,10 @@ function getTabTitle(activeTab: AppTab, shouldShowTasksTab: boolean, t: (key: st
     return t('projectDashboard.title');
   }
 
+  if (activeTab === 'trash') {
+    return t('projectDashboard.trashTitle');
+  }
+
   if (activeTab === 'git') {
     return t('tabs.git');
   }
@@ -64,6 +68,7 @@ export default function MainContentTitle({
   const showSessionIcon = activeTab === 'chat' && Boolean(selectedSession);
   const showChatNewSession = activeTab === 'chat' && !selectedSession;
   const isDashboard = activeTab === 'dashboard';
+  const isTrash = activeTab === 'trash';
   const isGlobalSkills = activeTab === 'skills' && !selectedProject;
   const isGlobalNews = activeTab === 'news' && !selectedProject;
 
@@ -83,6 +88,15 @@ export default function MainContentTitle({
             </h2>
             <div className="text-[12px] text-muted-foreground truncate leading-tight mt-0.5">
               {t('projectDashboard.subtitle')}
+            </div>
+          </div>
+        ) : isTrash ? (
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-bold text-foreground leading-tight">
+              {t('projectDashboard.trashTitle')}
+            </h2>
+            <div className="text-[12px] text-muted-foreground truncate leading-tight mt-0.5">
+              {t('projectDashboard.trashSubtitle')}
             </div>
           </div>
         ) : isGlobalSkills ? (

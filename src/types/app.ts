@@ -17,7 +17,7 @@ export interface ProjectCreationOptions {
   importedProjectAnalysisPrompt?: ImportedProjectAnalysisPrompt | null;
 }
 
-export type AppTab = 'dashboard' | 'chat' | 'survey' | 'files' | 'shell' | 'git' | 'researchlab' | 'skills' | 'tasks' | 'preview' | 'compute' | 'news';
+export type AppTab = 'dashboard' | 'trash' | 'chat' | 'survey' | 'files' | 'shell' | 'git' | 'researchlab' | 'skills' | 'tasks' | 'preview' | 'compute' | 'news';
 
 export interface ProjectSession {
   id: string;
@@ -60,6 +60,21 @@ export interface Project {
   geminiSessions?: ProjectSession[];
   sessionMeta?: ProjectSessionMeta;
   taskmaster?: ProjectTaskmasterInfo;
+  [key: string]: unknown;
+}
+
+export interface TrashProject {
+  name: string;
+  displayName: string;
+  fullPath: string;
+  path?: string;
+  originalPath?: string;
+  trashPath?: string;
+  claudeTrashPath?: string;
+  trashedAt: string;
+  sessionCount?: number;
+  canRestore?: boolean;
+  filesExist?: boolean;
   [key: string]: unknown;
 }
 

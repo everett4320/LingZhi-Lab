@@ -23,6 +23,7 @@ type TaskMasterSidebarContext = {
 
 function Sidebar({
   projects,
+  trashProjects,
   selectedProject,
   selectedSession,
   onProjectSelect,
@@ -40,6 +41,7 @@ function Sidebar({
   isMobile,
   activeTab,
   onOpenDashboard,
+  onOpenTrash,
   onOpenSkills,
   onOpenNews,
   onImportedProjectCreated,
@@ -187,6 +189,7 @@ function Sidebar({
     <>
       <SidebarModals
         projects={projects}
+        trashProjects={trashProjects}
         showSettings={showSettings}
         settingsInitialTab={settingsInitialTab}
         onCloseSettings={onCloseSettings}
@@ -248,6 +251,7 @@ function Sidebar({
             isRefreshing={isRefreshing}
             activeTab={activeTab}
             onOpenDashboard={onOpenDashboard}
+            onOpenTrash={onOpenTrash}
             onOpenSkills={onOpenSkills}
             onOpenNews={onOpenNews}
             onCreateProject={() => setShowWizard(true)}

@@ -18,6 +18,7 @@ type SidebarContentProps = {
   isRefreshing: boolean;
   activeTab: AppTab;
   onOpenDashboard: () => void;
+  onOpenTrash: () => void;
   onOpenSkills: () => void;
   onOpenNews: () => void;
   onCreateProject: () => void;
@@ -44,6 +45,7 @@ export default function SidebarContent({
   isRefreshing,
   activeTab,
   onOpenDashboard,
+  onOpenTrash,
   onOpenSkills,
   onOpenNews,
   onCreateProject,
@@ -74,6 +76,7 @@ export default function SidebarContent({
         isRefreshing={isRefreshing}
         activeTab={activeTab}
         onOpenDashboard={onOpenDashboard}
+        onOpenTrash={onOpenTrash}
         onOpenSkills={onOpenSkills}
         onOpenNews={onOpenNews}
         onCreateProject={onCreateProject}

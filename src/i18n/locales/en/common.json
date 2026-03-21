@@ -19,6 +19,7 @@
   },
   "tabs": {
     "dashboard": "Dashboard",
+    "trash": "Trash",
     "chat": "Chat",
     "survey": "Survey",
     "shell": "Shell",
@@ -85,7 +86,8 @@
   "mobileNav": {
     "survey": "Survey",
     "researchLab": "Lab",
-    "git": "Git"
+    "git": "Git",
+    "trash": "Trash"
   },
   "surveyPage": {
     "title": "Survey Stage",
@@ -187,6 +189,20 @@
   },
   "projectDashboard": {
     "title": "Project Dashboard",
+    "trashTitle": "Project Trash",
+    "trashSubtitle": "Deleted projects are moved here first so you can restore them or remove records and files separately.",
+    "trashBadge": "Trash",
+    "trashEmptyTitle": "Trash is empty",
+    "trashEmptyDescription": "Projects deleted from the dashboard are moved here first instead of being erased immediately.",
+    "trashDeletedAt": "Deleted {{time}}",
+    "trashSessions": "{{count}} conversations",
+    "trashFilesMissing": "Workspace files already missing",
+    "restoreProject": "Restore Project",
+    "deleteFromTrash": "Delete From Trash",
+    "trashDeleteTitle": "Choose how to delete this trashed project",
+    "trashDeleteDescription": "Logical delete removes the database record only. Physical delete also permanently removes files still stored in trash.",
+    "logicalDelete": "Delete Record Only",
+    "physicalDelete": "Delete Files Permanently",
     "subtitle": "Track every workspace and jump back into active work quickly.",
     "overviewBadge": "Workspace Overview",
     "sharedBadge": "Shared Workspace Resource",

@@ -19,6 +19,7 @@
   },
   "tabs": {
     "dashboard": "대시보드",
+    "trash": "휴지통",
     "chat": "채팅",
     "survey": "서베이",
     "shell": "Shell",
@@ -85,7 +86,8 @@
   "mobileNav": {
     "survey": "서베이",
     "researchLab": "랩",
-    "git": "Git"
+    "git": "Git",
+    "trash": "휴지통"
   },
   "surveyPage": {
     "title": "서베이 단계",
@@ -187,6 +189,20 @@
   },
   "projectDashboard": {
     "title": "프로젝트 대시보드",
+    "trashTitle": "프로젝트 휴지통",
+    "trashSubtitle": "대시보드에서 삭제한 프로젝트는 먼저 여기로 이동하므로 복원하거나 DB 기록과 실제 파일을 분리해서 삭제할 수 있습니다.",
+    "trashBadge": "휴지통",
+    "trashEmptyTitle": "휴지통이 비어 있습니다",
+    "trashEmptyDescription": "대시보드에서 삭제한 프로젝트는 즉시 영구 삭제되지 않고 먼저 여기로 이동합니다.",
+    "trashDeletedAt": "{{time}}에 삭제됨",
+    "trashSessions": "대화 {{count}}개",
+    "trashFilesMissing": "워크스페이스 파일이 이미 없습니다",
+    "restoreProject": "프로젝트 복원",
+    "deleteFromTrash": "휴지통에서 삭제",
+    "trashDeleteTitle": "삭제 방식을 선택하세요",
+    "trashDeleteDescription": "논리 삭제는 데이터베이스 기록만 제거합니다. 물리 삭제는 휴지통에 남아 있는 실제 파일도 영구 삭제합니다.",
+    "logicalDelete": "기록만 삭제",
+    "physicalDelete": "파일 영구 삭제",
     "subtitle": "모든 워크스페이스 진행 상황을 보고 바로 작업으로 돌아갑니다.",
     "overviewBadge": "워크스페이스 개요",
     "sharedBadge": "공유 워크스페이스 리소스",

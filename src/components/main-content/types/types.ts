@@ -7,6 +7,7 @@ import type {
   ProjectSession,
   SessionMode,
   SessionProvider,
+  TrashProject,
 } from '../../../types/app';
 
 export type SessionLifecycleHandler = (sessionId?: string | null) => void;
@@ -56,6 +57,7 @@ export interface PrdFile {
 
 export interface MainContentProps {
   projects: Project[];
+  trashProjects: TrashProject[];
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   activeTab: AppTab;

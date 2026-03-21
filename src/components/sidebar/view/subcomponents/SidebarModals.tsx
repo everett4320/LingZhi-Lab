@@ -5,7 +5,7 @@ import type { TFunction } from 'i18next';
 import { Button } from '../../../ui/button';
 import Settings from '../../../Settings';
 import VersionUpgradeModal from '../../../modals/VersionUpgradeModal';
-import type { Project } from '../../../../types/app';
+import type { Project, TrashProject } from '../../../../types/app';
 import type { ReleaseInfo } from '../../../../types/sharedTypes';
 import type { InstallMode } from '../../../../hooks/useVersionCheck';
 import { normalizeProjectForSettings } from '../../utils/utils';
@@ -13,6 +13,7 @@ import type { DeleteProjectConfirmation, SessionDeleteConfirmation, SettingsProj
 
 type SidebarModalsProps = {
   projects: Project[];
+  trashProjects: TrashProject[];
   showSettings: boolean;
   settingsInitialTab: string;
   onCloseSettings: () => void;
@@ -46,6 +47,7 @@ function TypedSettings(props: TypedSettingsProps) {
 
 export default function SidebarModals({
   projects,
+  trashProjects,
   showSettings,
   settingsInitialTab,
   onCloseSettings,
@@ -65,8 +67,8 @@ export default function SidebarModals({
 }: SidebarModalsProps) {
   // Settings expects project identity/path fields to be present for dropdown labels and local-scope MCP config.
   const settingsProjects = useMemo(
-    () => projects.map(normalizeProjectForSettings),
-    [projects],
+    () => [...projects, ...trashProjects].map(normalizeProjectForSettings),
+    [projects, trashProjects],
   );
 
   return (

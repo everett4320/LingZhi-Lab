@@ -40,6 +40,7 @@ export default function AppContent() {
 
   const {
     projects,
+    trashProjects,
     selectedProject,
     selectedSession,
     activeTab,
@@ -56,6 +57,7 @@ export default function AppContent() {
     setShowSettings,
     openSettings,
     fetchProjects,
+    fetchTrashProjects,
     sidebarSharedProps,
     handleProjectSelect,
     handleNavigateToSession,
@@ -92,6 +94,16 @@ export default function AppContent() {
       }
     };
   }, [fetchProjects]);
+
+  useEffect(() => {
+    window.refreshTrashProjects = fetchTrashProjects;
+
+    return () => {
+      if (window.refreshTrashProjects === fetchTrashProjects) {
+        delete window.refreshTrashProjects;
+      }
+    };
+  }, [fetchTrashProjects]);
 
   useEffect(() => {
     window.openSettings = openSettings;
@@ -228,6 +240,7 @@ export default function AppContent() {
       <div className={`flex-1 flex flex-col min-w-0 ${isMobile ? 'pb-mobile-nav' : ''}`}>
         <MainContent
           projects={projects}
+          trashProjects={trashProjects}
           selectedProject={selectedProject}
           selectedSession={selectedSession}
           activeTab={activeTab}

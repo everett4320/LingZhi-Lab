@@ -603,6 +603,14 @@ const sessionDb = {
     } catch (err) {
       console.error('Error deleting session metadata:', err.message);
     }
+  },
+
+  deleteSessionsByProject: (projectName) => {
+    try {
+      db.prepare('DELETE FROM session_metadata WHERE project_name = ?').run(projectName);
+    } catch (err) {
+      console.error('Error deleting project session metadata:', err.message);
+    }
   }
 };
 
