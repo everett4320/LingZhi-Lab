@@ -21,6 +21,7 @@ import { useTaskMaster } from '../../../contexts/TaskMasterContext';
 import { useUiPreferences } from '../../../hooks/useUiPreferences';
 import { useEditorSidebar } from '../hooks/useEditorSidebar';
 import type { Project } from '../../../types/app';
+import type { Reference } from '../../references/types';
 
 const AnyGitPanel = GitPanel as any;
 
@@ -57,6 +58,7 @@ function MainContent({
   clearImportedProjectAnalysisPrompt,
   onProjectSelect,
   onStartWorkspaceQa,
+  onChatFromReference,
   newSessionMode,
   onNewSessionModeChange,
 }: MainContentProps) {
@@ -242,7 +244,10 @@ function MainContent({
 
           {activeTab === 'survey' && (
             <div className="h-full overflow-hidden">
-              <SurveyPage selectedProject={selectedProject} />
+              <SurveyPage
+                selectedProject={selectedProject}
+                onChatFromReference={onChatFromReference ? (ref: Reference) => onChatFromReference(selectedProject, ref) : undefined}
+              />
             </div>
           )}
 

@@ -795,6 +795,10 @@ function ChatInterface({
           isTextareaExpanded={isTextareaExpanded}
           sendByCtrlEnter={sendByCtrlEnter}
           onTranscript={handleTranscript}
+          projectName={selectedProject?.name}
+          onReferenceContext={(context) => {
+            setInput((prev) => prev ? `${prev}\n\n${context}` : context);
+          }}
         />
       </div>
 

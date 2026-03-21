@@ -705,6 +705,281 @@ const projectDb = {
   }
 };
 
+// References (literature library) database operations
+const referencesDb = {
+  /**
+   * Batch upsert references from Zotero or other sources.
+   * Deduplicates by source_id for the given user.
+   */
+  syncFromZotero: (userId, items) => {
+    const upsert = db.prepare(`
+      INSERT INTO references_library (id, user_id, title, authors, year, abstract, doi, url, journal, item_type, source, source_id, keywords, citation_key, raw_data, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'zotero', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        authors = excluded.authors,
+        year = excluded.year,
+        abstract = excluded.abstract,
+        doi = excluded.doi,
+        url = excluded.url,
+        journal = excluded.journal,
+        item_type = excluded.item_type,
+        keywords = excluded.keywords,
+        citation_key = excluded.citation_key,
+        raw_data = excluded.raw_data,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+
+    const insertTag = db.prepare(`
+      INSERT OR IGNORE INTO reference_tags (reference_id, tag) VALUES (?, ?)
+    `);
+
+    const tx = db.transaction((rows) => {
+      const ids = [];
+      for (const item of rows) {
+        // Deterministic id: user + source_id
+        const id = `zotero_${userId}_${item.sourceId}`;
+        upsert.run(
+          id,
+          userId,
+          item.title,
+          JSON.stringify(item.authors || []),
+          item.year,
+          item.abstract,
+          item.doi,
+          item.url,
+          item.journal,
+          item.itemType || 'article',
+          item.sourceId,
+          JSON.stringify(item.keywords || []),
+          item.citationKey,
+          item.rawData ? JSON.stringify(item.rawData) : null,
+        );
+        // Upsert tags
+        for (const tag of item.keywords || []) {
+          insertTag.run(id, tag);
+        }
+        ids.push(id);
+      }
+      return ids;
+    });
+
+    try {
+      return tx(items);
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  /**
+   * Import references from BibTeX (or other non-Zotero sources).
+   */
+  importReferences: (userId, items, source = 'bibtex') => {
+    const upsert = db.prepare(`
+      INSERT INTO references_library (id, user_id, title, authors, year, abstract, doi, url, journal, item_type, source, source_id, keywords, citation_key, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        authors = excluded.authors,
+        year = excluded.year,
+        abstract = excluded.abstract,
+        doi = excluded.doi,
+        url = excluded.url,
+        journal = excluded.journal,
+        item_type = excluded.item_type,
+        keywords = excluded.keywords,
+        citation_key = excluded.citation_key,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+
+    const insertTag = db.prepare(`
+      INSERT OR IGNORE INTO reference_tags (reference_id, tag) VALUES (?, ?)
+    `);
+
+    const tx = db.transaction((rows) => {
+      const ids = [];
+      for (const item of rows) {
+        const id = `${source}_${userId}_${item.citationKey || crypto.randomUUID()}`;
+        upsert.run(
+          id,
+          userId,
+          item.title,
+          JSON.stringify(item.authors || []),
+          item.year,
+          item.abstract,
+          item.doi,
+          item.url,
+          item.journal,
+          item.itemType || 'article',
+          source,
+          item.citationKey || null,
+          JSON.stringify(item.keywords || []),
+          item.citationKey || null,
+        );
+        for (const tag of item.keywords || []) {
+          insertTag.run(id, tag);
+        }
+        ids.push(id);
+      }
+      return ids;
+    });
+
+    try {
+      return tx(items);
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  /** List user references with optional search and pagination. */
+  getUserReferences: (userId, { search, tags, limit = 50, offset = 0 } = {}) => {
+    try {
+      let query = 'SELECT * FROM references_library WHERE user_id = ?';
+      const params = [userId];
+
+      if (search) {
+        query += ' AND (title LIKE ? OR authors LIKE ? OR journal LIKE ? OR abstract LIKE ?)';
+        const term = `%${search}%`;
+        params.push(term, term, term, term);
+      }
+
+      if (tags && tags.length > 0) {
+        query += ` AND id IN (SELECT reference_id FROM reference_tags WHERE tag IN (${tags.map(() => '?').join(',')}))`;
+        params.push(...tags);
+      }
+
+      query += ' ORDER BY updated_at DESC LIMIT ? OFFSET ?';
+      params.push(limit, offset);
+
+      const rows = db.prepare(query).all(...params);
+      return rows.map((r) => ({
+        ...r,
+        authors: r.authors ? JSON.parse(r.authors) : [],
+        keywords: r.keywords ? JSON.parse(r.keywords) : [],
+        raw_data: undefined, // Don't send raw_data in list
+      }));
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  /** Single reference detail. */
+  getReference: (id) => {
+    try {
+      const row = db.prepare('SELECT * FROM references_library WHERE id = ?').get(id);
+      if (!row) return null;
+      return {
+        ...row,
+        authors: row.authors ? JSON.parse(row.authors) : [],
+        keywords: row.keywords ? JSON.parse(row.keywords) : [],
+        raw_data: row.raw_data ? JSON.parse(row.raw_data) : null,
+      };
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  /** Get references linked to a project. */
+  getProjectReferences: (projectId) => {
+    try {
+      const rows = db.prepare(`
+        SELECT r.*, pr.added_at AS linked_at
+        FROM references_library r
+        JOIN project_references pr ON pr.reference_id = r.id
+        WHERE pr.project_id = ?
+        ORDER BY pr.added_at DESC
+      `).all(projectId);
+      return rows.map((r) => ({
+        ...r,
+        authors: r.authors ? JSON.parse(r.authors) : [],
+        keywords: r.keywords ? JSON.parse(r.keywords) : [],
+        raw_data: undefined,
+      }));
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  /** Link a reference to a project. */
+  linkToProject: (projectId, referenceId) => {
+    try {
+      db.prepare('INSERT OR IGNORE INTO project_references (project_id, reference_id) VALUES (?, ?)').run(projectId, referenceId);
+      return true;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  /** Unlink a reference from a project. */
+  unlinkFromProject: (projectId, referenceId) => {
+    try {
+      const result = db.prepare('DELETE FROM project_references WHERE project_id = ? AND reference_id = ?').run(projectId, referenceId);
+      return result.changes > 0;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  /** Bulk-link an array of reference IDs to a project. */
+  bulkLinkIds: (projectId, referenceIds) => {
+    const insert = db.prepare('INSERT OR IGNORE INTO project_references (project_id, reference_id) VALUES (?, ?)');
+    const tx = db.transaction((ids) => {
+      let count = 0;
+      for (const id of ids) {
+        count += insert.run(projectId, id).changes;
+      }
+      return count;
+    });
+    return tx(referenceIds);
+  },
+
+  /** Get all unique tags for a user. */
+  getTags: (userId) => {
+    try {
+      const rows = db.prepare(`
+        SELECT DISTINCT rt.tag, COUNT(*) as count
+        FROM reference_tags rt
+        JOIN references_library r ON r.id = rt.reference_id
+        WHERE r.user_id = ?
+        GROUP BY rt.tag
+        ORDER BY count DESC
+      `).all(userId);
+      return rows;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  /** Mark a reference as having its PDF cached. */
+  setPdfCached: (id, cached = true) => {
+    try {
+      db.prepare('UPDATE references_library SET pdf_cached = ? WHERE id = ?').run(cached ? 1 : 0, id);
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  /** Delete a reference. */
+  deleteReference: (userId, referenceId) => {
+    try {
+      const result = db.prepare('DELETE FROM references_library WHERE id = ? AND user_id = ?').run(referenceId, userId);
+      return result.changes > 0;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  /** Bulk-delete references by id list. Returns number of deleted rows. */
+  bulkDeleteReferences: (userId, referenceIds) => {
+    if (!referenceIds || referenceIds.length === 0) return 0;
+    const placeholders = referenceIds.map(() => '?').join(',');
+    const result = db.prepare(
+      `DELETE FROM references_library WHERE user_id = ? AND id IN (${placeholders})`
+    ).run(userId, ...referenceIds);
+    return result.changes;
+  },
+};
+
 export {
   db,
   initializeDatabase,
@@ -715,5 +990,6 @@ export {
   credentialsDb,
   githubTokensDb, // Backward compatibility
   sessionDb,
-  projectDb
+  projectDb,
+  referencesDb
 };

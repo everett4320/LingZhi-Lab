@@ -107,6 +107,7 @@
     "placeholderDefault": "Type your message...",
     "disabled": "Input disabled",
     "attachFiles": "Attach files",
+    "attachReferences": "Attach references",
     "attachImages": "Attach images",
     "dropFilesHere": "Drop files here",
     "send": "Send",

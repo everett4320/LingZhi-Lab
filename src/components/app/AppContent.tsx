@@ -60,6 +60,7 @@ export default function AppContent() {
     handleProjectSelect,
     handleNavigateToSession,
     handleStartWorkspaceQa,
+    handleChatFromReference,
     pendingAutoIntake,
     handleProjectCreatedWithIntake,
     clearPendingAutoIntake,
@@ -255,6 +256,7 @@ export default function AppContent() {
           clearImportedProjectAnalysisPrompt={clearImportedProjectAnalysisPrompt}
           onProjectSelect={handleProjectSelect}
           onStartWorkspaceQa={handleStartWorkspaceQa}
+          onChatFromReference={handleChatFromReference}
           newSessionMode={newSessionMode}
           onNewSessionModeChange={setNewSessionMode}
         />

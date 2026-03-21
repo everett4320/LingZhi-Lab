@@ -8,6 +8,7 @@ import type {
   SessionMode,
   SessionProvider,
 } from '../../../types/app';
+import type { Reference } from '../../references/types';
 
 export type SessionLifecycleHandler = (sessionId?: string | null) => void;
 
@@ -86,6 +87,7 @@ export interface MainContentProps {
   clearImportedProjectAnalysisPrompt?: () => void;
   onProjectSelect: (project: Project) => void;
   onStartWorkspaceQa?: (project: Project, prompt: string) => void;
+  onChatFromReference?: (project: Project, ref: Reference) => void;
   newSessionMode?: SessionMode;
   onNewSessionModeChange?: (mode: SessionMode) => void;
 }

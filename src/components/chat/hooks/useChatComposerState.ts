@@ -18,6 +18,7 @@ import { thinkingModes } from '../constants/thinkingModes';
 import { grantToolPermission } from '../utils/chatPermissions';
 import { getProviderSettingsKey, safeLocalStorage } from '../utils/chatStorage';
 import { consumeWorkspaceQaDraft, WORKSPACE_QA_DRAFT_EVENT } from '../../../utils/workspaceQa';
+import { consumeReferenceChatDraft, REFERENCE_CHAT_DRAFT_EVENT } from '../../../utils/referenceChatDraft';
 import type {
   ChatMessage,
   PendingPermissionRequest,
@@ -839,12 +840,7 @@ export function useChatComposerState({
       return;
     }
 
-    const applyQueuedDraft = () => {
-      const draft = consumeWorkspaceQaDraft(selectedProject.name);
-      if (!draft) {
-        return;
-      }
-
+    const applyDraft = (draft: string) => {
       setInput(draft);
       inputValueRef.current = draft;
 
@@ -863,6 +859,33 @@ export function useChatComposerState({
       }, 0);
     };
 
+    const applyQueuedDraft = () => {
+      const wqDraft = consumeWorkspaceQaDraft(selectedProject.name);
+      if (wqDraft) {
+        applyDraft(wqDraft);
+        return;
+      }
+      const refDraft = consumeReferenceChatDraft(selectedProject.name);
+      if (refDraft) {
+        applyDraft(refDraft.text);
+
+        if (refDraft.pdfCached && refDraft.referenceId) {
+          (async () => {
+            try {
+              const res = await authenticatedFetch(`/api/references/${refDraft.referenceId}/pdf`);
+              if (res.ok) {
+                const blob = await res.blob();
+                const file = new File([blob], `${refDraft.referenceId}.pdf`, { type: 'application/pdf' });
+                setAttachedImages((prev) => [...prev, file].slice(0, 5));
+              }
+            } catch {
+              // PDF fetch failed — user still has text context
+            }
+          })();
+        }
+      }
+    };
+
     applyQueuedDraft();
 
     const handleQueuedDraft = (event: Event) => {
@@ -874,8 +897,10 @@ export function useChatComposerState({
     };
 
     window.addEventListener(WORKSPACE_QA_DRAFT_EVENT, handleQueuedDraft);
+    window.addEventListener(REFERENCE_CHAT_DRAFT_EVENT, handleQueuedDraft);
     return () => {
       window.removeEventListener(WORKSPACE_QA_DRAFT_EVENT, handleQueuedDraft);
+      window.removeEventListener(REFERENCE_CHAT_DRAFT_EVENT, handleQueuedDraft);
     };
   }, [selectedProject?.name, setInput]);
 
