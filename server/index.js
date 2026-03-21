@@ -1304,73 +1304,145 @@ function handleChatConnection(ws, request) {
                 writer.telemetryContext = { ...telemetryContext, provider: 'claude', telemetryEnabled: commandTelemetryEnabled };
 
                 // Use Claude Agents SDK
-                await queryClaudeSDK(data.command, { ...data.options, env: sessionEnv }, writer);
+                const sessionId = data.options?.sessionId || data.sessionId;
+                if (sessionId && isClaudeSDKSessionActive(sessionId)) {
+                    console.log(`[WARN] Session ${sessionId} is already active. Ignoring concurrent request.`);
+                    return;
+                }
+                
+                queryClaudeSDK(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
+                    console.error('[ERROR] Claude query error:', error);
+                    writer.send({
+                        type: 'claude-error',
+                        error: error.message,
+                        sessionId: sessionId || null
+                    });
+                });
             } else if (data.type === 'cursor-command') {
                 console.log('[DEBUG] Cursor message:', data.command || '[Continue/Resume]');
                 console.log('📁 Project:', data.options?.cwd || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
                 console.log('🤖 Model:', data.options?.model || 'default');
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
+                const sessionId = data.options?.sessionId || data.sessionId;
+                
+                if (sessionId && isCursorSessionActive(sessionId)) {
+                    console.log(`[WARN] Cursor session ${sessionId} is already active. Ignoring concurrent request.`);
+                    return;
+                }
+                
                 enqueueConversationTelemetry(
                     {
                         name: 'agent_dialogue_meta',
                         direction: 'user_to_agent',
                         provider: 'cursor',
-                        sessionId: data.options?.sessionId || data.sessionId || null,
+                        sessionId: sessionId || null,
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
                         transportType: data.type,
                     },
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
                 );
                 writer.telemetryContext = { ...telemetryContext, provider: 'cursor', telemetryEnabled: commandTelemetryEnabled };
-                await spawnCursor(data.command, { ...data.options, env: sessionEnv }, writer);
+                
+                spawnCursor(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
+                    console.error('[ERROR] Cursor spawn error:', error);
+                    writer.send({
+                        type: 'cursor-error',
+                        error: error.message,
+                        sessionId: sessionId || null
+                    });
+                });
             } else if (data.type === 'codex-command') {
                 console.log('[DEBUG] Codex message:', data.command || '[Continue/Resume]');
                 console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
                 console.log('🤖 Model:', data.options?.model || 'default');
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
+                const sessionId = data.options?.sessionId || data.sessionId;
+                
+                if (sessionId && isCodexSessionActive(sessionId)) {
+                    console.log(`[WARN] Codex session ${sessionId} is already active. Ignoring concurrent request.`);
+                    return;
+                }
+                
                 enqueueConversationTelemetry(
                     {
                         name: 'agent_dialogue_meta',
                         direction: 'user_to_agent',
                         provider: 'codex',
-                        sessionId: data.options?.sessionId || data.sessionId || null,
+                        sessionId: sessionId || null,
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
                         transportType: data.type,
                     },
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
                 );
                 writer.telemetryContext = { ...telemetryContext, provider: 'codex', telemetryEnabled: commandTelemetryEnabled };
-                await queryCodex(data.command, { ...data.options, env: sessionEnv }, writer);
+                
+                queryCodex(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
+                    console.error('[ERROR] Codex query error:', error);
+                    writer.send({
+                        type: 'codex-error',
+                        error: error.message,
+                        sessionId: sessionId || null
+                    });
+                });
             } else if (data.type === 'gemini-command') {
                 console.log('[DEBUG] Gemini message:', data.command || '[Continue/Resume]');
                 console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
                 console.log('🤖 Model:', data.options?.model || 'default');
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
+                const sessionId = data.options?.sessionId || data.sessionId;
+                
+                if (sessionId && isGeminiSessionActive(sessionId)) {
+                    console.log(`[WARN] Gemini session ${sessionId} is already active. Ignoring concurrent request.`);
+                    return;
+                }
+                
                 enqueueConversationTelemetry(
                     {
                         name: 'agent_dialogue_meta',
                         direction: 'user_to_agent',
                         provider: 'gemini',
-                        sessionId: data.options?.sessionId || data.sessionId || null,
+                        sessionId: sessionId || null,
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
                         transportType: data.type,
                     },
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
                 );
                 writer.telemetryContext = { ...telemetryContext, provider: 'gemini', telemetryEnabled: commandTelemetryEnabled };
-                await spawnGemini(data.command, { ...data.options, env: sessionEnv }, writer);
+                
+                spawnGemini(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
+                    console.error('[ERROR] Gemini spawn error:', error);
+                    writer.send({
+                        type: 'gemini-error',
+                        error: error.message,
+                        sessionId: sessionId || null
+                    });
+                });
             } else if (data.type === 'cursor-resume') {
                 // Backward compatibility: treat as cursor-command with resume and no prompt
                 console.log('[DEBUG] Cursor resume session (compat):', data.sessionId);
-                await spawnCursor('', {
+                const sessionId = data.sessionId;
+                
+                if (sessionId && isCursorSessionActive(sessionId)) {
+                    console.log(`[WARN] Cursor session ${sessionId} is already active. Ignoring concurrent request.`);
+                    return;
+                }
+                
+                spawnCursor('', {
                     sessionId: data.sessionId,
                     resume: true,
                     cwd: data.options?.cwd,
                     env: sessionEnv
-                }, writer);
+                }, writer).catch(error => {
+                    console.error('[ERROR] Cursor resume error:', error);
+                    writer.send({
+                        type: 'cursor-error',
+                        error: error.message,
+                        sessionId: sessionId || null
+                    });
+                });
             } else if (data.type === 'abort-session') {
                 console.log('[DEBUG] Abort session request:', data.sessionId);
                 const provider = data.provider || 'claude';
