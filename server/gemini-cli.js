@@ -1125,9 +1125,9 @@ export async function spawnGemini(command, options = {}, ws) {
       const finalSessionId = capturedSessionId || sessionId || initialKey;
       const sessionData = activeGeminiSessions.get(finalSessionId);
       if (sessionData?.heartbeat) clearInterval(sessionData.heartbeat);
-      activeGeminiSessions.delete(finalSessionId);
       await cleanupGeminiTempFiles(tempFilePaths, tempDir);
       ws.send({ type: 'gemini-complete', sessionId: finalSessionId, exitCode: code, isNewSession: (!sessionId || sessionId.startsWith('new-session-')) && !!command });
+      activeGeminiSessions.delete(finalSessionId);
       if (policyViolationTriggered || code === 0 || code === null) resolve();
       else reject(new Error(`Gemini CLI exited with code ${code}`));
     });

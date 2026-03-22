@@ -261,14 +261,13 @@ async function spawnCursor(command, options = {}, ws) {
       
       // Clean up process reference
       const finalSessionId = capturedSessionId || sessionId || processKey;
-      activeCursorProcesses.delete(finalSessionId);
-
       ws.send({
         type: 'claude-complete',
         sessionId: finalSessionId,
         exitCode: code,
         isNewSession: !sessionId && !!command // Flag to indicate this was a new session
       });
+      activeCursorProcesses.delete(finalSessionId);
       
       if (code === 0) {
         resolve();

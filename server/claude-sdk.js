@@ -582,15 +582,10 @@ async function queryClaudeSDK(command, options = {}, ws) {
       }
     }
 
-    // Clean up session on completion
-    if (capturedSessionId) {
-      removeSession(capturedSessionId);
-    }
-
     // Clean up temporary image files
     await cleanupTempFiles(tempImagePaths, tempDir);
 
-    // Send completion event
+    // Send completion event before removing session to avoid race with abort requests
     console.log('Streaming complete, sending claude-complete event');
     ws.send({
       type: 'claude-complete',
@@ -599,6 +594,11 @@ async function queryClaudeSDK(command, options = {}, ws) {
       isNewSession: !sessionId && !!command
     });
     console.log('claude-complete event sent');
+
+    // Clean up session after completion message is sent
+    if (capturedSessionId) {
+      removeSession(capturedSessionId);
+    }
 
   } catch (error) {
     console.error('SDK query error:', error);
