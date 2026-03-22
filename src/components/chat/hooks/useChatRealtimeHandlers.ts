@@ -8,6 +8,7 @@ import {
   persistSessionTimerStart,
   safeLocalStorage,
 } from '../utils/chatStorage';
+import { RESUMING_STATUS_TEXT } from '../types/types';
 import type { ChatMessage, PendingPermissionRequest } from '../types/types';
 import type { Project, ProjectSession, SessionProvider } from '../../../types/app';
 
@@ -52,6 +53,7 @@ interface UseChatRealtimeHandlersArgs {
   onSessionInactive?: (sessionId?: string | null) => void;
   onSessionProcessing?: (sessionId?: string | null) => void;
   onSessionNotProcessing?: (sessionId?: string | null) => void;
+  onSessionStatusResolved?: (sessionId?: string | null, isProcessing?: boolean) => void;
   onReplaceTemporarySession?: (sessionId?: string | null) => void;
   onNavigateToSession?: (
     sessionId: string,
@@ -128,6 +130,7 @@ export function useChatRealtimeHandlers({
   onSessionInactive,
   onSessionProcessing,
   onSessionNotProcessing,
+  onSessionStatusResolved,
   onReplaceTemporarySession,
   onNavigateToSession,
 }: UseChatRealtimeHandlersArgs) {
@@ -407,6 +410,7 @@ export function useChatRealtimeHandlers({
       clearSessionTimerStart(sessionId);
       onSessionInactive?.(sessionId);
       onSessionNotProcessing?.(sessionId);
+      onSessionStatusResolved?.(sessionId, false);
     };
 
     const persistStartTime = (startTime?: number | null, ...sessionIds: Array<string | null | undefined>) => {
@@ -460,6 +464,7 @@ export function useChatRealtimeHandlers({
         clearSessionTimerStart(sessionId);
         onSessionInactive?.(sessionId);
         onSessionNotProcessing?.(sessionId);
+        onSessionStatusResolved?.(sessionId, false);
       });
     };
 
@@ -1182,14 +1187,16 @@ export function useChatRealtimeHandlers({
           setIsLoading(true);
           setCanAbortSession(true);
           onSessionProcessing?.(statusSessionId);
+          onSessionStatusResolved?.(statusSessionId, true);
           // If we have a startTime from the backend, sync our status
           if (Number.isFinite(latestMessage.startTime)) {
-            syncClaudeStatusStartTime(latestMessage.startTime, 'Resuming...');
+            syncClaudeStatusStartTime(latestMessage.startTime, RESUMING_STATUS_TEXT);
           }
         } else if (isCurrentSession && latestMessage.isProcessing === false) {
           clearSessionTimerStart(statusSessionId);
           clearLoadingIndicators();
           onSessionNotProcessing?.(statusSessionId);
+          onSessionStatusResolved?.(statusSessionId, false);
         }
         break;
       }
@@ -1255,6 +1262,6 @@ export function useChatRealtimeHandlers({
     latestMessage, provider, selectedProject, selectedSession, currentSessionId, setCurrentSessionId,
     setChatMessages, setIsLoading, setCanAbortSession, setClaudeStatus, setTokenBudget,
     setIsSystemSessionChange, setPendingPermissionRequests, onSessionInactive, onSessionProcessing,
-    onSessionNotProcessing, onReplaceTemporarySession, onNavigateToSession,
+    onSessionNotProcessing, onSessionStatusResolved, onReplaceTemporarySession, onNavigateToSession,
   ]);
 }

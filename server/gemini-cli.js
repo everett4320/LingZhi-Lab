@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { createRequestId, waitForToolApproval, matchesToolPermission } from './utils/permissions.js';
-import { ensureProjectSkillLinks } from './projects.js';
+import { encodeProjectPath, ensureProjectSkillLinks, reconcileGeminiSessionIndex } from './projects.js';
 import { writeProjectTemplates } from './templates/index.js';
 import { stripInternalContextPrefix } from './utils/sessionFormatting.js';
 import { recordIndexedSession } from './utils/sessionIndex.js';
@@ -72,6 +72,29 @@ const GEMINI_PLAN_BLOCKED_TOOLS = new Set([
   'Write',
   'Edit'
 ]);
+
+function encodeProjectPath(projectPath) {
+  return path.resolve(projectPath).replace(/[\\/:\s~_]/g, '-');
+}
+
+async function persistGeminiSessionMetadata(sessionId, projectPath, sessionMode) {
+  if (!sessionId || !projectPath) return;
+
+  try {
+    const { sessionDb } = await import('./database/db.js');
+    sessionDb.upsertSession(
+      sessionId,
+      encodeProjectPath(projectPath),
+      'gemini',
+      'Untitled Session',
+      new Date().toISOString(),
+      0,
+      { sessionMode: sessionMode || 'research' },
+    );
+  } catch (error) {
+    console.warn('[Gemini] Failed to persist session metadata:', error.message);
+  }
+}
 
 function normalizeGeminiToolName(name) {
   if (!name || typeof name !== 'string') return name;
@@ -387,7 +410,7 @@ async function cleanupGeminiTempFiles(tempFilePaths, tempDir) {
  * Ensures a session directory exists and creates a basic JSONL metadata file if it doesn't.
  * This helps Dr. Claw discover the session even if the CLI hasn't written to it yet.
  */
-async function syncSessionMetadata(sessionId, projectPath) {
+async function syncSessionMetadata(sessionId, projectPath, sessionMode = 'research') {
   if (!sessionId || !projectPath) return;
   
   const geminiSessionsDir = path.join(os.homedir(), '.gemini', 'sessions');
@@ -403,15 +426,17 @@ async function syncSessionMetadata(sessionId, projectPath) {
       return;
     } catch (e) {
       // File doesn't exist, create it with metadata
+      const timestamp = new Date().toISOString();
       const initialEntry = {
         type: 'session_meta',
         payload: {
           id: sessionId,
           cwd: projectPath,
-          timestamp: new Date().toISOString()
+          timestamp,
+          sessionMode: sessionMode || 'research',
         },
         cwd: projectPath, // Compatibility
-        timestamp: new Date().toISOString()
+        timestamp,
       };
       
       await fs.writeFile(sessionFile, JSON.stringify(initialEntry) + '\n', 'utf8');
@@ -734,7 +759,8 @@ export async function spawnGemini(command, options = {}, ws) {
               capturedSessionId = sid;
               
               // Persist metadata to filesystem so Dr. Claw can discover it on refresh
-              await syncSessionMetadata(capturedSessionId, workingDir);
+              await syncSessionMetadata(capturedSessionId, workingDir, sessionMode);
+              await persistGeminiSessionMetadata(capturedSessionId, workingDir, sessionMode);
               
               // NEW: If we have an initial command, save it now that we have a real SID
               if (cleanedInitialUserCommand) {
@@ -1126,8 +1152,20 @@ export async function spawnGemini(command, options = {}, ws) {
       const sessionData = activeGeminiSessions.get(finalSessionId);
       if (sessionData?.heartbeat) clearInterval(sessionData.heartbeat);
       await cleanupGeminiTempFiles(tempFilePaths, tempDir);
+      // Send completion event immediately so the UI can settle
       ws.send({ type: 'gemini-complete', sessionId: finalSessionId, exitCode: code, isNewSession: (!sessionId || sessionId.startsWith('new-session-')) && !!command });
       activeGeminiSessions.delete(finalSessionId);
+      // Post-completion housekeeping — runs after the UI receives the completion signal
+      if (workingDir && finalSessionId) {
+        try {
+          await reconcileGeminiSessionIndex(workingDir, {
+            sessionId: finalSessionId,
+            projectName: encodeProjectPath(workingDir),
+          });
+        } catch (error) {
+          console.warn(`[Gemini] Failed to reconcile indexed session ${finalSessionId}:`, error.message);
+        }
+      }
       if (policyViolationTriggered || code === 0 || code === null) resolve();
       else reject(new Error(`Gemini CLI exited with code ${code}`));
     });

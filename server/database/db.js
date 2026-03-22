@@ -541,30 +541,219 @@ const githubTokensDb = {
 };
 
 // Session metadata index operations
+function parseSessionRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    ...row,
+    metadata: row.metadata ? JSON.parse(row.metadata) : null
+  };
+}
+
+function normalizeSessionDisplayName(displayName) {
+  if (displayName === null || displayName === undefined) {
+    return null;
+  }
+
+  return stripInternalContextPrefix(displayName);
+}
+
+function normalizeSessionTimestamp(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  const value = timestamp instanceof Date ? timestamp.toISOString() : String(timestamp).trim();
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+}
+
+// Returns "YYYY-MM-DD HH:MM:SS" format for SQLite created_at column convention
+function normalizeSessionCreatedAt(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  const value = timestamp instanceof Date ? timestamp.toISOString() : String(timestamp).trim();
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().replace('T', ' ').slice(0, 19);
+  }
+
+  return value;
+}
+
+function mergeSessionMetadata(existingMetadata, incomingMetadata) {
+  const base = existingMetadata && typeof existingMetadata === 'object' ? existingMetadata : {};
+  const incoming = incomingMetadata && typeof incomingMetadata === 'object' ? incomingMetadata : {};
+  return {
+    ...base,
+    ...incoming,
+  };
+}
+
+function resolveLatestActivity(existingActivity, incomingActivity) {
+  const normalizedExisting = normalizeSessionTimestamp(existingActivity);
+  const normalizedIncoming = normalizeSessionTimestamp(incomingActivity);
+  if (!normalizedExisting) {
+    return normalizedIncoming;
+  }
+  if (!normalizedIncoming) {
+    return normalizedExisting;
+  }
+
+  const existingTime = new Date(normalizedExisting).getTime();
+  const incomingTime = new Date(normalizedIncoming).getTime();
+  if (Number.isNaN(existingTime)) {
+    return normalizedIncoming;
+  }
+  if (Number.isNaN(incomingTime)) {
+    return normalizedExisting;
+  }
+
+  return incomingTime >= existingTime ? normalizedIncoming : normalizedExisting;
+}
+
+function resolveMessageCount(existingCount, incomingCount) {
+  const normalizedExisting = Number(existingCount || 0);
+  const normalizedIncoming = Number(incomingCount || 0);
+  return Math.max(normalizedExisting, normalizedIncoming);
+}
+
 const sessionDb = {
   // Upsert session metadata (insert if not exists, update if exists)
   upsertSession: (id, projectName, provider, displayName, lastActivity, messageCount = 0, metadata = null) => {
     try {
-      const cleanedDisplayName = stripInternalContextPrefix(displayName);
-      const stmt = db.prepare(`
-        INSERT INTO session_metadata (id, project_name, provider, display_name, last_activity, message_count, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          display_name = COALESCE(excluded.display_name, session_metadata.display_name),
-          last_activity = COALESCE(excluded.last_activity, session_metadata.last_activity),
-          message_count = COALESCE(excluded.message_count, session_metadata.message_count),
-          metadata = COALESCE(excluded.metadata, session_metadata.metadata)
-      `);
-      stmt.run(id, projectName, provider, cleanedDisplayName, lastActivity, messageCount, metadata ? JSON.stringify(metadata) : null);
+      sessionDb.upsertSessionFromSource(id, projectName, provider, {
+        displayName,
+        lastActivity,
+        messageCount,
+        metadata,
+      });
     } catch (err) {
       console.error('Error upserting session metadata:', err.message);
+    }
+  },
+
+  upsertSessionPlaceholder: (id, projectName, provider, displayName = null, lastActivity = null, metadata = null) => {
+    try {
+      const existing = parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(id));
+      const cleanedDisplayName = normalizeSessionDisplayName(displayName);
+      const mergedMetadata = mergeSessionMetadata(existing?.metadata, metadata);
+      const normalizedLastActivity = resolveLatestActivity(existing?.last_activity, lastActivity);
+
+      if (!existing) {
+        db.prepare(`
+          INSERT INTO session_metadata (id, project_name, provider, display_name, last_activity, message_count, metadata, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id,
+          projectName,
+          provider,
+          cleanedDisplayName,
+          normalizedLastActivity,
+          0,
+          Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+          normalizeSessionCreatedAt(lastActivity) || normalizeSessionCreatedAt(new Date())
+        );
+        return;
+      }
+
+      db.prepare(`
+        UPDATE session_metadata
+        SET project_name = ?,
+            provider = ?,
+            last_activity = ?,
+            metadata = ?,
+            display_name = CASE
+              WHEN display_name IS NULL OR trim(display_name) = '' THEN ?
+              ELSE display_name
+            END
+        WHERE id = ?
+      `).run(
+        projectName,
+        provider,
+        normalizedLastActivity,
+        Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+        cleanedDisplayName,
+        id
+      );
+    } catch (err) {
+      console.error('Error upserting placeholder session metadata:', err.message);
+    }
+  },
+
+  upsertSessionFromSource: (id, projectName, provider, payload = {}) => {
+    try {
+      const existing = parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(id));
+      const incomingDisplayName = normalizeSessionDisplayName(payload.displayName);
+      const mergedMetadata = mergeSessionMetadata(existing?.metadata, payload.metadata);
+      const normalizedLastActivity = resolveLatestActivity(existing?.last_activity, payload.lastActivity);
+      const resolvedMessageCount = resolveMessageCount(existing?.message_count, payload.messageCount);
+      const createdAt =
+        existing?.created_at ||
+        normalizeSessionCreatedAt(payload.createdAt) ||
+        normalizeSessionCreatedAt(payload.lastActivity) ||
+        normalizeSessionCreatedAt(new Date());
+      const resolvedStarred = Number(payload.isStarred ?? existing?.is_starred ?? 0);
+
+      if (!existing) {
+        db.prepare(`
+          INSERT INTO session_metadata (id, project_name, provider, display_name, last_activity, message_count, is_starred, metadata, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id,
+          projectName,
+          provider,
+          incomingDisplayName,
+          normalizedLastActivity,
+          resolvedMessageCount,
+          resolvedStarred,
+          Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+          createdAt
+        );
+        return;
+      }
+
+      db.prepare(`
+        UPDATE session_metadata
+        SET project_name = ?,
+            provider = ?,
+            display_name = ?,
+            last_activity = ?,
+            message_count = ?,
+            is_starred = ?,
+            metadata = ?
+        WHERE id = ?
+      `).run(
+        projectName || existing.project_name,
+        provider || existing.provider,
+        incomingDisplayName || existing.display_name,
+        normalizedLastActivity,
+        resolvedMessageCount,
+        resolvedStarred,
+        Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+        id
+      );
+    } catch (err) {
+      console.error('Error upserting session metadata from source:', err.message);
     }
   },
 
   // Update session name ONLY (priority for manual rename)
   updateSessionName: (id, displayName) => {
     try {
-      const cleanedDisplayName = stripInternalContextPrefix(displayName);
+      const cleanedDisplayName = normalizeSessionDisplayName(displayName);
       const stmt = db.prepare('UPDATE session_metadata SET display_name = ? WHERE id = ?');
       stmt.run(cleanedDisplayName, id);
     } catch (err) {
@@ -572,14 +761,82 @@ const sessionDb = {
     }
   },
 
+  migrateSessionId: (oldId, newId, provider = null, projectName = null) => {
+    try {
+      if (!oldId || !newId || oldId === newId) {
+        return;
+      }
+
+      const oldRow = parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(oldId));
+      if (!oldRow) {
+        return;
+      }
+
+      const newRow = parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(newId));
+      const mergedMetadata = mergeSessionMetadata(oldRow.metadata, newRow?.metadata);
+      const mergedLastActivity = resolveLatestActivity(oldRow.last_activity, newRow?.last_activity);
+      const mergedMessageCount = resolveMessageCount(oldRow.message_count, newRow?.message_count);
+      const mergedDisplayName =
+        normalizeSessionDisplayName(newRow?.display_name) ||
+        normalizeSessionDisplayName(oldRow.display_name);
+      const mergedCreatedAt = newRow?.created_at || oldRow.created_at || normalizeSessionCreatedAt(mergedLastActivity) || normalizeSessionCreatedAt(new Date());
+      const mergedStarred = Number(newRow?.is_starred || oldRow.is_starred || 0);
+
+      const migrate = db.transaction(() => {
+        if (!newRow) {
+          db.prepare(`
+            INSERT INTO session_metadata (id, project_name, provider, display_name, last_activity, message_count, is_starred, metadata, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            newId,
+            projectName || oldRow.project_name,
+            provider || oldRow.provider,
+            mergedDisplayName,
+            mergedLastActivity,
+            mergedMessageCount,
+            mergedStarred,
+            Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+            mergedCreatedAt
+          );
+        } else {
+          db.prepare(`
+            UPDATE session_metadata
+            SET project_name = ?,
+                provider = ?,
+                display_name = ?,
+                last_activity = ?,
+                message_count = ?,
+                is_starred = ?,
+                metadata = ?,
+                created_at = ?
+            WHERE id = ?
+          `).run(
+            projectName || newRow.project_name || oldRow.project_name,
+            provider || newRow.provider || oldRow.provider,
+            mergedDisplayName,
+            mergedLastActivity,
+            mergedMessageCount,
+            mergedStarred,
+            Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+            mergedCreatedAt,
+            newId
+          );
+        }
+
+        db.prepare('DELETE FROM session_metadata WHERE id = ?').run(oldId);
+      });
+
+      migrate();
+    } catch (err) {
+      console.error('Error migrating session metadata ID:', err.message);
+    }
+  },
+
   // Get all metadata for sessions in a project
   getSessionsByProject: (projectName) => {
     try {
       const rows = db.prepare('SELECT * FROM session_metadata WHERE project_name = ?').all(projectName);
-      return rows.map(row => ({
-        ...row,
-        metadata: row.metadata ? JSON.parse(row.metadata) : null
-      }));
+      return rows.map(parseSessionRow);
     } catch (err) {
       console.error('Error getting project sessions:', err.message);
       return [];
@@ -604,10 +861,7 @@ const sessionDb = {
         allRows.push(...rows);
       }
 
-      return allRows.map(row => ({
-        ...row,
-        metadata: row.metadata ? JSON.parse(row.metadata) : null
-      }));
+      return allRows.map(parseSessionRow);
     } catch (err) {
       console.error('Error getting sessions for projects:', err.message);
       return [];
@@ -617,11 +871,7 @@ const sessionDb = {
   // Get metadata for a specific session
   getSessionById: (id) => {
     try {
-      const row = db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(id);
-      if (row && row.metadata) {
-        row.metadata = JSON.parse(row.metadata);
-      }
-      return row;
+      return parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(id));
     } catch (err) {
       console.error('Error getting session metadata:', err.message);
       return null;
@@ -754,5 +1004,6 @@ export {
   credentialsDb,
   githubTokensDb, // Backward compatibility
   sessionDb,
-  projectDb
+  projectDb,
+  normalizeSessionTimestamp
 };

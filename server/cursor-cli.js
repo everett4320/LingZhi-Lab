@@ -1,8 +1,5 @@
 import { spawn } from 'child_process';
 import crossSpawn from 'cross-spawn';
-import { promises as fs } from 'fs';
-import path from 'path';
-import os from 'os';
 import { resolveCursorCliCommand } from './utils/cursorCommand.js';
 import { recordIndexedSession } from './utils/sessionIndex.js';
 

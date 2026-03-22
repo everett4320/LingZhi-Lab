@@ -18,18 +18,59 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { CLAUDE_MODELS } from '../shared/modelConstants.js';
-import { ensureProjectSkillLinks } from './projects.js';
+import { encodeProjectPath, ensureProjectSkillLinks, reconcileClaudeSessionIndex } from './projects.js';
 import { writeProjectTemplates } from './templates/index.js';
 import { recordIndexedSession } from './utils/sessionIndex.js';
 
 import { createRequestId, waitForToolApproval, resolveToolApproval as resolvePermApproval, matchesToolPermission } from './utils/permissions.js';
 
 const activeSessions = new Map();
+const pendingClaudeSessionIndexReconciles = new Map();
 
 const TOOLS_REQUIRING_INTERACTION = new Set(['AskUserQuestion']);
 
 function resolveToolApproval(requestId, decision) {
   resolvePermApproval(requestId, decision);
+}
+
+function scheduleClaudeSessionIndexReconcile(projectPath, sessionId, delayMs = 1000) {
+  if (!projectPath || !sessionId) {
+    return;
+  }
+
+  const existingTimer = pendingClaudeSessionIndexReconciles.get(sessionId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  const timeoutId = setTimeout(async () => {
+    pendingClaudeSessionIndexReconciles.delete(sessionId);
+    try {
+      await reconcileClaudeSessionIndex(encodeProjectPath(projectPath), sessionId);
+    } catch (error) {
+      console.warn(`[Claude] Failed to reconcile indexed session ${sessionId}:`, error.message);
+    }
+  }, delayMs);
+
+  pendingClaudeSessionIndexReconciles.set(sessionId, timeoutId);
+}
+
+async function flushClaudeSessionIndexReconcile(projectPath, sessionId) {
+  if (!projectPath || !sessionId) {
+    return;
+  }
+
+  const existingTimer = pendingClaudeSessionIndexReconciles.get(sessionId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    pendingClaudeSessionIndexReconciles.delete(sessionId);
+  }
+
+  try {
+    await reconcileClaudeSessionIndex(encodeProjectPath(projectPath), sessionId);
+  } catch (error) {
+    console.warn(`[Claude] Failed to flush indexed session ${sessionId}:`, error.message);
+  }
 }
 
 /**
@@ -395,6 +436,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
   let sessionCreatedSent = false;
   let tempImagePaths = [];
   let tempDir = null;
+  const sessionProjectPath = options.cwd || options.projectPath || null;
 
   try {
     // Ensure skills symlinks and CLAUDE.md template exist in the project directory
@@ -568,6 +610,14 @@ async function queryClaudeSDK(command, options = {}, ws) {
         sessionId: capturedSessionId || sessionId || null
       });
 
+      if (
+        capturedSessionId &&
+        sessionProjectPath &&
+        (message.type === 'assistant' || message.type === 'result')
+      ) {
+        scheduleClaudeSessionIndexReconcile(sessionProjectPath, capturedSessionId);
+      }
+
       // Send token budget update when the turn completes
       if (message.type === 'result') {
         const tokenBudget = extractTokenBudgetFromUsage(lastAssistantUsage);
@@ -582,9 +632,6 @@ async function queryClaudeSDK(command, options = {}, ws) {
       }
     }
 
-    // Clean up temporary image files
-    await cleanupTempFiles(tempImagePaths, tempDir);
-
     // Send completion event before removing session to avoid race with abort requests
     console.log('Streaming complete, sending claude-complete event');
     ws.send({
@@ -595,10 +642,15 @@ async function queryClaudeSDK(command, options = {}, ws) {
     });
     console.log('claude-complete event sent');
 
-    // Clean up session after completion message is sent
+    // Keep post-run housekeeping out of the completion critical path so the UI
+    // can settle immediately after the model finishes streaming.
+    const completionTasks = [];
     if (capturedSessionId) {
       removeSession(capturedSessionId);
+      completionTasks.push(flushClaudeSessionIndexReconcile(sessionProjectPath, capturedSessionId));
     }
+    completionTasks.push(cleanupTempFiles(tempImagePaths, tempDir));
+    await Promise.allSettled(completionTasks);
 
   } catch (error) {
     console.error('SDK query error:', error);
@@ -608,15 +660,19 @@ async function queryClaudeSDK(command, options = {}, ws) {
       removeSession(capturedSessionId);
     }
 
-    // Clean up temporary image files on error
-    await cleanupTempFiles(tempImagePaths, tempDir);
-
     // Send error to WebSocket
     ws.send({
       type: 'claude-error',
       error: error.message,
       sessionId: capturedSessionId || sessionId || null
     });
+
+    const errorTasks = [];
+    if (capturedSessionId) {
+      errorTasks.push(flushClaudeSessionIndexReconcile(sessionProjectPath, capturedSessionId));
+    }
+    errorTasks.push(cleanupTempFiles(tempImagePaths, tempDir));
+    await Promise.allSettled(errorTasks);
 
     throw error;
   }

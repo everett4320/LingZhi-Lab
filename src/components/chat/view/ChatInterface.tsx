@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import ChatMessagesPane from './subcomponents/ChatMessagesPane';
 import ChatComposer from './subcomponents/ChatComposer';
 import SkillShortcutsPanel from './subcomponents/SkillShortcutsPanel';
+import { RESUMING_STATUS_TEXT } from '../types/types';
 import type { ChatInterfaceProps } from '../types/types';
 import type { ProviderAvailability } from '../types/types';
 import { useChatProviderState } from '../hooks/useChatProviderState';
@@ -164,6 +165,7 @@ function ChatInterface({
     scrollToBottom,
     scrollToBottomAndReset,
     handleScroll,
+    resolveSessionStatusCheck,
   } = useChatSessionState({
     selectedProject,
     selectedSession,
@@ -275,6 +277,7 @@ function ChatInterface({
     onSessionInactive,
     onSessionProcessing,
     onSessionNotProcessing,
+    onSessionStatusResolved: resolveSessionStatusCheck,
     onReplaceTemporarySession,
     onNavigateToSession,
   });
@@ -481,12 +484,13 @@ function ChatInterface({
   const prevIsLoadingForProcessingRef = useRef(false);
   useEffect(() => {
     const processingSessionId = selectedSession?.id || currentSessionId;
-    const loadingJustStarted = isLoading && !prevIsLoadingForProcessingRef.current;
-    prevIsLoadingForProcessingRef.current = isLoading;
+    const shouldTrackAsProcessing = isLoading && claudeStatus?.text !== RESUMING_STATUS_TEXT;
+    const loadingJustStarted = shouldTrackAsProcessing && !prevIsLoadingForProcessingRef.current;
+    prevIsLoadingForProcessingRef.current = shouldTrackAsProcessing;
     if (processingSessionId && loadingJustStarted && onSessionProcessing) {
       onSessionProcessing(processingSessionId);
     }
-  }, [currentSessionId, isLoading, onSessionProcessing, selectedSession?.id]);
+  }, [claudeStatus?.text, currentSessionId, isLoading, onSessionProcessing, selectedSession?.id]);
 
   useEffect(() => {
     return () => {

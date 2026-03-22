@@ -27,16 +27,16 @@ export function recordIndexedSession({
   }
 
   const projectName = encodeProjectPath(projectPath);
-  sessionDb.upsertSession(
+  sessionDb.upsertSessionPlaceholder(
     sessionId,
     projectName,
     provider,
     displayName || defaultSessionName(provider),
     lastActivity || new Date().toISOString(),
-    0,
     {
       sessionMode,
       projectPath,
+      indexState: 'placeholder',
     },
   );
 }
