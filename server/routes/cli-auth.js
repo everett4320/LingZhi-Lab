@@ -268,10 +268,19 @@ async function checkGeminiCredentials() {
   }
 }
 
-function checkClaudeCredentials() {
+async function checkClaudeCredentials() {
+  const resolvedCliCommand = await resolveAvailableCliCommand({
+    envVarName: 'CLAUDE_CLI_PATH',
+    defaultCommands: ['claude'],
+    appendWindowsSuffixes: true
+  });
+
+  if (!resolvedCliCommand) {
+    return checkClaudeCredentialsFile({ cliAvailable: false });
+  }
+
   return new Promise((resolve) => {
     let processCompleted = false;
-    let commandMissing = false;
 
     const timeout = setTimeout(() => {
       if (!processCompleted) {
@@ -280,14 +289,15 @@ function checkClaudeCredentials() {
           childProcess.kill();
         }
         // Fall back to credentials file check on timeout
-        checkClaudeCredentialsFile({ cliAvailable: !commandMissing }).then(resolve);
+        checkClaudeCredentialsFile({ cliAvailable: true, cliCommand: resolvedCliCommand }).then(resolve);
       }
     }, 5000);
 
     let childProcess;
     try {
-      childProcess = spawn('claude', ['auth', 'status', '--json'], {
-        env: { ...process.env, CLAUDECODE: '' }
+      childProcess = spawn(resolvedCliCommand, ['auth', 'status', '--json'], {
+        env: { ...process.env, CLAUDECODE: '' },
+        shell: process.platform === 'win32'
       });
     } catch {
       clearTimeout(timeout);
@@ -317,7 +327,9 @@ function checkClaudeCredentials() {
           if (status.loggedIn) {
             resolve({
               authenticated: true,
-              email: status.email || null
+              email: status.email || null,
+              cliAvailable: true,
+              cliCommand: resolvedCliCommand
             });
             return;
           }
@@ -327,21 +339,21 @@ function checkClaudeCredentials() {
       }
 
       // CLI check failed, fall back to credentials file
-      checkClaudeCredentialsFile({ cliAvailable: !commandMissing }).then(resolve);
+      checkClaudeCredentialsFile({ cliAvailable: true, cliCommand: resolvedCliCommand }).then(resolve);
     });
 
-    childProcess.on('error', (error) => {
+    childProcess.on('error', () => {
       if (processCompleted) return;
       processCompleted = true;
       clearTimeout(timeout);
-      commandMissing = error?.code === 'ENOENT';
-      // claude CLI not available, fall back to credentials file
-      checkClaudeCredentialsFile({ cliAvailable: !commandMissing }).then(resolve);
+      // Command was already validated by resolveAvailableCliCommand, so treat
+      // any spawn error as a transient failure rather than "CLI missing".
+      checkClaudeCredentialsFile({ cliAvailable: true, cliCommand: resolvedCliCommand }).then(resolve);
     });
   });
 }
 
-async function checkClaudeCredentialsFile({ cliAvailable = true } = {}) {
+async function checkClaudeCredentialsFile({ cliAvailable = true, cliCommand = 'claude' } = {}) {
   try {
     const credPath = path.join(os.homedir(), '.claude', '.credentials.json');
     const content = await fs.readFile(credPath, 'utf8');
@@ -356,7 +368,7 @@ async function checkClaudeCredentialsFile({ cliAvailable = true } = {}) {
           authenticated: true,
           email: creds.email || creds.user || null,
           cliAvailable,
-          cliCommand: 'claude'
+          cliCommand
         };
       }
     }
@@ -365,7 +377,7 @@ async function checkClaudeCredentialsFile({ cliAvailable = true } = {}) {
       authenticated: false,
       email: null,
       cliAvailable,
-      cliCommand: 'claude',
+      cliCommand,
       error: cliAvailable ? null : 'Claude Code CLI not installed',
       installHint: cliAvailable ? null : buildCliInstallHint('claude')
     };
@@ -374,7 +386,7 @@ async function checkClaudeCredentialsFile({ cliAvailable = true } = {}) {
       authenticated: false,
       email: null,
       cliAvailable,
-      cliCommand: 'claude',
+      cliCommand,
       error: cliAvailable ? null : 'Claude Code CLI not installed',
       installHint: cliAvailable ? null : buildCliInstallHint('claude')
     };
