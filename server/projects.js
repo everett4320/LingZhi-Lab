@@ -1279,17 +1279,17 @@ async function getProjects(userId, progressCallback = null) {
   let totalProjects = 0;
   let processedProjects = 0;
 
-  let dbProjects = projectDb.getAllProjects(userId || null);
-  if (dbProjects.length === 0) {
-    await bootstrapProjectsIndexFromLegacySources(
-      config,
-      projectDb,
-      userId || null,
-      visibleWorkspaceRoots,
-    );
-  }
+  // Always sync from legacy sources so CLI-created projects appear in the
+  // web UI. Previously this only ran when the database was empty, meaning
+  // projects created after the first run were never discovered. See #86.
+  await bootstrapProjectsIndexFromLegacySources(
+    config,
+    projectDb,
+    userId || null,
+    visibleWorkspaceRoots,
+  );
   await syncDiscoveredProjectsFromCodexSessions(config, projectDb, userId || null, visibleWorkspaceRoots);
-  dbProjects = projectDb.getAllProjects(userId || null);
+  const dbProjects = projectDb.getAllProjects(userId || null);
 
   try {
     const visibleProjects = [];
@@ -2964,18 +2964,24 @@ async function addProjectManually(projectPath, displayName = null, userId = null
     };
   }
 
-  projectDb.upsertProject(projectName, userId, displayName, absolutePath, 0, new Date().toISOString(), { manuallyAdded: true });
+  // Check if a project with this path already exists under a different ID
+  // (e.g., CLI uses '-Users-john-myproject' but manual add encodes as
+  // '-Users-john-myproject'). Prevents duplicates from different encodings. See #86.
+  const existing = projectDb.getProjectByPath(absolutePath);
+  const effectiveId = existing ? existing.id : projectName;
+
+  projectDb.upsertProject(effectiveId, userId, displayName, absolutePath, 0, new Date().toISOString(), { manuallyAdded: true });
 
   await mutateProjectConfig((config) => {
-    config[projectName] = {
-      ...(config[projectName] || {}),
+    config[effectiveId] = {
+      ...(config[effectiveId] || {}),
       manuallyAdded: true,
       originalPath: absolutePath,
-      ownerUserId: config[projectName]?.ownerUserId ?? userId ?? null,
+      ownerUserId: config[effectiveId]?.ownerUserId ?? userId ?? null,
     };
 
     if (displayName) {
-      config[projectName].displayName = displayName;
+      config[effectiveId].displayName = displayName;
     }
   });
 
@@ -2988,10 +2994,10 @@ async function addProjectManually(projectPath, displayName = null, userId = null
   } catch (_) {}
 
   return {
-    name: projectName,
+    name: effectiveId,
     path: absolutePath,
     fullPath: absolutePath,
-    displayName: displayName || await generateDisplayName(projectName, absolutePath),
+    displayName: displayName || await generateDisplayName(effectiveId, absolutePath),
     isManuallyAdded: true,
     createdAt: dirCreatedAt,
     sessions: [],
