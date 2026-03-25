@@ -123,14 +123,35 @@ export function formatFileTreeInContent(text: string): string {
 export function formatUsageLimitText(text: string) {
   try {
     if (typeof text !== 'string') return text;
-    
+
     // First apply file tree formatting
     let formattedText = formatFileTreeInContent(text);
 
     // Strip <thinking>...</thinking> blocks that appear inline in assistant messages
     formattedText = formattedText.replace(/<thinking>[\s\S]*?<\/thinking>\s*/g, '');
 
-    return formattedText.replace(/Claude AI usage limit reached\|\d{10,13}/g, 'AI usage limit reached. Please try again later.');    
+    // Parse "Claude AI usage limit reached|<timestamp>" and show local reset time
+    const localTimezone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
+    const USAGE_LIMIT_FALLBACK = 'AI usage limit reached. Please try again later.';
+    formattedText = formattedText.replace(/Claude AI usage limit reached\|(\d{10,13})/g, (_match, ts) => {
+      try {
+        const epoch = ts.length <= 10 ? Number(ts) * 1000 : Number(ts);
+        const resetDate = new Date(epoch);
+        if (Number.isNaN(resetDate.getTime())) return USAGE_LIMIT_FALLBACK;
+        const time = resetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const totalMinutes = Math.abs(resetDate.getTimezoneOffset());
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        const sign = resetDate.getTimezoneOffset() <= 0 ? '+' : '-';
+        const offset = `GMT${sign}${hours}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''}`;
+        const date = resetDate.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+        return `AI usage limit reached. Your limit will reset at **${time} ${offset} (${localTimezone})** - ${date}`;
+      } catch {
+        return USAGE_LIMIT_FALLBACK;
+      }
+    });
+
+    return formattedText;
   } catch {
     return text;
   }

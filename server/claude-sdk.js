@@ -18,6 +18,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { CLAUDE_MODELS } from '../shared/modelConstants.js';
+import { classifyError, classifySDKError } from '../shared/errorClassifier.js';
 import { encodeProjectPath, ensureProjectSkillLinks, reconcileClaudeSessionIndex } from './projects.js';
 import { writeProjectTemplates } from './templates/index.js';
 import { applyStageTagsToSession, recordIndexedSession } from './utils/sessionIndex.js';
@@ -610,6 +611,19 @@ async function queryClaudeSDK(command, options = {}, ws) {
         lastAssistantUsage = message.message.usage;
       }
 
+      // Detect SDK-level errors on assistant messages (e.g. rate_limit, authentication_failed)
+      // These come as structured enum values, not in the catch block.
+      if (message.type === 'assistant' && message.error) {
+        const { errorType, isRetryable } = classifySDKError(message.error, 'claude');
+        ws.send({
+          type: 'claude-error',
+          error: message.error,
+          errorType,
+          isRetryable,
+          sessionId: capturedSessionId || sessionId || null,
+        });
+      }
+
       // Transform and send message to WebSocket
       const transformedMessage = transformMessage(message);
       const sessionData = capturedSessionId ? getSession(capturedSessionId) : null;
@@ -689,19 +703,13 @@ async function queryClaudeSDK(command, options = {}, ws) {
       removeSession(capturedSessionId);
     }
 
-    const errorMsg = error.message || '';
-    let errorType = 'unknown';
-    if (/usage[_ ]limit|rate[_ ]limit/i.test(errorMsg)) errorType = 'usage_limit';
-    else if (/overloaded/i.test(errorMsg)) errorType = 'overloaded';
-    else if (/network|ECONNREFUSED|ETIMEDOUT/i.test(errorMsg)) errorType = 'network';
-    else if (/\bauth\b|unauthorized|forbidden/i.test(errorMsg)) errorType = 'auth';
-
+    const { errorType, isRetryable } = classifyError(error.message);
 
     ws.send({
       type: 'claude-error',
       error: error.message,
       errorType,
-      isRetryable: errorType !== 'auth',
+      isRetryable,
       sessionId: capturedSessionId || sessionId || null
     });
 

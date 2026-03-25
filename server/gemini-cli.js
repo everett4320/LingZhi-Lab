@@ -9,6 +9,7 @@ import { writeProjectTemplates } from './templates/index.js';
 import { stripInternalContextPrefix } from './utils/sessionFormatting.js';
 import { applyStageTagsToSession, recordIndexedSession } from './utils/sessionIndex.js';
 import { splitLegacyGeminiThoughtContent } from '../shared/geminiThoughtParser.js';
+import { classifyError } from '../shared/errorClassifier.js';
 
 // Use cross-spawn on Windows for better command execution
 const spawnFunction = process.platform === 'win32' ? crossSpawn : spawn;
@@ -681,17 +682,13 @@ export async function spawnGemini(command, options = {}, ws) {
       }
       lastSentGeminiErrorSummary = summary;
 
-      let errorType = 'unknown';
-      if (/usage[_ ]limit|rate[_ ]limit/i.test(summary)) errorType = 'usage_limit';
-      else if (/overloaded/i.test(summary)) errorType = 'overloaded';
-      else if (/network|ECONNREFUSED|ETIMEDOUT/i.test(summary)) errorType = 'network';
-      else if (/\bauth\b|unauthorized|forbidden/i.test(summary)) errorType = 'auth';
+      const { errorType, isRetryable } = classifyError(summary);
 
       ws.send({
         type: 'gemini-error',
         error: summary,
         errorType,
-        isRetryable: errorType !== 'auth',
+        isRetryable,
         ...(typeof details === 'string' && details.trim() ? { details } : {}),
         sessionId: capturedSessionId || sessionId || null
       });

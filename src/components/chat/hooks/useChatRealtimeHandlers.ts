@@ -699,11 +699,12 @@ export function useChatRealtimeHandlers({
         flushAndFinalizePendingStream();
         clearLoadingIndicators();
         markSessionsAsCompleted(erroredSessionId, currentSessionId, selectedSession?.id);
-        // Clear any pending session timers that might re-trigger loading state
+        // Clear pendingSessionId for the errored session (not all sessions — other tabs may be active)
         if (typeof window !== 'undefined') {
-          const timerKeys = Object.keys(sessionStorage).filter((k) => k.startsWith('session_timer_start_'));
-          timerKeys.forEach((k) => sessionStorage.removeItem(k));
-          sessionStorage.removeItem('pendingSessionId');
+          const pendingSessionId = sessionStorage.getItem('pendingSessionId');
+          if (pendingSessionId && (!erroredSessionId || pendingSessionId === erroredSessionId)) {
+            sessionStorage.removeItem('pendingSessionId');
+          }
         }
         setPendingPermissionRequests([]);
         const details = typeof latestMessage.details === 'string' ? latestMessage.details.trim() : '';
