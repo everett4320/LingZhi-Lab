@@ -5,6 +5,9 @@
 </div>
 
 <p align="center">
+<a href="https://openlair.github.io/dr-claw">
+<img src="https://img.shields.io/badge/%F0%9F%8C%90-Homepage-CB2B3E?style=for-the-badge" alt="Homepage" />
+</a>
 <a href="https://github.com/OpenLAIR/dr-claw">
 <img src="https://img.shields.io/badge/%F0%9F%A6%9E-Dr.%20Claw-CB2B3E?style=for-the-badge" alt="Dr. Claw" />
 </a>
@@ -756,11 +759,12 @@ If you find Dr. Claw useful in your research, please cite:
 
 ```bibtex
 @misc{song2026drclaw,
-  author       = {Dingjie Song and Hanrong Zhang and Dawei Liu and Yixin Liu and Zhengqing Yuan and Siqi Zhang and Lichao Sun},
+  author       = {Dingjie Song and Hanrong Zhang and Dawei Liu and Yixin Liu and Zhengqing Yuan and Zongxia Li and Siqi Zhang and Lichao Sun},
   title        = {Dr. Claw: An AI Research Workspace from Idea to Paper},
   year         = {2026},
   organization = {GitHub},
   url          = {https://github.com/OpenLAIR/dr-claw},
+  homepage     = {https://openlair.github.io/dr-claw},
 }
 ```
 
