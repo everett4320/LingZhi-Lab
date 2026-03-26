@@ -112,6 +112,7 @@
     "placeholderDefault": "输入您的消息...",
     "disabled": "输入已禁用",
     "attachFiles": "附加文件",
+    "attachReferences": "附加文献",
     "attachImages": "附加图片",
     "dropFilesHere": "拖放文件到此处",
     "attachmentOnlyFallback": "请先查看我附上的文件，并基于这些文件帮助我。",

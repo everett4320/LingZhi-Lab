@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import { api } from '../utils/api';
 import { queueWorkspaceQaDraft } from '../utils/workspaceQa';
+import { queueReferenceChatDraft } from '../utils/referenceChatDraft';
+import type { Reference } from '../components/references/types';
+import { formatReferenceChatPrompt } from '../components/references/types';
 import type {
   AppSocketMessage,
   AppTab,
@@ -719,6 +722,27 @@ export function useProjectsState({
     [isMobile, navigate],
   );
 
+  const handleChatFromReference = useCallback(
+    (project: Project, ref: Reference) => {
+      setSelectedProject(project);
+      setSelectedSession(null);
+      setActiveTab('chat');
+      persistNewSessionMode('research');
+      setNewSessionMode('research');
+      queueReferenceChatDraft(project.name, {
+        text: formatReferenceChatPrompt(ref),
+        referenceId: ref.id,
+        pdfCached: ref.pdf_cached === 1,
+      });
+      navigate('/');
+
+      if (isMobile) {
+        setSidebarOpen(false);
+      }
+    },
+    [isMobile, navigate],
+  );
+
   const handleProjectCreatedWithIntake = useCallback(
     (project: Project, options?: ProjectCreationOptions) => {
       setSelectedProject(project);
@@ -956,6 +980,7 @@ export function useProjectsState({
     handleOpenNews,
     handleNewSession,
     handleStartWorkspaceQa,
+    handleChatFromReference,
     handleSessionDelete,
     handleProjectDelete,
     handleSidebarRefresh,

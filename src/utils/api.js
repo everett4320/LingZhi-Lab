@@ -369,6 +369,30 @@ export const api = {
     }),
   },
 
+  // References (literature library) endpoints
+  references: {
+    list: (params) => authenticatedFetch(`/api/references?${new URLSearchParams(params || {})}`),
+    get: (id) => authenticatedFetch(`/api/references/${encodeURIComponent(id)}`),
+    delete: (id) => authenticatedFetch(`/api/references/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    getPdf: (id) => authenticatedFetch(`/api/references/${encodeURIComponent(id)}/pdf`),
+    syncZotero: ({ projectName, collectionKey, sourceIds } = {}) => authenticatedFetch('/api/references/sync/zotero', { method: 'POST', body: JSON.stringify({ projectName, collectionKey, sourceIds }) }),
+    zoteroItems: (params) => {
+      const qs = new URLSearchParams();
+      if (params?.collectionKey) qs.set('collectionKey', params.collectionKey);
+      if (params?.limit) qs.set('limit', String(params.limit));
+      if (params?.start) qs.set('start', String(params.start));
+      return authenticatedFetch(`/api/references/zotero/items?${qs}`);
+    },
+    importBibtex: (formData) => authenticatedFetch('/api/references/import/bibtex', { method: 'POST', body: formData, headers: {} }),
+    zoteroStatus: () => authenticatedFetch('/api/references/zotero/status'),
+    zoteroCollections: () => authenticatedFetch('/api/references/zotero/collections'),
+    projectRefs: (projectName) => authenticatedFetch(`/api/references/project/${encodeURIComponent(projectName)}`),
+    linkToProject: (projectName, refId) => authenticatedFetch(`/api/references/project/${encodeURIComponent(projectName)}/${encodeURIComponent(refId)}`, { method: 'POST' }),
+    unlinkFromProject: (projectName, refId) => authenticatedFetch(`/api/references/project/${encodeURIComponent(projectName)}/${encodeURIComponent(refId)}`, { method: 'DELETE' }),
+    bulkDelete: (ids) => authenticatedFetch('/api/references/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+    tags: () => authenticatedFetch('/api/references/tags'),
+  },
+
   // Generic GET method for any endpoint
   get: (endpoint) => authenticatedFetch(`/api${endpoint}`),
 

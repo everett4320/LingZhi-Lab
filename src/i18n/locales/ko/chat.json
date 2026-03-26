@@ -112,6 +112,7 @@
     "placeholderDefault": "메시지를 입력하세요...",
     "disabled": "입력 비활성화",
     "attachFiles": "파일 첨부",
+    "attachReferences": "참고문헌 첨부",
     "attachImages": "이미지 첨부",
     "dropFilesHere": "파일을 여기에 놓으세요",
     "attachmentOnlyFallback": "첨부한 파일을 먼저 확인하고, 그 파일을 바탕으로 도와주세요.",

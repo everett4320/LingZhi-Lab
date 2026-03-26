@@ -4,8 +4,10 @@ import { MicButton } from '../../../MicButton.jsx';
 import ImageAttachment from './ImageAttachment';
 import PermissionRequestsBanner from './PermissionRequestsBanner';
 import ChatInputControls from './ChatInputControls';
+import ReferencePicker from '../../../references/view/ReferencePicker';
 import PromptBadgeDropdown from './PromptBadgeDropdown';
 import { useTranslation } from 'react-i18next';
+import { useState } from 'react';
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -97,6 +99,8 @@ interface ChatComposerProps {
   isTextareaExpanded: boolean;
   sendByCtrlEnter?: boolean;
   onTranscript: (text: string) => void;
+  projectName?: string;
+  onReferenceContext?: (context: string) => void;
   attachedPrompt: AttachedPrompt | null;
   onRemoveAttachedPrompt: () => void;
   onUpdateAttachedPrompt: (promptText: string) => void;
@@ -157,11 +161,14 @@ export default function ChatComposer({
   isTextareaExpanded,
   sendByCtrlEnter,
   onTranscript,
+  projectName,
+  onReferenceContext,
   attachedPrompt,
   onRemoveAttachedPrompt,
   onUpdateAttachedPrompt,
 }: ChatComposerProps) {
   const { t } = useTranslation('chat');
+  const [showReferencePicker, setShowReferencePicker] = useState(false);
   const AnyCommandMenu = CommandMenu as any;
   const textareaRect = textareaRef.current?.getBoundingClientRect();
   const commandMenuPosition = {
@@ -284,6 +291,16 @@ export default function ChatComposer({
           </div>
         )}
 
+        {showReferencePicker && projectName && onReferenceContext && (
+          <ReferencePicker
+            projectName={projectName}
+            onSelect={(context) => {
+              onReferenceContext?.(context);
+            }}
+            onClose={() => setShowReferencePicker(false)}
+          />
+        )}
+
         <AnyCommandMenu
           commands={filteredCommands}
           selectedIndex={selectedCommandIndex}
@@ -309,7 +326,7 @@ export default function ChatComposer({
             />
           )}
           <div ref={inputHighlightRef} aria-hidden="true" className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl">
-            <div className="chat-input-placeholder block w-full pl-12 pr-20 sm:pr-40 py-1.5 sm:py-4 text-transparent text-base leading-6 whitespace-pre-wrap break-words">
+            <div className={`chat-input-placeholder block w-full ${projectName ? 'pl-[5.5rem]' : 'pl-12'} pr-20 sm:pr-40 py-1.5 sm:py-4 text-transparent text-base leading-6 whitespace-pre-wrap break-words`}>
               {renderInputWithMentions(input)}
             </div>
           </div>
@@ -328,25 +345,39 @@ export default function ChatComposer({
               onInput={onTextareaInput}
               placeholder={placeholder}
               disabled={isLoading}
-              className="chat-input-placeholder block w-full pl-12 pr-20 sm:pr-40 py-1.5 sm:py-4 bg-transparent rounded-2xl focus:outline-none text-foreground placeholder-muted-foreground/50 disabled:opacity-50 resize-none min-h-[50px] sm:min-h-[80px] max-h-[40vh] sm:max-h-[300px] overflow-y-auto text-base leading-6 transition-all duration-200"
+              className={`chat-input-placeholder block w-full ${projectName ? 'pl-[5.5rem]' : 'pl-12'} pr-20 sm:pr-40 py-1.5 sm:py-4 bg-transparent rounded-2xl focus:outline-none text-foreground placeholder-muted-foreground/50 disabled:opacity-50 resize-none min-h-[50px] sm:min-h-[80px] max-h-[40vh] sm:max-h-[300px] overflow-y-auto text-base leading-6 transition-all duration-200`}
               style={{ height: '50px' }}
             />
 
-            <button
-              type="button"
-              onClick={openFilePicker}
-              className="absolute left-2 top-1/2 transform -translate-y-1/2 p-2 hover:bg-accent/60 rounded-xl transition-colors"
-              title={t('input.attachFiles')}
-            >
-              <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                />
-              </svg>
-            </button>
+            <div className="absolute left-1 top-1/2 transform -translate-y-1/2 flex items-center">
+              <button
+                type="button"
+                onClick={openFilePicker}
+                className="p-2 hover:bg-accent/60 rounded-xl transition-colors"
+                title={t('input.attachFiles')}
+              >
+                <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                  />
+                </svg>
+              </button>
+              {projectName && onReferenceContext && (
+                <button
+                  type="button"
+                  onClick={() => setShowReferencePicker(!showReferencePicker)}
+                  className="p-2 hover:bg-accent/60 rounded-xl transition-colors"
+                  title={t('input.attachReferences')}
+                >
+                  <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                </button>
+              )}
+            </div>
 
             <div className="absolute right-14 top-1/2 transform -translate-y-1/2">
               <MicButton onTranscript={onTranscript} className="!w-9 !h-9" />
@@ -371,7 +402,7 @@ export default function ChatComposer({
             </button>
 
             <div
-              className={`absolute bottom-1 left-12 right-14 sm:right-40 text-xs text-muted-foreground/50 pointer-events-none hidden sm:block transition-opacity duration-200 ${
+              className={`absolute bottom-1 ${projectName ? 'left-[5.5rem]' : 'left-12'} right-14 sm:right-40 text-xs text-muted-foreground/50 pointer-events-none hidden sm:block transition-opacity duration-200 ${
                 input.trim() ? 'opacity-0' : 'opacity-100'
               }`}
             >
