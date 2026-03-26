@@ -9,6 +9,7 @@ import ComputePanel from '../../ComputePanel';
 import ErrorBoundary from '../../ErrorBoundary';
 import SurveyPage from '../../survey/view/SurveyPage';
 import ProjectDashboard from '../../project-dashboard/view/ProjectDashboard';
+import TrashDashboard from '../../project-dashboard/view/TrashDashboard';
 import NewsDashboard from '../../news-dashboard/view/NewsDashboard';
 
 import MainContentHeader from './subcomponents/MainContentHeader';
@@ -32,6 +33,7 @@ type TaskMasterContextValue = {
 
 function MainContent({
   projects,
+  trashProjects,
   selectedProject,
   selectedSession,
   activeTab,
@@ -42,6 +44,7 @@ function MainContent({
   isMobile,
   onMenuClick,
   isLoading,
+  isTrashLoading,
   onInputFocusChange,
   onSessionActive,
   onSessionInactive,
@@ -147,6 +150,35 @@ function MainContent({
     );
   }
 
+  if (activeTab === 'trash') {
+    return (
+      <div className="h-full flex flex-col">
+        <MainContentHeader
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          selectedProject={null}
+          selectedSession={null}
+          shouldShowTasksTab={shouldShowTasksTab}
+          isMobile={isMobile}
+          onMenuClick={onMenuClick}
+        />
+
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <TrashDashboard
+            projects={trashProjects}
+            isLoading={Boolean(isTrashLoading)}
+            onRefresh={async () => {
+              await Promise.all([
+                window.refreshProjects?.(),
+                window.refreshTrashProjects?.(),
+              ]);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (activeTab === 'news') {
     return (
       <div className="h-full flex flex-col">
@@ -214,6 +246,7 @@ function MainContent({
                 clearPendingAutoIntake={clearPendingAutoIntake}
                 importedProjectAnalysisPrompt={importedProjectAnalysisPrompt}
                 clearImportedProjectAnalysisPrompt={clearImportedProjectAnalysisPrompt}
+                onOpenShellForSession={() => setActiveTab('shell')}
                 newSessionMode={newSessionMode}
                 onNewSessionModeChange={onNewSessionModeChange}
               />
@@ -232,12 +265,12 @@ function MainContent({
 
           {activeTab === 'shell' && (
             <div className="h-full w-full overflow-hidden">
-              <ShellWorkspace project={selectedProject} />
+              <ShellWorkspace project={selectedProject} session={selectedSession} />
             </div>
           )}
 
           {activeTab === 'git' && (
-            <div className="h-full overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden">
               <AnyGitPanel selectedProject={selectedProject} isMobile={isMobile} onFileOpen={handleFileOpen} />
             </div>
           )}

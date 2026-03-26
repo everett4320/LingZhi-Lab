@@ -19,6 +19,7 @@
   },
   "tabs": {
     "dashboard": "仪表盘",
+    "trash": "回收站",
     "chat": "聊天",
     "survey": "调研",
     "shell": "终端",
@@ -85,7 +86,8 @@
   "mobileNav": {
     "survey": "调研",
     "researchLab": "实验室",
-    "git": "Git"
+    "git": "Git",
+    "trash": "回收站"
   },
   "surveyPage": {
     "title": "调研阶段",
@@ -188,6 +190,20 @@
   },
   "projectDashboard": {
     "title": "项目仪表盘",
+    "trashTitle": "项目回收站",
+    "trashSubtitle": "从仪表盘删除的项目会先移动到这里，便于恢复，或分别删除数据库记录与实际文件。",
+    "trashBadge": "回收站",
+    "trashEmptyTitle": "回收站为空",
+    "trashEmptyDescription": "从仪表盘删除的项目不会立刻彻底清除，而是先移动到这里。",
+    "trashDeletedAt": "删除于 {{time}}",
+    "trashSessions": "{{count}} 个对话",
+    "trashFilesMissing": "工作区文件已不存在",
+    "restoreProject": "恢复项目",
+    "deleteFromTrash": "从回收站删除",
+    "trashDeleteTitle": "选择删除方式",
+    "trashDeleteDescription": "逻辑删除只移除数据库记录。物理删除还会永久删除回收站中残留的实际文件。",
+    "logicalDelete": "仅删除记录",
+    "physicalDelete": "永久删除文件",
     "subtitle": "集中查看所有工作区进度，并快速回到正在进行的项目。",
     "overviewBadge": "工作区总览",
     "sharedBadge": "共享工作区资源",

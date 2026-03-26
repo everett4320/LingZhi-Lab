@@ -31,7 +31,7 @@ const c = {
     dim: (text) => `${colors.dim}${text}${colors.reset}`,
 };
 
-console.log('PORT from env:', process.env.PORT);
+console.log('Requested PORT from env:', process.env.PORT);
 
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -44,12 +44,12 @@ import pty from 'node-pty';
 import fetch from 'node-fetch';
 import mime from 'mime-types';
 
-import { getProjects, getSessions, getSessionMessages, renameProject, renameSession, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache } from './projects.js';
+import { getProjects, getTrashedProjects, getSessions, getSessionMessages, renameProject, renameSession, deleteSession, deleteProject, restoreProject, deleteTrashedProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache } from './projects.js';
 import { getProjectTokenUsageSummary } from './project-token-usage.js';
-import { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive, getActiveClaudeSDKSessions, resolveToolApproval } from './claude-sdk.js';
-import { spawnCursor, abortCursorSession, isCursorSessionActive, getActiveCursorSessions } from './cursor-cli.js';
-import { queryCodex, abortCodexSession, isCodexSessionActive, getActiveCodexSessions } from './openai-codex.js';
-import { spawnGemini, abortGeminiSession, isGeminiSessionActive, getActiveGeminiSessions } from './gemini-cli.js';
+import { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive, getClaudeSDKSessionStartTime, getActiveClaudeSDKSessions, resolveToolApproval } from './claude-sdk.js';
+import { spawnCursor, abortCursorSession, isCursorSessionActive, getCursorSessionStartTime, getActiveCursorSessions } from './cursor-cli.js';
+import { queryCodex, abortCodexSession, isCodexSessionActive, getCodexSessionStartTime, getActiveCodexSessions } from './openai-codex.js';
+import { spawnGemini, abortGeminiSession, isGeminiSessionActive, getGeminiSessionStartTime, getActiveGeminiSessions } from './gemini-cli.js';
 import gitRoutes from './routes/git.js';
 import authRoutes from './routes/auth.js';
 import mcpRoutes from './routes/mcp.js';
@@ -69,12 +69,20 @@ import computeRoutes from './routes/compute.js';
 import newsRoutes from './routes/news.js';
 import autoResearchRoutes from './routes/auto-research.js';
 import referencesRoutes from './routes/references.js';
-import { initializeDatabase } from './database/db.js';
+import { initializeDatabase, sessionDb, tagDb } from './database/db.js';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
 import { IS_PLATFORM } from './constants/config.js';
 import { enqueueTelemetryEvent } from './telemetry.js';
 import { resolveCursorCliCommand, isCursorLoginCommand, isGeminiLoginCommand, normalizeCursorLoginCommand } from './utils/cursorCommand.js';
 import { getGeminiApiKeyForUser, withGeminiApiKeyEnv } from './utils/geminiApiKey.js';
+import {
+    DEFAULT_BACKEND_PORT,
+    DEFAULT_FRONTEND_PORT,
+    getFrontendPortSync,
+    listenOnAvailablePort,
+    parsePortNumber,
+    setRuntimePortSync,
+} from './utils/runtimePorts.js';
 
 // File system watchers for provider project/session folders
 const PROVIDER_WATCH_PATHS = [
@@ -273,9 +281,54 @@ const PTY_SESSION_TIMEOUT = 30 * 60 * 1000;
 const SHELL_URL_PARSE_BUFFER_LIMIT = 32768;
 const ANSI_ESCAPE_SEQUENCE_REGEX = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
 const TRAILING_URL_PUNCTUATION_REGEX = /[)\]}>.,;:!?]+$/;
+const REPLAY_TERMINAL_QUERY_REGEXES = [
+    /\x1B\[[>?0-9;]*c/g,
+    /\x1B\[[0-9;?]*n/g,
+    /\x1B\[\?[0-9;]*\$p/g,
+];
+const SHELL_EMBEDDED_ENV_KEYS_TO_REMOVE = [
+    'TERM_PROGRAM',
+    'TERM_PROGRAM_VERSION',
+    'ITERM_SESSION_ID',
+    'LC_TERMINAL',
+    'LC_TERMINAL_VERSION',
+    'WT_SESSION',
+];
 
 function stripAnsiSequences(value = '') {
     return value.replace(ANSI_ESCAPE_SEQUENCE_REGEX, '');
+}
+
+function stripReplayTerminalQueries(value = '') {
+    return REPLAY_TERMINAL_QUERY_REGEXES.reduce(
+        (currentValue, regex) => currentValue.replace(regex, ''),
+        value,
+    );
+}
+
+function buildEmbeddedShellEnv(baseEnv = process.env) {
+    const env = {
+        ...baseEnv,
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor',
+        FORCE_COLOR: '3'
+    };
+
+    SHELL_EMBEDDED_ENV_KEYS_TO_REMOVE.forEach((key) => {
+        delete env[key];
+    });
+
+    Object.keys(env).forEach((key) => {
+        if (
+            key.startsWith('VSCODE_') ||
+            key.startsWith('FIG_') ||
+            key.startsWith('QTERM_')
+        ) {
+            delete env[key];
+        }
+    });
+
+    return env;
 }
 
 function normalizeDetectedUrl(url) {
@@ -452,18 +505,18 @@ const expandWorkspacePath = async (inputPath) => {
 // Browse filesystem endpoint for project suggestions - uses existing getFileTree
 app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
     try {
-        const { path: dirPath } = req.query;
+        const { path: dirPath, showHidden: showHiddenQuery } = req.query;
+        const showHidden = showHiddenQuery === 'true';
 
-        console.log('[API] Browse filesystem request for path:', dirPath);
-        const defaultRoot = await getWorkspacesRoot();
-        console.log('[API] Workspace root is:', defaultRoot);
-        // Default to workspace root if no path provided
-        let targetPath = dirPath ? await expandWorkspacePath(dirPath) : defaultRoot;
+        console.log('[API] Browse filesystem request for path:', dirPath, 'showHidden:', showHidden);
+        const homeDir = os.homedir();
+        // Default to home directory if no path provided
+        let targetPath = dirPath ? await expandWorkspacePath(dirPath) : homeDir;
 
         // Resolve and normalize the path
         targetPath = path.resolve(targetPath);
 
-        // Security check - ensure path is within allowed workspace root
+        // Security check - ensure path is valid
         const validation = await validateWorkspacePath(targetPath);
         if (!validation.valid) {
             return res.status(403).json({ error: validation.error });
@@ -483,7 +536,8 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
         }
 
         // Use existing getFileTree function with shallow depth (only direct children)
-        const fileTree = await getFileTree(resolvedPath, 1, 0, false); // maxDepth=1, showHidden=false
+        // For browsing, we use a more permissive version that doesn't skip node_modules etc.
+        const fileTree = await getFileTree(resolvedPath, 1, 0, showHidden, true); // maxDepth=1, showHidden, isBrowsing=true
 
         // Filter only directories and format for suggestions
         const directories = fileTree
@@ -503,14 +557,15 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
 
         // Add common directories if browsing home directory
         const suggestions = [];
-        let resolvedWorkspaceRoot = defaultRoot;
+        let resolvedHomeDir = homeDir;
         try {
-            resolvedWorkspaceRoot = await fsPromises.realpath(defaultRoot);
+            resolvedHomeDir = await fs.promises.realpath(homeDir);
         } catch (error) {
-            // Use default root as-is if realpath fails
+            // Use home dir as-is if realpath fails
         }
-        if (resolvedPath === resolvedWorkspaceRoot) {
-            const commonDirs = ['Desktop', 'Documents', 'Projects', 'Development', 'Dev', 'Code', 'workspace'];
+
+        if (resolvedPath === resolvedHomeDir) {
+            const commonDirs = ['Desktop', 'Documents', 'Downloads', 'Projects', 'Development', 'Dev', 'Code', 'workspace', 'vibelab'];
             const existingCommon = directories.filter(dir => commonDirs.includes(dir.name));
             const otherDirs = directories.filter(dir => !commonDirs.includes(dir.name));
 
@@ -670,6 +725,16 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
     }
 });
 
+app.get('/api/projects/trash', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const projects = await getTrashedProjects(userId);
+        res.json(projects);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/api/projects/token-usage-summary', authenticateToken, async (req, res) => {
     try {
         const projectRefs = req.body?.projects;
@@ -722,6 +787,62 @@ app.get('/api/projects/:projectName/sessions/:sessionId/messages', authenticateT
     }
 });
 
+app.get('/api/projects/:projectName/tags', authenticateToken, async (req, res) => {
+    try {
+        const { projectName } = req.params;
+        // Lazy initialization: idempotent, uses INSERT OR IGNORE internally.
+        tagDb.ensureDefaultStageTags(projectName);
+        const { tagType } = req.query;
+        const tags = tagDb.listProjectTags(projectName, tagType || null);
+        res.json({ tags });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/projects/:projectName/sessions/:sessionId/tags', authenticateToken, async (req, res) => {
+    try {
+        const { projectName, sessionId } = req.params;
+        // Lazy initialization: idempotent, uses INSERT OR IGNORE internally.
+        tagDb.ensureDefaultStageTags(projectName);
+        const session = sessionDb.getSessionById(sessionId);
+        if (!session || session.project_name !== projectName) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        const tags = tagDb.listTagsForSession(sessionId);
+        res.json({ tags });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put('/api/projects/:projectName/sessions/:sessionId/tags', authenticateToken, async (req, res) => {
+    try {
+        const { projectName, sessionId } = req.params;
+        const { tagIds } = req.body || {};
+
+        if (!Array.isArray(tagIds)) {
+            return res.status(400).json({ error: 'tagIds array is required' });
+        }
+
+        // Lazy initialization: idempotent, uses INSERT OR IGNORE internally.
+        tagDb.ensureDefaultStageTags(projectName);
+        const session = sessionDb.getSessionById(sessionId);
+        if (!session || session.project_name !== projectName) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        const tags = tagDb.replaceSessionTags(sessionId, projectName, tagIds, {
+            linkedBy: req.user?.username || 'user',
+            source: 'manual',
+        });
+        res.json({ success: true, tags });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Rename project endpoint
 app.put('/api/projects/:projectName/rename', authenticateToken, async (req, res) => {
     try {
@@ -765,9 +886,31 @@ app.delete('/api/projects/:projectName/sessions/:sessionId', authenticateToken, 
 // Delete project endpoint (force=true to delete with sessions)
 app.delete('/api/projects/:projectName', authenticateToken, async (req, res) => {
     try {
+        const userId = req.user?.id;
         const { projectName } = req.params;
         const force = req.query.force === 'true';
-        await deleteProject(projectName, force);
+        await deleteProject(projectName, force, userId);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/projects/trash/:projectName/restore', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        await restoreProject(req.params.projectName, userId);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/projects/trash/:projectName', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const mode = req.query.mode === 'physical' ? 'physical' : 'logical';
+        await deleteTrashedProject(req.params.projectName, mode, userId);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -775,21 +918,24 @@ app.delete('/api/projects/:projectName', authenticateToken, async (req, res) => 
 });
 
 // Create project endpoint
-app.post('/api/projects/create', authenticateToken, async (req, res) => {
+async function handleCreateProject(req, res) {
     try {
-        const { path: projectPath } = req.body;
+        const { path: projectPath, displayName = null } = req.body;
 
         if (!projectPath || !projectPath.trim()) {
             return res.status(400).json({ error: 'Project path is required' });
         }
 
-        const project = await addProjectManually(projectPath.trim(), null, req.user?.id);
+        const project = await addProjectManually(projectPath.trim(), displayName, req.user?.id);
         res.json({ success: true, project });
     } catch (error) {
         console.error('Error creating project:', error);
         res.status(500).json({ error: error.message });
     }
-});
+}
+
+app.post('/api/projects/create', authenticateToken, handleCreateProject);
+app.post('/api/projects', authenticateToken, handleCreateProject);
 
 // Read file content endpoint
 app.get('/api/projects/:projectName/file', authenticateToken, async (req, res) => {
@@ -1135,6 +1281,7 @@ class WebSocketWriter {
     this.sessionId = null;
     this.isWebSocketWriter = true;  // Marker for transport detection
     this.telemetryContext = telemetryContext;
+    this.projectPath = null;
   }
 
   send(data) {
@@ -1149,8 +1296,16 @@ class WebSocketWriter {
     this.sessionId = sessionId;
   }
 
+  setProjectPath(projectPath) {
+    this.projectPath = projectPath;
+  }
+
   getSessionId() {
     return this.sessionId;
+  }
+
+  getProjectPath() {
+    return this.projectPath;
   }
 }
 
@@ -1306,75 +1461,123 @@ function handleChatConnection(ws, request) {
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
                 );
                 writer.telemetryContext = { ...telemetryContext, provider: 'claude', telemetryEnabled: commandTelemetryEnabled };
+                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
 
                 // Use Claude Agents SDK
-                await queryClaudeSDK(data.command, { ...data.options, env: sessionEnv }, writer);
+                const sessionId = data.options?.sessionId || data.sessionId;
+                if (sessionId && isClaudeSDKSessionActive(sessionId)) {
+                    console.log(`[WARN] Session ${sessionId} is already active. Ignoring concurrent request.`);
+                    return;
+                }
+                
+                queryClaudeSDK(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
+                    console.error('[ERROR] Claude query error:', error);
+                });
             } else if (data.type === 'cursor-command') {
                 console.log('[DEBUG] Cursor message:', data.command || '[Continue/Resume]');
                 console.log('📁 Project:', data.options?.cwd || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
                 console.log('🤖 Model:', data.options?.model || 'default');
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
+                const sessionId = data.options?.sessionId || data.sessionId;
+                
+                if (sessionId && isCursorSessionActive(sessionId)) {
+                    console.log(`[WARN] Cursor session ${sessionId} is already active. Ignoring concurrent request.`);
+                    return;
+                }
+                
                 enqueueConversationTelemetry(
                     {
                         name: 'agent_dialogue_meta',
                         direction: 'user_to_agent',
                         provider: 'cursor',
-                        sessionId: data.options?.sessionId || data.sessionId || null,
+                        sessionId: sessionId || null,
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
                         transportType: data.type,
                     },
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
                 );
                 writer.telemetryContext = { ...telemetryContext, provider: 'cursor', telemetryEnabled: commandTelemetryEnabled };
-                await spawnCursor(data.command, { ...data.options, env: sessionEnv }, writer);
+                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
+                spawnCursor(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
+                    console.error('[ERROR] Cursor spawn error:', error);
+                });
             } else if (data.type === 'codex-command') {
                 console.log('[DEBUG] Codex message:', data.command || '[Continue/Resume]');
                 console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
                 console.log('🤖 Model:', data.options?.model || 'default');
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
+                const sessionId = data.options?.sessionId || data.sessionId;
+                
+                if (sessionId && isCodexSessionActive(sessionId)) {
+                    console.log(`[WARN] Codex session ${sessionId} is already active. Ignoring concurrent request.`);
+                    return;
+                }
+                
                 enqueueConversationTelemetry(
                     {
                         name: 'agent_dialogue_meta',
                         direction: 'user_to_agent',
                         provider: 'codex',
-                        sessionId: data.options?.sessionId || data.sessionId || null,
+                        sessionId: sessionId || null,
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
                         transportType: data.type,
                     },
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
                 );
                 writer.telemetryContext = { ...telemetryContext, provider: 'codex', telemetryEnabled: commandTelemetryEnabled };
-                await queryCodex(data.command, { ...data.options, env: sessionEnv }, writer);
+                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
+                queryCodex(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
+                    console.error('[ERROR] Codex query error:', error);
+                });
             } else if (data.type === 'gemini-command') {
                 console.log('[DEBUG] Gemini message:', data.command || '[Continue/Resume]');
                 console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
                 console.log('🤖 Model:', data.options?.model || 'default');
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
+                const sessionId = data.options?.sessionId || data.sessionId;
+                
+                if (sessionId && isGeminiSessionActive(sessionId)) {
+                    console.log(`[WARN] Gemini session ${sessionId} is already active. Ignoring concurrent request.`);
+                    return;
+                }
+                
                 enqueueConversationTelemetry(
                     {
                         name: 'agent_dialogue_meta',
                         direction: 'user_to_agent',
                         provider: 'gemini',
-                        sessionId: data.options?.sessionId || data.sessionId || null,
+                        sessionId: sessionId || null,
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
                         transportType: data.type,
                     },
                     { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
                 );
                 writer.telemetryContext = { ...telemetryContext, provider: 'gemini', telemetryEnabled: commandTelemetryEnabled };
-                await spawnGemini(data.command, { ...data.options, env: sessionEnv }, writer);
+                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
+                spawnGemini(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
+                    console.error('[ERROR] Gemini spawn error:', error);
+                });
             } else if (data.type === 'cursor-resume') {
                 // Backward compatibility: treat as cursor-command with resume and no prompt
                 console.log('[DEBUG] Cursor resume session (compat):', data.sessionId);
-                await spawnCursor('', {
+                const sessionId = data.sessionId;
+                
+                if (sessionId && isCursorSessionActive(sessionId)) {
+                    console.log(`[WARN] Cursor session ${sessionId} is already active. Ignoring concurrent request.`);
+                    return;
+                }
+                
+                spawnCursor('', {
                     sessionId: data.sessionId,
                     resume: true,
                     cwd: data.options?.cwd,
                     env: sessionEnv
-                }, writer);
+                }, writer).catch(error => {
+                    console.error('[ERROR] Cursor resume error:', error);
+                });
             } else if (data.type === 'abort-session') {
                 console.log('[DEBUG] Abort session request:', data.sessionId);
                 const provider = data.provider || 'claude';
@@ -1423,23 +1626,29 @@ function handleChatConnection(ws, request) {
                 const provider = data.provider || 'claude';
                 const sessionId = data.sessionId;
                 let isActive;
+                let startTime = null;
 
                 if (provider === 'cursor') {
                     isActive = isCursorSessionActive(sessionId);
+                    startTime = getCursorSessionStartTime(sessionId);
                 } else if (provider === 'codex') {
                     isActive = isCodexSessionActive(sessionId);
+                    startTime = getCodexSessionStartTime(sessionId);
                 } else if (provider === 'gemini') {
                     isActive = isGeminiSessionActive(sessionId);
+                    startTime = getGeminiSessionStartTime(sessionId);
                 } else {
                     // Use Claude Agents SDK
                     isActive = isClaudeSDKSessionActive(sessionId);
+                    startTime = getClaudeSDKSessionStartTime(sessionId);
                 }
 
                 writer.send({
                     type: 'session-status',
                     sessionId,
                     provider,
-                    isProcessing: isActive
+                    isProcessing: isActive,
+                    startTime
                 });
             } else if (data.type === 'get-active-sessions') {
                 // Get all currently active sessions
@@ -1538,9 +1747,13 @@ function handleShellConnection(ws) {
                     if (existingSession.buffer && existingSession.buffer.length > 0) {
                         console.log(`📜 Sending ${existingSession.buffer.length} buffered messages`);
                         existingSession.buffer.forEach(bufferedData => {
+                            const replayData = stripReplayTerminalQueries(bufferedData);
+                            if (!replayData) {
+                                return;
+                            }
                             ws.send(JSON.stringify({
                                 type: 'output',
-                                data: bufferedData
+                                data: replayData
                             }));
                         });
                     }
@@ -1702,12 +1915,7 @@ function handleShellConnection(ws) {
                         cols: termCols,
                         rows: termRows,
                         cwd: spawnCwd,
-                        env: {
-                            ...process.env,
-                            TERM: 'xterm-256color',
-                            COLORTERM: 'truecolor',
-                            FORCE_COLOR: '3'
-                        }
+                        env: buildEmbeddedShellEnv(process.env)
                     });
 
                     console.log('🟢 Shell process started with PTY, PID:', shellProcess.pid);
@@ -2587,7 +2795,7 @@ app.get('*', (req, res) => {
     res.sendFile(indexPath);
   } else {
     // In development, redirect to Vite dev server only if dist doesn't exist
-    res.redirect(`http://${DISPLAY_HOST}:${process.env.VITE_PORT || 5173}`);
+    res.redirect(`http://${DISPLAY_HOST}:${getFrontendPortSync(REQUESTED_VITE_PORT)}`);
   }
 });
 
@@ -2703,7 +2911,7 @@ async function resolveProjectFilePath(projectRoot, inputPath) {
     return { resolved: direct };
 }
 
-async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden = true) {
+async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden = true, isBrowsing = false) {
     // Using fsPromises from import
     const items = [];
 
@@ -2714,13 +2922,15 @@ async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden =
             // Debug: log all entries including hidden files
             if (!showHidden && entry.name.startsWith('.')) continue;
 
-            // Skip heavy build directories and VCS directories
-            if (entry.name === 'node_modules' ||
+            // Skip heavy build directories and VCS directories unless we are browsing
+            if (!isBrowsing && (
+                entry.name === 'node_modules' ||
                 entry.name === 'dist' ||
                 entry.name === 'build' ||
                 entry.name === '.git' ||
                 entry.name === '.svn' ||
-                entry.name === '.hg') continue;
+                entry.name === '.hg'
+            )) continue;
 
             const itemPath = path.join(dirPath, entry.name);
             let isDirectory = entry.isDirectory();
@@ -2791,7 +3001,8 @@ async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden =
     });
 }
 
-const PORT = process.env.PORT || 3001;
+const REQUESTED_PORT = parsePortNumber(process.env.PORT, DEFAULT_BACKEND_PORT);
+const REQUESTED_VITE_PORT = parsePortNumber(process.env.VITE_PORT, DEFAULT_FRONTEND_PORT);
 const HOST = process.env.HOST || '0.0.0.0';
 // Show localhost when binding to all interfaces; 0.0.0.0 is not directly connectable.
 const DISPLAY_HOST = HOST === '0.0.0.0' ? 'localhost' : HOST;
@@ -2811,37 +3022,45 @@ async function startServer() {
         console.log(`${c.info('[INFO]')} Running in ${c.bright(isProduction ? 'PRODUCTION' : 'DEVELOPMENT')} mode`);
 
         if (!isProduction) {
-            console.log(`${c.warn('[WARN]')} Note: Requests will be proxied to Vite dev server at ${c.dim('http://' + DISPLAY_HOST + ':' + (process.env.VITE_PORT || 5173))}`);
+            console.log(`${c.warn('[WARN]')} Note: Requests will be proxied to Vite dev server at ${c.dim('http://' + DISPLAY_HOST + ':' + getFrontendPortSync(REQUESTED_VITE_PORT))}`);
         }
 
-        server.listen(PORT, HOST, async () => {
-            const appInstallPath = path.join(__dirname, '..');
-            const vitePort = process.env.VITE_PORT || 5173;
-
-            console.log('');
-            console.log(c.dim('═'.repeat(63)));
-            console.log(`  ${c.bright('Dr. Claw Server - Ready')}`);
-            console.log(c.dim('═'.repeat(63)));
-            console.log('');
-
-            if (isProduction) {
-                console.log(`${c.info('[INFO]')} Server URL:  ${c.bright('http://' + DISPLAY_HOST + ':' + PORT)}`);
-            } else {
-                console.log(`${c.info('[INFO]')} Backend URL: ${c.dim('http://' + DISPLAY_HOST + ':' + PORT)}`);
-                console.log(`${c.ok('[OK]')}   Frontend URL: ${c.bright('http://' + DISPLAY_HOST + ':' + vitePort)} (Use this for development)`);
-            }
-
-            console.log(`${c.info('[INFO]')} Installed at: ${c.dim(appInstallPath)}`);
-            console.log(`${c.tip('[TIP]')}  Run "dr-claw status" for full configuration details`);
-            console.log('');
-
-            // Ensure the workspaces root directory exists
-            const startupWorkspaceRoot = await getWorkspacesRoot();
-            await fsPromises.mkdir(startupWorkspaceRoot, { recursive: true });
-
-            // Start watching the projects folder for changes
-            await setupProjectsWatcher();
+        const activePort = await listenOnAvailablePort(server, {
+            startPort: REQUESTED_PORT,
+            host: HOST,
         });
+        setRuntimePortSync('backend', activePort);
+
+        const appInstallPath = path.join(__dirname, '..');
+        const vitePort = getFrontendPortSync(REQUESTED_VITE_PORT);
+
+        if (activePort !== REQUESTED_PORT) {
+            console.log(`${c.warn('[WARN]')} Port ${REQUESTED_PORT} is busy, switched backend to ${activePort}`);
+        }
+
+        console.log('');
+        console.log(c.dim('═'.repeat(63)));
+        console.log(`  ${c.bright('Dr. Claw Server - Ready')}`);
+        console.log(c.dim('═'.repeat(63)));
+        console.log('');
+
+        if (isProduction) {
+            console.log(`${c.info('[INFO]')} Server URL:  ${c.bright('http://' + DISPLAY_HOST + ':' + activePort)}`);
+        } else {
+            console.log(`${c.info('[INFO]')} Backend URL: ${c.dim('http://' + DISPLAY_HOST + ':' + activePort)}`);
+            console.log(`${c.ok('[OK]')}   Frontend URL: ${c.bright('http://' + DISPLAY_HOST + ':' + vitePort)} (Use this for development)`);
+        }
+
+        console.log(`${c.info('[INFO]')} Installed at: ${c.dim(appInstallPath)}`);
+        console.log(`${c.tip('[TIP]')}  Run "dr-claw status" for full configuration details`);
+        console.log('');
+
+        // Ensure the workspaces root directory exists
+        const startupWorkspaceRoot = await getWorkspacesRoot();
+        await fsPromises.mkdir(startupWorkspaceRoot, { recursive: true });
+
+        // Start watching the projects folder for changes
+        await setupProjectsWatcher();
     } catch (error) {
         console.error('[ERROR] Failed to start server:', error);
         process.exit(1);

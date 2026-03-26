@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import readline from 'readline';
 
-import { getCodexSessions, getGeminiSessions } from './projects.js';
+import { encodeProjectPath, getCodexSessions, getGeminiSessions } from './projects.js';
 
 const CACHE_TTL_MS = 5_000;
 
@@ -59,10 +59,6 @@ function addUsageForTimestamp(target, timestampMs, tokens, bounds) {
   if (timestampMs >= bounds.todayStartMs && timestampMs <= bounds.nowMs) {
     target.todayTokens += tokens;
   }
-}
-
-function encodeProjectPath(projectPath) {
-  return path.resolve(projectPath).replace(/[\\/:\s~_]/g, '-');
 }
 
 function remapCurrentProjectPathToLegacy(projectPath) {

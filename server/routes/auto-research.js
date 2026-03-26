@@ -104,11 +104,19 @@ function normalizeTaskStatus(status) {
   return raw;
 }
 
+function normalizeTaskStage(stage) {
+  const raw = String(stage || '').trim().toLowerCase();
+  if (raw === 'presentation') return 'promotion';
+  if (raw === 'research') return 'survey';
+  return raw;
+}
+
 function normalizeTask(task) {
   return {
     id: task.id,
     title: task.title || 'Untitled Task',
     status: normalizeTaskStatus(task.status),
+    stage: normalizeTaskStage(task.stage),
     nextActionPrompt: typeof task.nextActionPrompt === 'string' ? task.nextActionPrompt : '',
   };
 }
@@ -338,6 +346,8 @@ async function runAutoResearch(runId, userId, projectName, projectPath) {
             env: sessionEnv,
             model,
             permissionMode,
+            stageTagKeys: task.stage ? [task.stage] : [],
+            stageTagSource: 'auto_research',
           }, writer)
           : provider === 'gemini'
             ? spawnGemini(prompt, {
@@ -347,6 +357,8 @@ async function runAutoResearch(runId, userId, projectName, projectPath) {
               env: sessionEnv,
               model,
               permissionMode,
+              stageTagKeys: task.stage ? [task.stage] : [],
+              stageTagSource: 'auto_research',
             }, writer)
             : queryClaudeSDK(prompt, {
               cwd: projectPath,
@@ -354,6 +366,8 @@ async function runAutoResearch(runId, userId, projectName, projectPath) {
               sessionId: runState.sessionId,
               env: sessionEnv,
               permissionMode,
+              stageTagKeys: task.stage ? [task.stage] : [],
+              stageTagSource: 'auto_research',
             }, writer),
         TASK_TIMEOUT_MS,
         async () => {

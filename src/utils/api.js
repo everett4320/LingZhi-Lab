@@ -46,6 +46,7 @@ export const api = {
   // Protected endpoints
   // config endpoint removed - no longer needed (frontend uses window.location)
   projects: () => authenticatedFetch('/api/projects'),
+  trashedProjects: () => authenticatedFetch('/api/projects/trash'),
   settings: {
     autoResearchEmail: () => authenticatedFetch('/api/settings/auto-research-email'),
     updateAutoResearchEmail: (senderEmail) =>
@@ -72,6 +73,21 @@ export const api = {
     }),
   sessions: (projectName, limit = 5, offset = 0) =>
     authenticatedFetch(`/api/projects/${projectName}/sessions?limit=${limit}&offset=${offset}`),
+  projectTags: (projectName, tagType = null) => {
+    const params = new URLSearchParams();
+    if (tagType) {
+      params.append('tagType', tagType);
+    }
+    const query = params.toString();
+    return authenticatedFetch(`/api/projects/${projectName}/tags${query ? `?${query}` : ''}`);
+  },
+  sessionTags: (projectName, sessionId) =>
+    authenticatedFetch(`/api/projects/${projectName}/sessions/${sessionId}/tags`),
+  updateSessionTags: (projectName, sessionId, tagIds) =>
+    authenticatedFetch(`/api/projects/${projectName}/sessions/${sessionId}/tags`, {
+      method: 'PUT',
+      body: JSON.stringify({ tagIds }),
+    }),
   sessionMessages: (projectName, sessionId, limit = null, offset = 0, provider = 'claude') => {
     const params = new URLSearchParams();
     if (limit !== null) {
@@ -112,6 +128,14 @@ export const api = {
     }),
   deleteProject: (projectName, force = false) =>
     authenticatedFetch(`/api/projects/${projectName}${force ? '?force=true' : ''}`, {
+      method: 'DELETE',
+    }),
+  restoreProject: (projectName) =>
+    authenticatedFetch(`/api/projects/trash/${projectName}/restore`, {
+      method: 'POST',
+    }),
+  deleteTrashedProject: (projectName, mode = 'logical') =>
+    authenticatedFetch(`/api/projects/trash/${projectName}?mode=${encodeURIComponent(mode)}`, {
       method: 'DELETE',
     }),
   createProject: (path) =>
@@ -339,7 +363,10 @@ export const api = {
     /** Poll search progress logs for a source. */
     getLogs: (source) => authenticatedFetch(`/api/news/logs/${source}`),
     /** Trigger xhs login (returns JSON with success, nickname, logs). */
-    xhsLogin: () => authenticatedFetch('/api/news/xhs-login', { method: 'POST' }),
+    xhsLogin: (options = {}) => authenticatedFetch('/api/news/xhs-login', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    }),
   },
 
   // References (literature library) endpoints

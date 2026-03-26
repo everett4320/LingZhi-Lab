@@ -249,8 +249,12 @@ async function handleSearch(sourceName, req, res) {
       args.push('--keywords', config.keywords);
     }
 
-    // Build env — pass credentials if required
+    // Build env — pass credentials if required.
+    // Strip __PYVENV_LAUNCHER__ so uv-installed Python CLIs invoked by the
+    // search scripts find the correct stdlib (macOS Python framework sets this
+    // variable and it confuses child interpreters with a different version).
     const env = { ...process.env };
+    delete env.__PYVENV_LAUNCHER__;
     if (entry.requiresCredentials) {
       try {
         const credValue = credentialsDb.getActiveCredential(req.user.id, entry.credentialType);
@@ -348,24 +352,48 @@ router.get('/logs/:source', async (req, res) => {
 // POST /api/news/xhs-login — trigger xiaohongshu-cli login
 // ---------------------------------------------------------------------------
 router.post('/xhs-login', (req, res) => {
-  const child = spawn('xhs', ['login', '--json'], {
-    env: { ...process.env },
+  const requestedMethod = req.body?.method === 'qrcode' ? 'qrcode' : 'browser';
+  const requestedCookieSource = typeof req.body?.cookieSource === 'string'
+    ? req.body.cookieSource.trim().toLowerCase()
+    : 'auto';
+  const allowedCookieSources = new Set([
+    'auto', 'arc', 'brave', 'chrome', 'chromium', 'edge', 'firefox', 'librewolf', 'opera', 'opera_gx', 'safari', 'vivaldi',
+  ]);
+  const cookieSource = allowedCookieSources.has(requestedCookieSource) ? requestedCookieSource : 'auto';
+  const commandArgs = ['login'];
+  if (requestedMethod === 'qrcode') {
+    commandArgs.push('--qrcode');
+  } else if (cookieSource !== 'auto') {
+    commandArgs.push('--cookie-source', cookieSource);
+  }
+  commandArgs.push('--json');
+
+  const xhsEnv = { ...process.env };
+  delete xhsEnv.__PYVENV_LAUNCHER__;
+  const child = spawn('xhs', commandArgs, {
+    env: xhsEnv,
   });
 
   let stdoutBuf = '';
   let stderrBuf = '';
   const logs = [];
+  let responded = false;
+
+  const sendOnce = (status, payload) => {
+    if (responded || res.headersSent) return;
+    responded = true;
+    res.status(status).json(payload);
+  };
 
   child.stdout.on('data', (data) => { stdoutBuf += data.toString(); });
   child.stderr.on('data', (data) => {
     stderrBuf += data.toString();
-    for (const line of stderrBuf.split('\n')) {
+    const lines = stderrBuf.split('\n');
+    stderrBuf = lines.pop() || '';
+    for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed) logs.push(trimmed);
     }
-    // Keep only the incomplete last line
-    const lines = stderrBuf.split('\n');
-    stderrBuf = lines[lines.length - 1];
   });
 
   child.on('close', (code) => {
@@ -373,19 +401,59 @@ router.post('/xhs-login', (req, res) => {
 
     let authenticated = false;
     let nickname = '';
+    let error = '';
+    let contextHint = '';
     try {
       const result = JSON.parse(stdoutBuf);
       authenticated = !!(result?.ok && result?.data?.authenticated);
       nickname = result?.data?.user?.nickname || '';
+      if (!authenticated) {
+        error = result?.error?.message || result?.message || '';
+      }
     } catch {
       authenticated = code === 0;
+      if (!authenticated) {
+        error = stdoutBuf.trim();
+      }
     }
 
-    res.json({ success: authenticated, nickname, logs, exitCode: code });
+    if (!authenticated && !error) {
+      error = requestedMethod === 'qrcode'
+        ? 'QR login failed or timed out.'
+        : 'Browser cookie extraction failed.';
+    }
+
+    if (!authenticated) {
+      contextHint = requestedMethod === 'qrcode'
+        ? 'QR login is recommended for remote deployments and Linux browser-cookie issues.'
+        : 'Browser cookie extraction runs on the machine hosting the dr-claw service, not on the device where this page is open.';
+    }
+
+    sendOnce(200, {
+      success: authenticated,
+      nickname,
+      logs,
+      exitCode: code,
+      method: requestedMethod,
+      cookieSource,
+      error,
+      contextHint: contextHint || undefined,
+    });
   });
 
   child.on('error', (err) => {
-    res.status(500).json({ error: `Failed to run xhs login: ${err.message}` });
+    const contextHint = requestedMethod === 'qrcode'
+      ? 'QR login is recommended for remote deployments and Linux browser-cookie issues.'
+      : 'Browser cookie extraction runs on the machine hosting the dr-claw service, not on the device where this page is open.';
+
+    sendOnce(500, {
+      success: false,
+      error: `Failed to run xhs login: ${err.message}`,
+      logs,
+      method: requestedMethod,
+      cookieSource,
+      contextHint,
+    });
   });
 });
 

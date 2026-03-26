@@ -137,7 +137,7 @@ function showStatus() {
     console.log(`      ${c.dim('>')} Use ${c.bright('dr-claw --port 8080')} to run on a custom port`);
     console.log(`      ${c.dim('>')} Use ${c.bright('dr-claw --database-path /path/to/db')} for custom database`);
     console.log(`      ${c.dim('>')} Run ${c.bright('dr-claw help')} for all options`);
-    console.log(`      ${c.dim('>')} Legacy alias ${c.bright('vibelab')} is still supported during the transition`);
+    console.log(`      ${c.dim('>')} Legacy alias ${c.bright('vibelab')} is still supported during transition (Deprecation: V2.0, Q3 2026)`);
     console.log(`      ${c.dim('>')} Access the UI at http://localhost:${process.env.PORT || '3001'}\n`);
 }
 

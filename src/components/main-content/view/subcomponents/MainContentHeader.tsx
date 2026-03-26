@@ -26,7 +26,7 @@ export default function MainContentHeader({
         </div>
 
         <div className="flex-shrink-0 hidden sm:block">
-          {selectedProject && activeTab !== 'dashboard' && (
+          {selectedProject && activeTab !== 'dashboard' && activeTab !== 'trash' && (
             <MainContentTabSwitcher
               activeTab={activeTab}
               setActiveTab={setActiveTab}

@@ -13,6 +13,10 @@
     "codex": "Codex",
     "gemini": "Gemini"
   },
+  "error": {
+    "retry": "재시도",
+    "usageLimitHint": "사용량 제한이 재설정되면 재시도할 수 있습니다"
+  },
   "tools": {
     "settings": "도구 설정",
     "error": "도구 오류",
@@ -59,7 +63,8 @@
   "agentTurn": {
     "thought": "사고",
     "usedTools": "{{count}}개 도구 사용",
-    "steps": "에이전트 단계"
+    "steps": "에이전트 단계",
+    "streaming": "스트리밍 중..."
   },
   "skill": {
     "contentLoaded": "스킬 콘텐츠 로드됨"
@@ -110,6 +115,7 @@
     "attachReferences": "참고문헌 첨부",
     "attachImages": "이미지 첨부",
     "dropFilesHere": "파일을 여기에 놓으세요",
+    "attachmentOnlyFallback": "첨부한 파일을 먼저 확인하고, 그 파일을 바탕으로 도와주세요.",
     "send": "전송",
     "stop": "중지",
     "hintText": {
@@ -234,7 +240,17 @@
     "runCommand": "{{projectName}}에서 {{command}} 실행",
     "openTerminal": "{{projectName}}에서 터미널 열기",
     "startCli": "{{projectName}}에서 Claude CLI 시작",
+    "historyEdit": {
+      "action": "대화 기록 수정",
+      "promptTitle": "기록 수정은 Shell에서 진행하세요",
+      "promptDescription": "Web Chat은 대화 기록을 직접 수정하지 않습니다. 모델의 원래 편집, 되돌리기, 재시도 흐름은 Shell에서 사용하세요.",
+      "cancel": "취소",
+      "confirm": "Shell로 이동",
+      "bannerTitle": "현재 세션이 Shell에 연결되었습니다",
+      "bannerDescription": "모델의 원래 기록 수정, 되돌리기, 재시도 흐름은 여기서 사용하세요. Web Chat은 대화를 표시만 하고 기록을 직접 수정하지 않습니다."
+    },
     "workspace": {
+      "currentSession": "현재 세션",
       "newShell": "새 Shell",
       "tabTitle": "Shell {{index}}",
       "closeShell": "{{title}} 닫기"
@@ -324,6 +340,10 @@
         "title": "원고 리뷰",
         "description": "리뷰어 관점에서 방법, 근거, 인용, 문장 품질을 점검합니다."
       },
+      "rebuttalResponse": {
+        "title": "리뷰 응답 작성",
+        "description": "학회별 전략, 안전 검증, 이슈 추적을 활용하여 심사 의견에 전문적으로 응답합니다."
+      },
       "grantProposal": {
         "title": "연구비 제안서",
         "description": "NSF, NIH, DOE, DARPA, NASA 또는 NSFC 대상 연구비 제안서를 기획, 초안 작성, 수정, 재제출합니다."
@@ -333,6 +353,11 @@
         "description": "논문 내용을 바탕으로 슬라이드, 내레이션 스크립트, TTS 오디오, 데모 영상을 만듭니다."
       }
     }
+  },
+  "attachedPrompt": {
+    "showPrompt": "프롬프트 보기",
+    "hidePrompt": "프롬프트 숨기기",
+    "remove": "제거"
   },
   "pipelineOnboarding": {
     "noBrief": {

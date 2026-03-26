@@ -44,6 +44,7 @@ pids
 *.pid
 *.seed
 *.pid.lock
+.runtime/
 
 # Coverage directory used by tools like istanbul
 coverage/
@@ -102,6 +103,7 @@ temp/
 .claude/
 .cursor/
 .roo/
+.dr-claw/
 .taskmaster/
 .cline/
 .windsurf/
@@ -149,3 +151,6 @@ server/data/
 xhs_results.json
 *_results.json
 __pycache__
+
+.pytest_cache
+*.egg-info/

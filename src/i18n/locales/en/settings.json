@@ -259,7 +259,7 @@
     },
     "gemini": {
       "title": "Gemini API Key",
-      "description": "Add a Google Gemini API key to override the server default for image generation with gemini-3.1-flash-image and other Gemini models. If no user key is set, Dr. Claw falls back to the server environment configuration.",
+      "description": "Add a Google Gemini API key to override the server default for image generation with gemini-3.1-flash-image-preview and other Gemini models. If no user key is set, Dr. Claw falls back to the server environment configuration.",
       "addButton": "Add Key",
       "form": {
         "namePlaceholder": "Key Name (e.g., Research Project)",

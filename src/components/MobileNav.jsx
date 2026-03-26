@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, Folder, Terminal, GitBranch, FlaskConical, BookOpen } from 'lucide-react';
+import { MessageSquare, Folder, Terminal, GitBranch, FlaskConical, BookOpen, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 function MobileNav({ activeTab, setActiveTab, isInputFocused }) {
@@ -41,6 +41,12 @@ function MobileNav({ activeTab, setActiveTab, isInputFocused }) {
       icon: GitBranch,
       label: t('mobileNav.git'),
       onClick: () => setActiveTab('git')
+    },
+    {
+      id: 'trash',
+      icon: Trash2,
+      label: t('tabs.trash'),
+      onClick: () => setActiveTab('trash')
     }
   ];
 

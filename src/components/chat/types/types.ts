@@ -11,10 +11,20 @@ export type Provider = SessionProvider;
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 
+export const RESUMING_STATUS_TEXT = 'Resuming...';
+
 export interface ChatImage {
   data: string;
   name: string;
   mimeType?: string;
+}
+
+export interface ChatAttachment {
+  name: string;
+  kind: 'image' | 'pdf' | 'file';
+  mimeType?: string;
+  path?: string;
+  extractedTextPreview?: string;
 }
 
 export interface ToolResult {
@@ -33,11 +43,19 @@ export interface SubagentChildTool {
   timestamp: Date;
 }
 
+export interface AttachedPrompt {
+  scenarioId: string;
+  scenarioIcon: string;
+  scenarioTitle: string;
+  promptText: string;
+}
+
 export interface ChatMessage {
   type: string;
   content?: string;
   timestamp: string | number | Date;
   images?: ChatImage[];
+  attachments?: ChatAttachment[];
   reasoning?: string;
   isThinking?: boolean;
   isStreaming?: boolean;
@@ -55,6 +73,9 @@ export interface ChatMessage {
     currentToolIndex: number;
     isComplete: boolean;
   };
+  attachedPrompt?: AttachedPrompt;
+  errorType?: 'usage_limit' | 'overloaded' | 'network' | 'auth' | 'unknown';
+  isRetryable?: boolean;
   [key: string]: unknown;
 }
 
@@ -132,6 +153,7 @@ export interface ChatInterfaceProps {
   clearPendingAutoIntake?: () => void;
   importedProjectAnalysisPrompt?: ImportedProjectAnalysisPrompt | null;
   clearImportedProjectAnalysisPrompt?: () => void;
+  onOpenShellForSession?: () => void;
   initialInputDraft?: string | null;
   newSessionMode?: SessionMode;
   onNewSessionModeChange?: (mode: SessionMode) => void;

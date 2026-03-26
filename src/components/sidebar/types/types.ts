@@ -1,5 +1,5 @@
 import type React from 'react';
-import type { AppTab, LoadingProgress, Project, ProjectCreationOptions, ProjectSession, SessionMode, SessionProvider } from '../../../types/app';
+import type { AppTab, LoadingProgress, Project, ProjectCreationOptions, ProjectSession, SessionMode, SessionProvider, TrashProject } from '../../../types/app';
 
 export type ProjectSortOrder = 'name' | 'date';
 
@@ -13,6 +13,10 @@ export type LoadingSessionsByProject = Record<string, boolean>;
 export type DeleteProjectConfirmation = {
   project: Project;
   sessionCount: number;
+};
+
+export type DeleteTrashProjectConfirmation = {
+  project: TrashProject;
 };
 
 export type SessionDeleteConfirmation = {
@@ -41,6 +45,7 @@ export type SidebarProps = {
   isMobile: boolean;
   activeTab: AppTab;
   onOpenDashboard: () => void;
+  onOpenTrash: () => void;
   onOpenSkills: () => void;
   onOpenNews: () => void;
   onImportedProjectCreated?: (project: Project, options?: ProjectCreationOptions) => void;

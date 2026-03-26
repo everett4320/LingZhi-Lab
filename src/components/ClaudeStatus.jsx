@@ -1,24 +1,43 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '../lib/utils';
 
 function ClaudeStatus({ status, onAbort, isLoading, provider = 'claude' }) {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [animationPhase, setAnimationPhase] = useState(0);
+  const startTimeRef = useRef(null);
+
   // Update elapsed time every second
   useEffect(() => {
     if (!isLoading) {
       setElapsedTime(0);
+      startTimeRef.current = null;
       return;
     }
 
-    const startTime = Date.now();
+    // Capture the start time from the status prop. 
+    // We do NOT fallback to Date.now() here because if we are refreshing,
+    // we want to wait for the real time from the backend (via check-session-status or deltas).
+    // For brand new requests, useChatComposerState provides it immediately.
+    if (typeof status?.startTime === 'number') {
+      startTimeRef.current = status.startTime;
+    }
+    
+    if (!startTimeRef.current) {
+      setElapsedTime(0);
+      return;
+    }
+    
+    const startTime = startTimeRef.current;
+    
+    // Sync initial state
+    setElapsedTime(Math.max(0, Math.floor((Date.now() - startTime) / 1000)));
 
     const timer = setInterval(() => {
-      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+      setElapsedTime(Math.max(0, Math.floor((Date.now() - startTime) / 1000)));
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isLoading]);
+  }, [isLoading, status?.startTime]);
 
   // Animate the status indicator
   useEffect(() => {
@@ -58,7 +77,9 @@ function ClaudeStatus({ status, onAbort, isLoading, provider = 'claude' }) {
         {currentSpinner}
       </span>
       <span className="font-medium text-sm truncate max-w-[100px] sm:max-w-none">{statusText}...</span>
-      <span className="text-gray-400 text-sm flex-shrink-0">({elapsedTime}s)</span>
+      {startTimeRef.current !== null && (
+        <span className="text-gray-400 text-sm flex-shrink-0">({elapsedTime}s)</span>
+      )}
       {tokens > 0 && (
         <>
           <span className="text-gray-500">·</span>

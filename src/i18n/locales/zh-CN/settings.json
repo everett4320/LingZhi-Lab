@@ -259,7 +259,7 @@
     },
     "gemini": {
       "title": "Gemini API 密钥",
-      "description": "添加 Google Gemini API 密钥以覆盖服务器默认配置，并在研究论文中使用 gemini-3.1-flash-image 及其他 Gemini 模型生成图像。如果未设置用户密钥，Dr. Claw 会回退到服务器环境变量中的配置。",
+      "description": "添加 Google Gemini API 密钥以覆盖服务器默认配置，并在研究论文中使用 gemini-3.1-flash-image-preview 及其他 Gemini 模型生成图像。如果未设置用户密钥，Dr. Claw 会回退到服务器环境变量中的配置。",
       "addButton": "添加密钥",
       "form": {
         "namePlaceholder": "密钥名称（例如：研究项目）",

@@ -2,9 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { MutableRefObject } from 'react';
 
 import { api, authenticatedFetch } from '../../../utils/api';
+import { RESUMING_STATUS_TEXT } from '../types/types';
 import type { ChatMessage, Provider } from '../types/types';
 import type { Project, ProjectSession } from '../../../types/app';
-import { safeLocalStorage } from '../utils/chatStorage';
+import { clearSessionTimerStart, readSessionTimerStart, safeLocalStorage } from '../utils/chatStorage';
 import {
   convertCursorSessionMessages,
   convertSessionMessages,
@@ -14,6 +15,8 @@ import {
 
 const MESSAGES_PER_PAGE = 20;
 const INITIAL_VISIBLE_MESSAGES = 100;
+/** Grace period for WebSocket status-check response before clearing stale resume state */
+const STATUS_VALIDATION_TIMEOUT_MS = 5000;
 
 type PendingViewSession = {
   sessionId: string | null;
@@ -48,6 +51,8 @@ export function useChatSessionState({
   resetStreamingState,
   pendingViewSessionRef,
 }: UseChatSessionStateArgs) {
+  const persistedInitialStartTime = selectedSession?.id ? readSessionTimerStart(selectedSession.id) : null;
+
   const [chatMessages, _setChatMessages] = useState<ChatMessage[]>(() => {
     if (typeof window !== 'undefined' && selectedProject) {
       const saved = safeLocalStorage.getItem(`chat_messages_${selectedProject.name}`);
@@ -80,7 +85,15 @@ export function useChatSessionState({
     });
   }, []);
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => {
+    if (selectedSession?.id && processingSessions?.has(selectedSession.id)) {
+      return true;
+    }
+    if (persistedInitialStartTime) {
+      return true;
+    }
+    return false;
+  });
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(selectedSession?.id || null);
   const [sessionMessages, setSessionMessages] = useState<any[]>([]);
   const [isLoadingSessionMessages, setIsLoadingSessionMessages] = useState(false);
@@ -92,11 +105,23 @@ export function useChatSessionState({
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const [tokenBudget, setTokenBudget] = useState<Record<string, unknown> | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
-  const [claudeStatus, setClaudeStatus] = useState<{ text: string; tokens: number; can_interrupt: boolean } | null>(null);
+  const [claudeStatus, setClaudeStatus] = useState<{ text: string; tokens: number; can_interrupt: boolean; startTime?: number } | null>(() => {
+    if (!persistedInitialStartTime) {
+      return null;
+    }
+
+    return {
+      text: RESUMING_STATUS_TEXT,
+      tokens: 0,
+      can_interrupt: true,
+      startTime: persistedInitialStartTime,
+    };
+  });
   const [allMessagesLoaded, setAllMessagesLoaded] = useState(false);
   const [isLoadingAllMessages, setIsLoadingAllMessages] = useState(false);
   const [loadAllJustFinished, setLoadAllJustFinished] = useState(false);
   const [showLoadAllOverlay, setShowLoadAllOverlay] = useState(false);
+  const [pendingStatusValidationSessionId, setPendingStatusValidationSessionId] = useState<string | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isLoadingSessionRef = useRef(false);
@@ -111,6 +136,27 @@ export function useChatSessionState({
   const loadAllOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const createDiff = useMemo<DiffCalculator>(() => createCachedDiffCalculator(), []);
+
+  const pendingStatusValidationSessionIdRef = useRef(pendingStatusValidationSessionId);
+  useEffect(() => {
+    pendingStatusValidationSessionIdRef.current = pendingStatusValidationSessionId;
+  }, [pendingStatusValidationSessionId]);
+
+  const markSessionStatusCheckPending = useCallback((sessionId?: string | null) => {
+    if (!sessionId) {
+      return;
+    }
+
+    setPendingStatusValidationSessionId(sessionId);
+  }, []);
+
+  const resolveSessionStatusCheck = useCallback((sessionId?: string | null) => {
+    if (!sessionId) {
+      return;
+    }
+
+    setPendingStatusValidationSessionId((previous) => (previous === sessionId ? null : previous));
+  }, []);
 
   const loadSessionMessages = useCallback(
     async (projectName: string, sessionId: string, loadMore = false, provider: Provider | string = 'claude') => {
@@ -367,27 +413,25 @@ export function useChatSessionState({
           if (loadAllOverlayTimerRef.current) clearTimeout(loadAllOverlayTimerRef.current);
           if (loadAllFinishedTimerRef.current) clearTimeout(loadAllFinishedTimerRef.current);
           setTokenBudget(null);
-          setIsLoading(false);
-
-          if (ws) {
-            sendMessage({
-              type: 'check-session-status',
-              sessionId: selectedSession.id,
-              provider: currentProvider,
-            });
+          
+          // Only set isLoading to false if it's NOT in the processingSessions set
+          const isProcessing =
+            processingSessions?.has(selectedSession.id) ||
+            pendingStatusValidationSessionIdRef.current === selectedSession.id;
+          if (!isProcessing) {
+            setIsLoading(false);
           }
-        } else if (currentSessionId === null) {
-          messagesOffsetRef.current = 0;
-          setHasMoreMessages(false);
-          setTotalMessages(0);
+        }
 
-          if (ws) {
-            sendMessage({
-              type: 'check-session-status',
-              sessionId: selectedSession.id,
-              provider: currentProvider,
-            });
-          }
+        // Always check status if we have a websocket and a session, 
+        // especially on initial load or reconnect.
+        if (ws && selectedSession?.id) {
+          markSessionStatusCheckPending(selectedSession.id);
+          sendMessage({
+            type: 'check-session-status',
+            sessionId: selectedSession.id,
+            provider: currentProvider,
+          });
         }
 
         if (currentProvider === 'cursor') {
@@ -449,6 +493,7 @@ export function useChatSessionState({
     loadSessionMessages,
     pendingViewSessionRef,
     resetStreamingState,
+    markSessionStatusCheckPending,
     selectedProject,
     selectedSession,
     sendMessage,
@@ -604,16 +649,69 @@ export function useChatSessionState({
 
   useEffect(() => {
     const activeViewSessionId = selectedSession?.id || currentSessionId;
-    if (!activeViewSessionId || !processingSessions) {
+    if (!activeViewSessionId) {
       return;
     }
 
-    const shouldBeProcessing = processingSessions.has(activeViewSessionId);
+    const persistedStartTime = readSessionTimerStart(activeViewSessionId);
+    if (persistedStartTime) {
+      setClaudeStatus((previous) => {
+        if (previous?.startTime === persistedStartTime) {
+          return previous;
+        }
+
+        return {
+          text: previous?.text || RESUMING_STATUS_TEXT,
+          tokens: previous?.tokens || 0,
+          can_interrupt: previous?.can_interrupt !== false,
+          startTime: persistedStartTime,
+        };
+      });
+    }
+
+    const isTrackedProcessing = Boolean(processingSessions?.has(activeViewSessionId));
+    const isAwaitingStatusValidation =
+      pendingStatusValidationSessionId === activeViewSessionId && Boolean(persistedStartTime);
+    const shouldBeProcessing = isTrackedProcessing || isAwaitingStatusValidation;
+
     if (shouldBeProcessing && !isLoading) {
       setIsLoading(true);
       setCanAbortSession(true);
     }
-  }, [currentSessionId, isLoading, processingSessions, selectedSession?.id]);
+  }, [currentSessionId, isLoading, pendingStatusValidationSessionId, processingSessions, selectedSession?.id]);
+
+  useEffect(() => {
+    const activeViewSessionId = selectedSession?.id || currentSessionId;
+    if (!activeViewSessionId || pendingStatusValidationSessionId !== activeViewSessionId) {
+      return;
+    }
+
+    const persistedStartTime = readSessionTimerStart(activeViewSessionId);
+    if (!persistedStartTime || processingSessions?.has(activeViewSessionId)) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      if (processingSessions?.has(activeViewSessionId)) {
+        return;
+      }
+
+      const latestPersistedStartTime = readSessionTimerStart(activeViewSessionId);
+      if (latestPersistedStartTime !== persistedStartTime) {
+        return;
+      }
+
+      clearSessionTimerStart(activeViewSessionId);
+      setPendingStatusValidationSessionId((previous) => (previous === activeViewSessionId ? null : previous));
+      setClaudeStatus((previous) => (previous?.text === RESUMING_STATUS_TEXT ? null : previous));
+      setIsLoading(false);
+      setCanAbortSession(false);
+    }, STATUS_VALIDATION_TIMEOUT_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [currentSessionId, pendingStatusValidationSessionId, processingSessions, selectedSession?.id]);
 
   // Show "Load all" overlay after a batch finishes loading, persist for 2s then hide
   const prevLoadingRef = useRef(false);
@@ -758,5 +856,6 @@ export function useChatSessionState({
     handleScroll,
     loadSessionMessages,
     loadCursorSessionMessages,
+    resolveSessionStatusCheck,
   };
 }

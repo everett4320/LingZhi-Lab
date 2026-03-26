@@ -18,17 +18,61 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { CLAUDE_MODELS } from '../shared/modelConstants.js';
-import { ensureProjectSkillLinks } from './projects.js';
+import { classifyError, classifySDKError } from '../shared/errorClassifier.js';
+import { encodeProjectPath, ensureProjectSkillLinks, reconcileClaudeSessionIndex } from './projects.js';
 import { writeProjectTemplates } from './templates/index.js';
+import { applyStageTagsToSession, recordIndexedSession } from './utils/sessionIndex.js';
+import { buildTempAttachmentFilename } from './utils/imageAttachmentFiles.js';
 
 import { createRequestId, waitForToolApproval, resolveToolApproval as resolvePermApproval, matchesToolPermission } from './utils/permissions.js';
 
 const activeSessions = new Map();
+const pendingClaudeSessionIndexReconciles = new Map();
 
 const TOOLS_REQUIRING_INTERACTION = new Set(['AskUserQuestion']);
 
 function resolveToolApproval(requestId, decision) {
   resolvePermApproval(requestId, decision);
+}
+
+function scheduleClaudeSessionIndexReconcile(projectPath, sessionId, delayMs = 1000) {
+  if (!projectPath || !sessionId) {
+    return;
+  }
+
+  const existingTimer = pendingClaudeSessionIndexReconciles.get(sessionId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  const timeoutId = setTimeout(async () => {
+    pendingClaudeSessionIndexReconciles.delete(sessionId);
+    try {
+      await reconcileClaudeSessionIndex(encodeProjectPath(projectPath), sessionId);
+    } catch (error) {
+      console.warn(`[Claude] Failed to reconcile indexed session ${sessionId}:`, error.message);
+    }
+  }, delayMs);
+
+  pendingClaudeSessionIndexReconciles.set(sessionId, timeoutId);
+}
+
+async function flushClaudeSessionIndexReconcile(projectPath, sessionId) {
+  if (!projectPath || !sessionId) {
+    return;
+  }
+
+  const existingTimer = pendingClaudeSessionIndexReconciles.get(sessionId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    pendingClaudeSessionIndexReconciles.delete(sessionId);
+  }
+
+  try {
+    await reconcileClaudeSessionIndex(encodeProjectPath(projectPath), sessionId);
+  } catch (error) {
+    console.warn(`[Claude] Failed to flush indexed session ${sessionId}:`, error.message);
+  }
 }
 
 /**
@@ -237,9 +281,7 @@ async function handleImages(command, images, cwd) {
       }
 
       const [, , base64Data] = matches;
-      // Prefer original filename if available, fallback to index-based name
-      const originalName = image.name ? image.name.replace(/[^a-zA-Z0-9._-]/g, '_') : null;
-      const filename = originalName || `file_${index}`;
+      const filename = buildTempAttachmentFilename(index, image?.name, matches[1]);
       const filepath = path.join(tempDir, filename);
 
       // Write base64 data to file
@@ -389,13 +431,24 @@ async function loadMcpConfig(cwd) {
  * @returns {Promise<void>}
  */
 async function queryClaudeSDK(command, options = {}, ws) {
-  const { sessionId, sessionMode } = options;
+  const { sessionId, sessionMode, stageTagKeys, stageTagSource = 'task_context' } = options;
   let capturedSessionId = sessionId;
   let sessionCreatedSent = false;
   let tempImagePaths = [];
   let tempDir = null;
+  const sessionProjectPath = options.cwd || options.projectPath || null;
 
   try {
+    // Synchronous (better-sqlite3) — no await needed.
+    if (sessionId && sessionProjectPath) {
+      applyStageTagsToSession({
+        sessionId,
+        projectPath: sessionProjectPath,
+        stageTagKeys,
+        source: stageTagSource,
+      });
+    }
+
     // Ensure skills symlinks and CLAUDE.md template exist in the project directory
     const projectDir = options.cwd || options.projectPath;
     if (projectDir) {
@@ -529,9 +582,20 @@ async function queryClaudeSDK(command, options = {}, ws) {
         // Send session-created event only once for new sessions
         if (!sessionId && !sessionCreatedSent) {
           sessionCreatedSent = true;
+          if (options.cwd || options.projectPath) {
+            recordIndexedSession({
+              sessionId: capturedSessionId,
+              provider: 'claude',
+              projectPath: options.cwd || options.projectPath,
+              sessionMode: sessionMode || 'research',
+              stageTagKeys,
+              tagSource: stageTagSource,
+            });
+          }
           ws.send({
             type: 'session-created',
             sessionId: capturedSessionId,
+            provider: 'claude',
             mode: sessionMode || 'research'
           });
         } else {
@@ -546,13 +610,38 @@ async function queryClaudeSDK(command, options = {}, ws) {
         lastAssistantUsage = message.message.usage;
       }
 
+      // Detect SDK-level errors on assistant messages (e.g. rate_limit, authentication_failed)
+      // These come as structured enum values, not in the catch block.
+      if (message.type === 'assistant' && message.error) {
+        const { errorType, isRetryable } = classifySDKError(message.error, 'claude');
+        ws.send({
+          type: 'claude-error',
+          error: message.error,
+          errorType,
+          isRetryable,
+          sessionId: capturedSessionId || sessionId || null,
+        });
+      }
+
       // Transform and send message to WebSocket
       const transformedMessage = transformMessage(message);
+      const sessionData = capturedSessionId ? getSession(capturedSessionId) : null;
       ws.send({
         type: 'claude-response',
-        data: transformedMessage,
+        data: {
+          ...transformedMessage,
+          startTime: sessionData?.startTime
+        },
         sessionId: capturedSessionId || sessionId || null
       });
+
+      if (
+        capturedSessionId &&
+        sessionProjectPath &&
+        (message.type === 'assistant' || message.type === 'result')
+      ) {
+        scheduleClaudeSessionIndexReconcile(sessionProjectPath, capturedSessionId);
+      }
 
       // Send token budget update when the turn completes
       if (message.type === 'result') {
@@ -568,15 +657,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
       }
     }
 
-    // Clean up session on completion
-    if (capturedSessionId) {
-      removeSession(capturedSessionId);
-    }
-
-    // Clean up temporary image files
-    await cleanupTempFiles(tempImagePaths, tempDir);
-
-    // Send completion event
+    // Send completion event before removing session to avoid race with abort requests
     console.log('Streaming complete, sending claude-complete event');
     ws.send({
       type: 'claude-complete',
@@ -586,23 +667,57 @@ async function queryClaudeSDK(command, options = {}, ws) {
     });
     console.log('claude-complete event sent');
 
+    // Keep post-run housekeeping out of the completion critical path so the UI
+    // can settle immediately after the model finishes streaming.
+    const completionTasks = [];
+    if (capturedSessionId) {
+      removeSession(capturedSessionId);
+      completionTasks.push(flushClaudeSessionIndexReconcile(sessionProjectPath, capturedSessionId));
+    }
+    completionTasks.push(cleanupTempFiles(tempImagePaths, tempDir));
+    await Promise.allSettled(completionTasks);
+
   } catch (error) {
     console.error('SDK query error:', error);
+
+    // Record session before cleanup so it appears in sidebar even on early errors
+    if (capturedSessionId && !sessionId && !sessionCreatedSent && (options.cwd || options.projectPath)) {
+      sessionCreatedSent = true;
+      recordIndexedSession({
+        sessionId: capturedSessionId,
+        provider: 'claude',
+        projectPath: options.cwd || options.projectPath,
+        sessionMode: sessionMode || 'research',
+      });
+      ws.send({
+        type: 'session-created',
+        sessionId: capturedSessionId,
+        provider: 'claude',
+        mode: sessionMode || 'research',
+      });
+    }
 
     // Clean up session on error
     if (capturedSessionId) {
       removeSession(capturedSessionId);
     }
 
-    // Clean up temporary image files on error
-    await cleanupTempFiles(tempImagePaths, tempDir);
+    const { errorType, isRetryable } = classifyError(error.message);
 
-    // Send error to WebSocket
     ws.send({
       type: 'claude-error',
       error: error.message,
+      errorType,
+      isRetryable,
       sessionId: capturedSessionId || sessionId || null
     });
+
+    const errorTasks = [];
+    if (capturedSessionId) {
+      errorTasks.push(flushClaudeSessionIndexReconcile(sessionProjectPath, capturedSessionId));
+    }
+    errorTasks.push(cleanupTempFiles(tempImagePaths, tempDir));
+    await Promise.allSettled(errorTasks);
 
     throw error;
   }
@@ -654,6 +769,16 @@ function isClaudeSDKSessionActive(sessionId) {
 }
 
 /**
+ * Gets the start time of an SDK session
+ * @param {string} sessionId - Session identifier
+ * @returns {number|null} Start time in ms or null
+ */
+function getClaudeSDKSessionStartTime(sessionId) {
+  const session = getSession(sessionId);
+  return session ? session.startTime : null;
+}
+
+/**
  * Gets all active SDK session IDs
  * @returns {Array<string>} Array of active session IDs
  */
@@ -666,6 +791,7 @@ export {
   queryClaudeSDK,
   abortClaudeSDKSession,
   isClaudeSDKSessionActive,
+  getClaudeSDKSessionStartTime,
   getActiveClaudeSDKSessions,
   resolveToolApproval
 };

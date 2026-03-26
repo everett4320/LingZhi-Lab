@@ -34,7 +34,9 @@
     "start": "npm run build && npm run server",
     "release": "./release.sh",
     "prepublishOnly": "npm run build",
-    "postinstall": "node scripts/fix-node-pty.js && node scripts/install-python-tools.js"
+    "postinstall": "node scripts/fix-node-pty.js && node scripts/install-python-tools.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "claude code",
@@ -122,6 +124,7 @@
     "sharp": "^0.34.2",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.9.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^4.1.0"
   }
 }

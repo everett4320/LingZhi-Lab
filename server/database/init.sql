@@ -68,6 +68,37 @@ CREATE TABLE IF NOT EXISTS session_metadata (
 CREATE INDEX IF NOT EXISTS idx_session_metadata_project ON session_metadata(project_name);
 CREATE INDEX IF NOT EXISTS idx_session_metadata_provider ON session_metadata(provider);
 
+CREATE TABLE IF NOT EXISTS project_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_name TEXT NOT NULL,
+    tag_key TEXT NOT NULL,
+    tag_type TEXT NOT NULL,
+    label TEXT NOT NULL,
+    color TEXT,
+    sort_order INTEGER DEFAULT 0,
+    metadata TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(project_name, tag_type, tag_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_tags_project ON project_tags(project_name);
+CREATE INDEX IF NOT EXISTS idx_project_tags_type ON project_tags(tag_type);
+
+CREATE TABLE IF NOT EXISTS session_tag_links (
+    session_id TEXT NOT NULL,
+    tag_id INTEGER NOT NULL,
+    linked_by TEXT,
+    source TEXT,
+    metadata TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(session_id, tag_id),
+    FOREIGN KEY (session_id) REFERENCES session_metadata(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES project_tags(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_tag_links_session ON session_tag_links(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_tag_links_tag ON session_tag_links(tag_id);
+
 -- Projects table for unified management across all providers
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,

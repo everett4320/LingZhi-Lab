@@ -7,6 +7,7 @@ import type {
   ProjectSession,
   SessionMode,
   SessionProvider,
+  TrashProject,
 } from '../../../types/app';
 import type { Reference } from '../../references/types';
 
@@ -57,6 +58,7 @@ export interface PrdFile {
 
 export interface MainContentProps {
   projects: Project[];
+  trashProjects: TrashProject[];
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   activeTab: AppTab;
@@ -67,6 +69,7 @@ export interface MainContentProps {
   isMobile: boolean;
   onMenuClick: () => void;
   isLoading: boolean;
+  isTrashLoading?: boolean;
   onInputFocusChange: (focused: boolean) => void;
   onSessionActive: SessionLifecycleHandler;
   onSessionInactive: SessionLifecycleHandler;

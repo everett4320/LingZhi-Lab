@@ -325,13 +325,30 @@ export function useSidebarController({
 
       if (!response.ok) {
         const error = (await response.json()) as { error?: string };
+        if (window.refreshTrashProjects) {
+          await window.refreshTrashProjects();
+        } else {
+          await onRefresh();
+        }
         alert(error.error || t('messages.deleteProjectFailed'));
+        return;
+      }
+
+      if (window.refreshTrashProjects) {
+        await window.refreshTrashProjects();
+      } else {
+        await onRefresh();
       }
     } catch (error) {
       console.error('Error deleting project:', error);
+      if (window.refreshTrashProjects) {
+        await window.refreshTrashProjects();
+      } else {
+        await onRefresh();
+      }
       alert(t('messages.deleteProjectError'));
     }
-  }, [deleteConfirmation, onProjectDelete, t]);
+  }, [deleteConfirmation, onProjectDelete, onRefresh, t]);
 
   const loadMoreSessions = useCallback(
     async (project: Project) => {

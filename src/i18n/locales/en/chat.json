@@ -13,6 +13,10 @@
     "codex": "Codex",
     "gemini": "Gemini"
   },
+  "error": {
+    "retry": "Retry",
+    "usageLimitHint": "You can retry when your usage limit resets"
+  },
   "tools": {
     "settings": "Tool Settings",
     "error": "Tool Error",
@@ -59,7 +63,8 @@
   "agentTurn": {
     "thought": "Thought",
     "usedTools": "Used {{count}} tools",
-    "steps": "Agent steps"
+    "steps": "Agent steps",
+    "streaming": "Streaming..."
   },
   "skill": {
     "contentLoaded": "Skill Content Loaded"
@@ -110,6 +115,7 @@
     "attachReferences": "Attach references",
     "attachImages": "Attach images",
     "dropFilesHere": "Drop files here",
+    "attachmentOnlyFallback": "Please inspect the attached files and help me with them.",
     "send": "Send",
     "stop": "Stop",
     "hintText": {
@@ -234,7 +240,17 @@
     "runCommand": "Run {{command}} in {{projectName}}",
     "openTerminal": "Open terminal in {{projectName}}",
     "startCli": "Starting Claude CLI in {{projectName}}",
+    "historyEdit": {
+      "action": "Edit message history",
+      "promptTitle": "Continue history edits in Shell",
+      "promptDescription": "Web Chat does not rewrite message history directly. To use the model's native edit, rewind, or retry flow, continue in Shell.",
+      "cancel": "Cancel",
+      "confirm": "Open Shell",
+      "bannerTitle": "This session is now open in Shell",
+      "bannerDescription": "Use the model's native history edit, rewind, or retry flow here. Web Chat only displays the conversation and does not rewrite history directly."
+    },
     "workspace": {
+      "currentSession": "Current Session",
       "newShell": "New shell",
       "tabTitle": "Shell {{index}}",
       "closeShell": "Close {{title}}"
@@ -324,6 +340,10 @@
         "title": "Review a draft",
         "description": "Run a reviewer-style check for methods, evidence, references, and writing quality."
       },
+      "rebuttalResponse": {
+        "title": "Write a rebuttal",
+        "description": "Respond to reviewer comments with venue-aware strategies, safety gates, and issue tracking."
+      },
       "grantProposal": {
         "title": "Grant proposal",
         "description": "Plan, draft, revise, or resubmit a faculty funding proposal for NSF, NIH, DOE, DARPA, NASA, or NSFC."
@@ -333,6 +353,11 @@
         "description": "Turn the paper into slides, narration scripts, TTS audio, and a demo video."
       }
     }
+  },
+  "attachedPrompt": {
+    "showPrompt": "Show prompt",
+    "hidePrompt": "Hide prompt",
+    "remove": "Remove"
   },
   "pipelineOnboarding": {
     "noBrief": {

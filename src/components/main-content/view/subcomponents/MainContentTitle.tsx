@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import SessionProviderLogo from '../../../SessionProviderLogo';
 import type { AppTab, Project, ProjectSession } from '../../../../types/app';
+import { stripInternalContextPrefix } from '../../../../utils/sessionFormatting';
 
 type MainContentTitleProps = {
   activeTab: AppTab;
@@ -16,6 +17,10 @@ function getTabTitle(activeTab: AppTab, shouldShowTasksTab: boolean, t: (key: st
 
   if (activeTab === 'dashboard') {
     return t('projectDashboard.title');
+  }
+
+  if (activeTab === 'trash') {
+    return t('projectDashboard.trashTitle');
   }
 
   if (activeTab === 'git') {
@@ -46,11 +51,11 @@ function getTabTitle(activeTab: AppTab, shouldShowTasksTab: boolean, t: (key: st
 }
 
 function getSessionTitle(session: ProjectSession): string {
-  if (session.__provider === 'cursor') {
-    return (session.name as string) || 'Untitled Session';
-  }
-
-  return (session.summary as string) || 'New Session';
+  const name = session.__provider === 'cursor' 
+    ? (session.name as string) || 'Untitled Session'
+    : (session.summary as string) || 'New Session';
+    
+  return stripInternalContextPrefix(name) || 'New Session';
 }
 
 export default function MainContentTitle({
@@ -64,6 +69,7 @@ export default function MainContentTitle({
   const showSessionIcon = activeTab === 'chat' && Boolean(selectedSession);
   const showChatNewSession = activeTab === 'chat' && !selectedSession;
   const isDashboard = activeTab === 'dashboard';
+  const isTrash = activeTab === 'trash';
   const isGlobalSkills = activeTab === 'skills' && !selectedProject;
   const isGlobalNews = activeTab === 'news' && !selectedProject;
 
@@ -83,6 +89,15 @@ export default function MainContentTitle({
             </h2>
             <div className="text-[12px] text-muted-foreground truncate leading-tight mt-0.5">
               {t('projectDashboard.subtitle')}
+            </div>
+          </div>
+        ) : isTrash ? (
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-bold text-foreground leading-tight">
+              {t('projectDashboard.trashTitle')}
+            </h2>
+            <div className="text-[12px] text-muted-foreground truncate leading-tight mt-0.5">
+              {t('projectDashboard.trashSubtitle')}
             </div>
           </div>
         ) : isGlobalSkills ? (

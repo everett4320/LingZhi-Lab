@@ -2,6 +2,22 @@ export type SessionProvider = 'claude' | 'cursor' | 'codex' | 'gemini';
 
 export type SessionMode = 'research' | 'workspace_qa';
 
+export interface SessionTag {
+  id: number;
+  projectName?: string;
+  tagKey: string;
+  tagType: 'stage' | string;
+  label: string;
+  color?: string | null;
+  sortOrder?: number;
+  metadata?: Record<string, unknown> | null;
+  source?: string | null;
+  linkedBy?: string | null;
+  linkedAt?: string | null;
+  linkMetadata?: Record<string, unknown> | null;
+  createdAt?: string;
+}
+
 export interface PendingAutoIntake {
   prompt?: string | null;
   triggerId?: string | null;
@@ -17,7 +33,7 @@ export interface ProjectCreationOptions {
   importedProjectAnalysisPrompt?: ImportedProjectAnalysisPrompt | null;
 }
 
-export type AppTab = 'dashboard' | 'chat' | 'survey' | 'files' | 'shell' | 'git' | 'researchlab' | 'skills' | 'tasks' | 'preview' | 'compute' | 'news';
+export type AppTab = 'dashboard' | 'trash' | 'chat' | 'survey' | 'files' | 'shell' | 'git' | 'researchlab' | 'skills' | 'tasks' | 'preview' | 'compute' | 'news';
 
 export interface ProjectSession {
   id: string;
@@ -25,6 +41,7 @@ export interface ProjectSession {
   summary?: string;
   name?: string;
   mode?: SessionMode;
+  tags?: SessionTag[];
   createdAt?: string;
   created_at?: string;
   updated_at?: string;
@@ -60,6 +77,21 @@ export interface Project {
   geminiSessions?: ProjectSession[];
   sessionMeta?: ProjectSessionMeta;
   taskmaster?: ProjectTaskmasterInfo;
+  [key: string]: unknown;
+}
+
+export interface TrashProject {
+  name: string;
+  displayName: string;
+  fullPath: string;
+  path?: string;
+  originalPath?: string;
+  trashPath?: string;
+  claudeTrashPath?: string;
+  trashedAt: string;
+  sessionCount?: number;
+  canRestore?: boolean;
+  filesExist?: boolean;
   [key: string]: unknown;
 }
 

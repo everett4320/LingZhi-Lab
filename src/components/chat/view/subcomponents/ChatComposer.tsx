@@ -5,6 +5,7 @@ import ImageAttachment from './ImageAttachment';
 import PermissionRequestsBanner from './PermissionRequestsBanner';
 import ChatInputControls from './ChatInputControls';
 import ReferencePicker from '../../../references/view/ReferencePicker';
+import PromptBadgeDropdown from './PromptBadgeDropdown';
 import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
 import type {
@@ -19,11 +20,15 @@ import type {
   SetStateAction,
   TouchEvent,
 } from 'react';
-import type { PendingPermissionRequest, PermissionMode, Provider } from '../../types/types';
+import type { AttachedPrompt, PendingPermissionRequest, PermissionMode, Provider } from '../../types/types';
 
 interface MentionableFile {
   name: string;
   path: string;
+}
+
+function getFileKey(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
 }
 
 interface SlashCommand {
@@ -61,10 +66,10 @@ interface ChatComposerProps {
   onScrollToBottom: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement> | MouseEvent<HTMLButtonElement> | TouchEvent<HTMLButtonElement>) => void;
   isDragActive: boolean;
-  attachedImages: File[];
-  onRemoveImage: (index: number) => void;
-  uploadingImages: Map<string, number>;
-  imageErrors: Map<string, string>;
+  attachedFiles: File[];
+  onRemoveFile: (index: number) => void;
+  uploadingFiles: Map<string, number>;
+  fileErrors: Map<string, string>;
   showFileDropdown: boolean;
   filteredFiles: MentionableFile[];
   selectedFileIndex: number;
@@ -77,7 +82,7 @@ interface ChatComposerProps {
   frequentCommands: SlashCommand[];
   getRootProps: (...args: unknown[]) => Record<string, unknown>;
   getInputProps: (...args: unknown[]) => Record<string, unknown>;
-  openImagePicker: () => void;
+  openFilePicker: () => void;
   inputHighlightRef: RefObject<HTMLDivElement>;
   renderInputWithMentions: (text: string) => ReactNode;
   textareaRef: RefObject<HTMLTextAreaElement>;
@@ -96,6 +101,9 @@ interface ChatComposerProps {
   onTranscript: (text: string) => void;
   projectName?: string;
   onReferenceContext?: (context: string) => void;
+  attachedPrompt: AttachedPrompt | null;
+  onRemoveAttachedPrompt: () => void;
+  onUpdateAttachedPrompt: (promptText: string) => void;
 }
 
 export default function ChatComposer({
@@ -120,10 +128,10 @@ export default function ChatComposer({
   onScrollToBottom,
   onSubmit,
   isDragActive,
-  attachedImages,
-  onRemoveImage,
-  uploadingImages,
-  imageErrors,
+  attachedFiles,
+  onRemoveFile,
+  uploadingFiles,
+  fileErrors,
   showFileDropdown,
   filteredFiles,
   selectedFileIndex,
@@ -136,7 +144,7 @@ export default function ChatComposer({
   frequentCommands,
   getRootProps,
   getInputProps,
-  openImagePicker,
+  openFilePicker,
   inputHighlightRef,
   renderInputWithMentions,
   textareaRef,
@@ -155,6 +163,9 @@ export default function ChatComposer({
   onTranscript,
   projectName,
   onReferenceContext,
+  attachedPrompt,
+  onRemoveAttachedPrompt,
+  onUpdateAttachedPrompt,
 }: ChatComposerProps) {
   const { t } = useTranslation('chat');
   const [showReferencePicker, setShowReferencePicker] = useState(false);
@@ -228,19 +239,28 @@ export default function ChatComposer({
           </div>
         )}
 
-        {attachedImages.length > 0 && (
+        {attachedFiles.length > 0 && (
           <div className="mb-2 p-2 bg-muted/40 rounded-xl">
             <div className="flex flex-wrap gap-2">
-              {attachedImages.map((file, index) => (
+              {attachedFiles.map((file, index) => (
                 <ImageAttachment
                   key={index}
                   file={file}
-                  onRemove={() => onRemoveImage(index)}
-                  uploadProgress={uploadingImages.get(file.name)}
-                  error={imageErrors.get(file.name)}
+                  onRemove={() => onRemoveFile(index)}
+                  uploadProgress={uploadingFiles.get(getFileKey(file))}
                 />
               ))}
             </div>
+          </div>
+        )}
+
+        {fileErrors.size > 0 && (
+          <div className="mb-2 rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-600">
+            {[...new Set(fileErrors.values())].map((error) => (
+              <div key={error} className="truncate">
+                {error}
+              </div>
+            ))}
           </div>
         )}
 
@@ -298,6 +318,13 @@ export default function ChatComposer({
           }`}
         >
           <input {...getInputProps()} />
+          {attachedPrompt && (
+            <PromptBadgeDropdown
+              prompt={attachedPrompt}
+              onRemove={onRemoveAttachedPrompt}
+              onUpdate={onUpdateAttachedPrompt}
+            />
+          )}
           <div ref={inputHighlightRef} aria-hidden="true" className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl">
             <div className={`chat-input-placeholder block w-full ${projectName ? 'pl-[5.5rem]' : 'pl-12'} pr-20 sm:pr-40 py-1.5 sm:py-4 text-transparent text-base leading-6 whitespace-pre-wrap break-words`}>
               {renderInputWithMentions(input)}
@@ -325,7 +352,7 @@ export default function ChatComposer({
             <div className="absolute left-1 top-1/2 transform -translate-y-1/2 flex items-center">
               <button
                 type="button"
-                onClick={openImagePicker}
+                onClick={openFilePicker}
                 className="p-2 hover:bg-accent/60 rounded-xl transition-colors"
                 title={t('input.attachFiles')}
               >
@@ -358,7 +385,7 @@ export default function ChatComposer({
 
             <button
               type="submit"
-              disabled={!input.trim() || isLoading}
+              disabled={(!input.trim() && attachedFiles.length === 0 && !attachedPrompt) || isLoading}
               onMouseDown={(event) => {
                 event.preventDefault();
                 onSubmit(event);

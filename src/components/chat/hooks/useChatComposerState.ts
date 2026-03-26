@@ -10,16 +10,21 @@ import type {
   TouchEvent,
 } from 'react';
 import { useDropzone } from 'react-dropzone';
+import type { FileRejection } from 'react-dropzone';
+import { useTranslation } from 'react-i18next';
 import { authenticatedFetch } from '../../../utils/api';
 import { isTelemetryEnabled } from '../../../utils/telemetry';
 
 import { thinkingModes } from '../constants/thinkingModes';
 
 import { grantToolPermission } from '../utils/chatPermissions';
-import { getProviderSettingsKey, safeLocalStorage } from '../utils/chatStorage';
+import { getProviderSettingsKey, persistSessionTimerStart, safeLocalStorage } from '../utils/chatStorage';
 import { consumeWorkspaceQaDraft, WORKSPACE_QA_DRAFT_EVENT } from '../../../utils/workspaceQa';
 import { consumeReferenceChatDraft, REFERENCE_CHAT_DRAFT_EVENT } from '../../../utils/referenceChatDraft';
 import type {
+  AttachedPrompt,
+  ChatAttachment,
+  ChatImage,
   ChatMessage,
   PendingPermissionRequest,
   PermissionMode,
@@ -61,7 +66,7 @@ interface UseChatComposerStateArgs {
   setSessionMessages?: Dispatch<SetStateAction<any[]>>;
   setIsLoading: (loading: boolean) => void;
   setCanAbortSession: (canAbort: boolean) => void;
-  setClaudeStatus: (status: { text: string; tokens: number; can_interrupt: boolean } | null) => void;
+  setClaudeStatus: Dispatch<SetStateAction<{ text: string; tokens: number; can_interrupt: boolean; startTime?: number } | null>>;
   setIsUserScrolledUp: (isScrolledUp: boolean) => void;
   setPendingPermissionRequests: Dispatch<SetStateAction<PendingPermissionRequest[]>>;
   newSessionMode?: SessionMode;
@@ -81,12 +86,82 @@ interface CommandExecutionResult {
   hasFileIncludes?: boolean;
 }
 
+interface UploadedProjectFile {
+  name?: string;
+  path?: string;
+  size?: number;
+}
+
 const createFakeSubmitEvent = () => {
   return { preventDefault: () => undefined } as unknown as FormEvent<HTMLFormElement>;
 };
 
 const PROGRAMMATIC_SUBMIT_MAX_RETRIES = 12;
 const PROGRAMMATIC_SUBMIT_RETRY_DELAY_MS = 50;
+const MAX_ATTACHMENTS = 5;
+const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
+const CODEX_ATTACHMENT_DIR = '.dr-claw/chat-attachments';
+
+const IMAGE_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.svg',
+  '.heic',
+  '.heif',
+]);
+
+const PDF_EXTENSION = '.pdf';
+
+function getAttachmentKey(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
+function getFileExtension(file: File) {
+  const lowerName = file.name.toLowerCase();
+  const lastDot = lowerName.lastIndexOf('.');
+  return lastDot >= 0 ? lowerName.slice(lastDot) : '';
+}
+
+function isImageAttachment(file: File) {
+  return file.type.startsWith('image/') || IMAGE_EXTENSIONS.has(getFileExtension(file));
+}
+
+function isPdfAttachment(file: File) {
+  return file.type === 'application/pdf' || getFileExtension(file) === PDF_EXTENSION;
+}
+
+function getAttachmentKind(file: File) {
+  if (isImageAttachment(file)) {
+    return 'image';
+  }
+  if (isPdfAttachment(file)) {
+    return 'pdf';
+  }
+  return 'file';
+}
+
+function formatRejectedFileMessage(rejection: FileRejection) {
+  const attachmentKey = getAttachmentKey(rejection.file);
+  const name = rejection.file?.name || 'Unknown file';
+  const messages = rejection.errors.map((error) => {
+    if (error.code === 'file-too-large') {
+      return 'File too large (max 50MB)';
+    }
+    if (error.code === 'too-many-files') {
+      return 'Too many files (max 5)';
+    }
+    return error.message;
+  });
+
+  return {
+    attachmentKey,
+    message: `${name}: ${messages.join(', ') || 'File rejected'}`,
+  };
+}
 
 const isTemporarySessionId = (sessionId: string | null | undefined) =>
   Boolean(sessionId && sessionId.startsWith('new-session-'));
@@ -139,18 +214,21 @@ export function useChatComposerState({
   setPendingPermissionRequests,
   newSessionMode = 'research',
 }: UseChatComposerStateArgs) {
+  const { t } = useTranslation('chat');
   const [input, setInput] = useState(() => {
     if (typeof window !== 'undefined' && selectedProject) {
       return safeLocalStorage.getItem(`draft_input_${selectedProject.name}`) || '';
     }
     return '';
   });
-  const [attachedImages, setAttachedImages] = useState<File[]>([]);
-  const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map());
-  const [imageErrors, setImageErrors] = useState<Map<string, string>>(new Map());
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState<Map<string, number>>(new Map());
+  const [fileErrors, setFileErrors] = useState<Map<string, string>>(new Map());
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
   const [thinkingMode, setThinkingMode] = useState('none');
   const [intakeGreeting, setIntakeGreeting] = useState<string | null>(null);
+  const [pendingStageTagKeys, setPendingStageTagKeys] = useState<string[]>([]);
+  const [attachedPrompt, setAttachedPrompt] = useState<AttachedPrompt | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputHighlightRef = useRef<HTMLDivElement>(null);
@@ -168,6 +246,10 @@ export function useChatComposerState({
       }
     };
   }, []);
+
+  useEffect(() => {
+    setPendingStageTagKeys([]);
+  }, [selectedProject?.name, selectedSession?.id]);
 
   const handleBuiltInCommand = useCallback(
     (result: CommandExecutionResult) => {
@@ -460,34 +542,100 @@ export function useChatComposerState({
     inputHighlightRef.current.scrollLeft = target.scrollLeft;
   }, []);
 
-  const handleImageFiles = useCallback((files: File[]) => {
-    const validFiles = files.filter((file) => {
+  const handleAttachmentFiles = useCallback((files: File[]) => {
+    const validFiles: File[] = [];
+
+    files.forEach((file) => {
       try {
         if (!file || typeof file !== 'object') {
           console.warn('Invalid file object:', file);
-          return false;
+          return;
         }
 
-        if (!file.size || file.size > 10 * 1024 * 1024) {
-          const fileName = file.name || 'Unknown file';
-          setImageErrors((previous) => {
+        const attachmentKey = getAttachmentKey(file);
+
+        if (!file.size) {
+          setFileErrors((previous) => {
             const next = new Map(previous);
-            next.set(fileName, 'File too large (max 10MB)');
+            next.set(attachmentKey, `${file.name || 'Unknown file'}: Empty files are not supported`);
             return next;
           });
-          return false;
+          return;
         }
 
-        return true;
+        if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+          setFileErrors((previous) => {
+            const next = new Map(previous);
+            next.set(attachmentKey, `${file.name || 'Unknown file'}: File too large (max 50MB)`);
+            return next;
+          });
+          return;
+        }
+
+        validFiles.push(file);
       } catch (error) {
         console.error('Error validating file:', error, file);
-        return false;
       }
     });
 
     if (validFiles.length > 0) {
-      setAttachedImages((previous) => [...previous, ...validFiles].slice(0, 5));
+      setFileErrors((previous) => {
+        const next = new Map(previous);
+        validFiles.forEach((file) => {
+          next.delete(getAttachmentKey(file));
+        });
+        return next;
+      });
+
+      setAttachedFiles((previous) => {
+        const deduped = [...previous];
+        validFiles.forEach((file) => {
+          const nextKey = getAttachmentKey(file);
+          if (!deduped.some((existing) => getAttachmentKey(existing) === nextKey)) {
+            deduped.push(file);
+          }
+        });
+        return deduped.slice(0, MAX_ATTACHMENTS);
+      });
     }
+  }, []);
+
+  const handleRejectedFiles = useCallback((rejections: FileRejection[]) => {
+    if (!Array.isArray(rejections) || rejections.length === 0) {
+      return;
+    }
+
+    setFileErrors((previous) => {
+      const next = new Map(previous);
+      rejections.forEach((rejection) => {
+        const { attachmentKey, message } = formatRejectedFileMessage(rejection);
+        next.set(attachmentKey, message);
+      });
+      return next;
+    });
+  }, []);
+
+  const removeAttachedFile = useCallback((index: number) => {
+    setAttachedFiles((previous) => {
+      const next = [...previous];
+      const [removedFile] = next.splice(index, 1);
+
+      if (removedFile) {
+        const attachmentKey = getAttachmentKey(removedFile);
+        setFileErrors((previousErrors) => {
+          const nextErrors = new Map(previousErrors);
+          nextErrors.delete(attachmentKey);
+          return nextErrors;
+        });
+        setUploadingFiles((previousUploads) => {
+          const nextUploads = new Map(previousUploads);
+          nextUploads.delete(attachmentKey);
+          return nextUploads;
+        });
+      }
+
+      return next;
+    });
   }, []);
 
   const handlePaste = useCallback(
@@ -500,28 +648,84 @@ export function useChatComposerState({
         }
         const file = item.getAsFile();
         if (file) {
-          handleImageFiles([file]);
+          handleAttachmentFiles([file]);
         }
       });
 
       if (items.length === 0 && event.clipboardData.files.length > 0) {
         const files = Array.from(event.clipboardData.files);
         if (files.length > 0) {
-          handleImageFiles(files);
+          handleAttachmentFiles(files);
         }
       }
     },
-    [handleImageFiles],
+    [handleAttachmentFiles],
   );
 
-
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
-    maxSize: 10 * 1024 * 1024,
-    maxFiles: 5,
-    onDrop: handleImageFiles,
+    maxSize: MAX_ATTACHMENT_SIZE_BYTES,
+    maxFiles: MAX_ATTACHMENTS,
+    onDrop: handleAttachmentFiles,
+    onDropRejected: handleRejectedFiles,
     noClick: true,
     noKeyboard: true,
   });
+
+  const uploadPreviewImages = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) {
+        return [];
+      }
+
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append('images', file);
+      });
+
+      const response = await authenticatedFetch(`/api/projects/${encodeURIComponent(selectedProject?.name || '')}/upload-images`, {
+        method: 'POST',
+        headers: {},
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload images');
+      }
+
+      const result = await response.json();
+      return Array.isArray(result.images) ? (result.images as ChatImage[]) : [];
+    },
+    [selectedProject?.name],
+  );
+
+  const uploadFilesToProject = useCallback(
+    async (files: File[]) => {
+      if (!selectedProject || files.length === 0) {
+        return [];
+      }
+
+      const formData = new FormData();
+      const targetDir = `${CODEX_ATTACHMENT_DIR}/${Date.now()}`;
+      formData.append('targetDir', targetDir);
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+
+      const response = await authenticatedFetch(`/api/projects/${encodeURIComponent(selectedProject.name)}/upload-files`, {
+        method: 'POST',
+        headers: {},
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload files');
+      }
+
+      const result = await response.json();
+      return Array.isArray(result.files) ? (result.files as UploadedProjectFile[]) : [];
+    },
+    [selectedProject],
+  );
 
   const handleSubmit = useCallback(
     async (
@@ -529,7 +733,7 @@ export function useChatComposerState({
     ) => {
       event.preventDefault();
       const currentInput = inputValueRef.current;
-      if (!currentInput.trim() || isLoading || !selectedProject) {
+      if ((!currentInput.trim() && attachedFiles.length === 0 && !attachedPrompt) || isLoading || !selectedProject) {
         return;
       }
 
@@ -543,9 +747,10 @@ export function useChatComposerState({
           await executeCommand(matchedCommand, trimmedInput);
           setInput('');
           inputValueRef.current = '';
-          setAttachedImages([]);
-          setUploadingImages(new Map());
-          setImageErrors(new Map());
+          setAttachedPrompt(null);
+          setAttachedFiles([]);
+          setUploadingFiles(new Map());
+          setFileErrors(new Map());
           resetCommandMenuState();
           setIsTextareaExpanded(false);
           if (textareaRef.current) {
@@ -555,10 +760,25 @@ export function useChatComposerState({
         }
       }
 
-      let messageContent = currentInput;
+      const normalizedInput =
+        currentInput.trim() ||
+        t('input.attachmentOnlyFallback', {
+          defaultValue: 'Please inspect the attached files and help me with them.',
+        });
+      let messageContent = normalizedInput;
+
+      // Prepend attached prompt text if present
+      if (attachedPrompt) {
+        if (currentInput.trim()) {
+          messageContent = `${attachedPrompt.promptText}\n\n${normalizedInput}`;
+        } else {
+          messageContent = attachedPrompt.promptText;
+        }
+      }
+
       const selectedThinkingMode = thinkingModes.find((mode: { id: string; prefix?: string }) => mode.id === thinkingMode);
       if (selectedThinkingMode && selectedThinkingMode.prefix) {
-        messageContent = `${selectedThinkingMode.prefix}: ${currentInput}`;
+        messageContent = `${selectedThinkingMode.prefix}: ${messageContent}`;
       }
 
       // Inject intake greeting context for the first message after auto-intake
@@ -575,46 +795,103 @@ export function useChatComposerState({
         setIntakeGreeting(null);
       }
 
-      let uploadedImages: unknown[] = [];
-      if (attachedImages.length > 0) {
-        const formData = new FormData();
-        attachedImages.forEach((file) => {
-          formData.append('images', file);
-        });
+      let uploadedImages: ChatImage[] = [];
+      let codexAttachmentPayload:
+        | {
+            imagePaths: string[];
+            documentPaths: string[];
+          }
+        | undefined;
+      let messageAttachments: ChatAttachment[] = [];
+
+      if (attachedFiles.length > 0) {
+        let uploadedFiles: UploadedProjectFile[] = [];
 
         try {
-          const response = await authenticatedFetch(`/api/projects/${selectedProject.name}/upload-images`, {
-            method: 'POST',
-            headers: {},
-            body: formData,
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to upload images');
-          }
-
-          const result = await response.json();
-          uploadedImages = result.images;
+          uploadedFiles = await uploadFilesToProject(attachedFiles);
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown error';
-          console.error('Image upload failed:', error);
+          console.error('File upload failed:', error);
           setChatMessages((previous) => [
             ...previous,
             {
               type: 'error',
-              content: `Failed to upload images: ${message}`,
+              content: `Failed to upload files: ${message}`,
               timestamp: new Date(),
             },
           ]);
           return;
         }
+
+        messageAttachments = attachedFiles.map((file, index) => {
+          const uploadedFile = uploadedFiles[index];
+          const uploadedPath = uploadedFile?.path && typeof uploadedFile.path === 'string' ? uploadedFile.path : undefined;
+
+          return {
+            name: file.name,
+            kind: getAttachmentKind(file),
+            mimeType: file.type || undefined,
+            path: uploadedPath,
+          };
+        });
+
+        if (uploadedFiles.length > 0) {
+          const fileNote = `\n\n[Files available at the following paths]\n${uploadedFiles
+            .map((file, index) => `${index + 1}. ${file.path}`)
+            .join('\n')}`;
+          messageContent = `${messageContent}${fileNote}`;
+        }
+
+        if (provider === 'codex') {
+          codexAttachmentPayload = uploadedFiles.reduce(
+            (
+              accumulator: {
+                imagePaths: string[];
+                documentPaths: string[];
+              },
+              uploadedFile: UploadedProjectFile,
+              index: number,
+            ) => {
+              const sourceFile = attachedFiles[index];
+              const uploadedPath =
+                uploadedFile?.path && typeof uploadedFile.path === 'string' ? uploadedFile.path : null;
+
+              if (!sourceFile || !uploadedPath) {
+                return accumulator;
+              }
+
+              if (isImageAttachment(sourceFile)) {
+                accumulator.imagePaths.push(uploadedPath);
+              } else if (isPdfAttachment(sourceFile)) {
+                accumulator.documentPaths.push(uploadedPath);
+              }
+
+              return accumulator;
+            },
+            {
+              imagePaths: [] as string[],
+              documentPaths: [] as string[],
+            },
+          );
+        }
+
+        const imageFiles = attachedFiles.filter((file) => isImageAttachment(file));
+        if (imageFiles.length > 0) {
+          try {
+            uploadedImages = await uploadPreviewImages(imageFiles);
+          } catch (error) {
+            console.error('Image preview upload failed:', error);
+          }
+        }
       }
 
       const userMessage: ChatMessage = {
         type: 'user',
-        content: currentInput,
-        images: uploadedImages as any,
+        content: normalizedInput,
+        images: uploadedImages.length > 0 ? uploadedImages : undefined,
+        attachments: messageAttachments.length > 0 ? messageAttachments : undefined,
         timestamp: new Date(),
+        ...(attachedPrompt ? { attachedPrompt } : {}),
       };
 
       setChatMessages((previous) => [...previous, userMessage]);
@@ -622,12 +899,14 @@ export function useChatComposerState({
         clearTimeout(abortTimeoutRef.current);
         abortTimeoutRef.current = null;
       }
+      const turnStartTime = Date.now();
       setIsLoading(true);
       setCanAbortSession(true);
       setClaudeStatus({
         text: 'Processing',
         tokens: 0,
         can_interrupt: true,
+        startTime: turnStartTime,
       });
 
       setIsUserScrolledUp(false);
@@ -636,6 +915,16 @@ export function useChatComposerState({
       // Reuse the session currently represented by the route or pending view state.
       // This prevents interrupted chats from being treated as brand new sessions.
       const routedSessionId = getRouteSessionId();
+      
+      // If we're on the root path with no routed session AND no selected session, 
+      // treat it as an explicit new session start and clear any stale provider-specific session IDs.
+      const isExplicitNewSessionStart = window.location.pathname === '/' && !routedSessionId && !selectedSession?.id;
+      if (isExplicitNewSessionStart && typeof window !== 'undefined') {
+        sessionStorage.removeItem('geminiSessionId');
+        sessionStorage.removeItem('cursorSessionId');
+        sessionStorage.removeItem('pendingSessionId');
+      }
+
       const providerSessionId =
         provider === 'gemini'
           ? sessionStorage.getItem('geminiSessionId')
@@ -649,7 +938,6 @@ export function useChatComposerState({
         routedSessionId ||
         pendingViewSessionId ||
         providerSessionId;
-      const isExplicitNewSession = window.location.pathname === '/' && !effectiveSessionId;
       const isNewSession = !effectiveSessionId;
       const sessionToActivate = effectiveSessionId || `new-session-${Date.now()}`;
 
@@ -657,12 +945,10 @@ export function useChatComposerState({
         if (typeof window !== 'undefined') {
           // Reset stale pending IDs from previous interrupted runs before creating a new one.
           sessionStorage.removeItem('pendingSessionId');
-          if (provider === 'gemini') {
-            sessionStorage.removeItem('geminiSessionId');
-          }
         }
         pendingViewSessionRef.current = { sessionId: null, startedAt: Date.now() };
       }
+      persistSessionTimerStart(sessionToActivate, turnStartTime);
       onSessionActive?.(sessionToActivate);
 
       const getToolsSettings = () => {
@@ -713,6 +999,8 @@ export function useChatComposerState({
             toolsSettings,
             telemetryEnabled,
             sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
+            stageTagKeys: pendingStageTagKeys,
+            stageTagSource: 'task_context',
           },
         });
       } else if (provider === 'gemini') {
@@ -728,10 +1016,12 @@ export function useChatComposerState({
             resume: Boolean(effectiveSessionId),
             model: geminiModel,
             permissionMode,
-            images: uploadedImages,
+            images: uploadedImages.length > 0 ? uploadedImages : undefined,
             toolsSettings,
             telemetryEnabled,
             sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
+            stageTagKeys: pendingStageTagKeys,
+            stageTagSource: 'task_context',
           },
         });
       } else if (provider === 'codex') {
@@ -747,8 +1037,12 @@ export function useChatComposerState({
             resume: Boolean(effectiveSessionId),
             model: codexModel,
             permissionMode: permissionMode === 'plan' ? 'default' : permissionMode,
+            attachments: codexAttachmentPayload,
+            images: uploadedImages,
             telemetryEnabled,
             sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
+            stageTagKeys: pendingStageTagKeys,
+            stageTagSource: 'task_context',
           },
         });
       } else {
@@ -764,21 +1058,25 @@ export function useChatComposerState({
             toolsSettings,
             permissionMode,
             model: claudeModel,
-            images: uploadedImages,
+            images: uploadedImages.length > 0 ? uploadedImages : undefined,
             telemetryEnabled,
             sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
+            stageTagKeys: pendingStageTagKeys,
+            stageTagSource: 'task_context',
           },
         });
       }
 
       setInput('');
       inputValueRef.current = '';
+      setPendingStageTagKeys([]);
       resetCommandMenuState();
-      setAttachedImages([]);
-      setUploadingImages(new Map());
-      setImageErrors(new Map());
+      setAttachedFiles([]);
+      setUploadingFiles(new Map());
+      setFileErrors(new Map());
       setIsTextareaExpanded(false);
       setThinkingMode('none');
+      setAttachedPrompt(null);
 
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
@@ -787,7 +1085,8 @@ export function useChatComposerState({
       safeLocalStorage.removeItem(`draft_input_${selectedProject.name}`);
     },
     [
-      attachedImages,
+      attachedFiles,
+      attachedPrompt,
       claudeModel,
       codexModel,
       currentSessionId,
@@ -809,9 +1108,13 @@ export function useChatComposerState({
       setClaudeStatus,
       setIsLoading,
       setIsUserScrolledUp,
+      pendingStageTagKeys,
       slashCommands,
       thinkingMode,
+      t,
       intakeGreeting,
+      uploadFilesToProject,
+      uploadPreviewImages,
     ],
   );
 
@@ -876,7 +1179,7 @@ export function useChatComposerState({
               if (res.ok) {
                 const blob = await res.blob();
                 const file = new File([blob], `${refDraft.referenceId}.pdf`, { type: 'application/pdf' });
-                setAttachedImages((prev) => [...prev, file].slice(0, 5));
+                setAttachedFiles((prev: File[]) => [...prev, file].slice(0, 5));
               }
             } catch {
               // PDF fetch failed — user still has text context
@@ -945,6 +1248,7 @@ export function useChatComposerState({
       setCursorPosition(cursorPos);
 
       if (!newValue.trim()) {
+        setPendingStageTagKeys([]);
         event.target.style.height = 'auto';
         setIsTextareaExpanded(false);
         resetCommandMenuState();
@@ -1021,6 +1325,10 @@ export function useChatComposerState({
   const handleClearInput = useCallback(() => {
     setInput('');
     inputValueRef.current = '';
+    setPendingStageTagKeys([]);
+    setAttachedFiles([]);
+    setUploadingFiles(new Map());
+    setFileErrors(new Map());
     resetCommandMenuState();
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -1178,6 +1486,8 @@ export function useChatComposerState({
   return {
     input,
     setInput,
+    attachedPrompt,
+    setAttachedPrompt,
     textareaRef,
     inputHighlightRef,
     isTextareaExpanded,
@@ -1197,14 +1507,14 @@ export function useChatComposerState({
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
-    attachedImages,
-    setAttachedImages,
-    uploadingImages,
-    imageErrors,
+    attachedFiles,
+    removeAttachedFile,
+    uploadingFiles,
+    fileErrors,
     getRootProps,
     getInputProps,
     isDragActive,
-    openImagePicker: open,
+    openFilePicker: open,
     handleSubmit,
     handleInputChange,
     handleKeyDown,
@@ -1221,6 +1531,7 @@ export function useChatComposerState({
     isInputFocused,
     intakeGreeting,
     setIntakeGreeting,
+    setPendingStageTagKeys,
     submitProgrammaticInput,
   };
 }

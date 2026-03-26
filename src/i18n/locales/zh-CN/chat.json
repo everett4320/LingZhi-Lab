@@ -13,6 +13,10 @@
     "codex": "Codex",
     "gemini": "Gemini"
   },
+  "error": {
+    "retry": "重试",
+    "usageLimitHint": "使用限制重置后可以重试"
+  },
   "tools": {
     "settings": "工具设置",
     "error": "工具错误",
@@ -59,7 +63,8 @@
   "agentTurn": {
     "thought": "思考",
     "usedTools": "使用了 {{count}} 个工具",
-    "steps": "执行步骤"
+    "steps": "执行步骤",
+    "streaming": "传输中..."
   },
   "skill": {
     "contentLoaded": "技能内容已加载"
@@ -110,6 +115,7 @@
     "attachReferences": "附加文献",
     "attachImages": "附加图片",
     "dropFilesHere": "拖放文件到此处",
+    "attachmentOnlyFallback": "请先查看我附上的文件，并基于这些文件帮助我。",
     "send": "发送",
     "stop": "停止",
     "hintText": {
@@ -234,7 +240,17 @@
     "runCommand": "在 {{projectName}} 中运行 {{command}}",
     "openTerminal": "在 {{projectName}} 中打开终端",
     "startCli": "在 {{projectName}} 中启动 Claude CLI",
+    "historyEdit": {
+      "action": "修改历史输入",
+      "promptTitle": "请在 Shell 中完成历史编辑",
+      "promptDescription": "Web Chat 不直接改写历史消息。如需使用模型原生的编辑、撤回或重试能力，请前往 Shell 操作。",
+      "cancel": "取消",
+      "confirm": "前往 Shell",
+      "bannerTitle": "当前会话已切换到 Shell",
+      "bannerDescription": "请在这里使用模型原生的历史编辑、撤回或重试能力。Web Chat 仅展示对话，不直接改写历史。"
+    },
     "workspace": {
+      "currentSession": "当前会话",
       "newShell": "新建 Shell",
       "tabTitle": "Shell {{index}}",
       "closeShell": "关闭 {{title}}"
@@ -324,6 +340,10 @@
         "title": "审阅稿件",
         "description": "以审稿视角检查方法、证据、引用与写作质量。"
       },
+      "rebuttalResponse": {
+        "title": "撰写 Rebuttal",
+        "description": "针对审稿意见，使用会场感知策略、安全门控和 Issue 追踪撰写专业回复。"
+      },
       "grantProposal": {
         "title": "基金申请",
         "description": "为 NSF、NIH、DOE、DARPA、NASA 或 NSFC 的基金申请做规划、起草、修改或重投。"
@@ -333,6 +353,11 @@
         "description": "基于论文内容生成演示文稿、旁白脚本、音频与演示视频。"
       }
     }
+  },
+  "attachedPrompt": {
+    "showPrompt": "显示提示词",
+    "hidePrompt": "隐藏提示词",
+    "remove": "移除"
   },
   "pipelineOnboarding": {
     "noBrief": {

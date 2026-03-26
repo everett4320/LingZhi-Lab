@@ -40,6 +40,7 @@ function Sidebar({
   isMobile,
   activeTab,
   onOpenDashboard,
+  onOpenTrash,
   onOpenSkills,
   onOpenNews,
   onImportedProjectCreated,
@@ -248,6 +249,7 @@ function Sidebar({
             isRefreshing={isRefreshing}
             activeTab={activeTab}
             onOpenDashboard={onOpenDashboard}
+            onOpenTrash={onOpenTrash}
             onOpenSkills={onOpenSkills}
             onOpenNews={onOpenNews}
             onCreateProject={() => setShowWizard(true)}

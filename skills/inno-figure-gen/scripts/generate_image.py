@@ -56,8 +56,8 @@ def main():
     )
     parser.add_argument(
         "--model", "-m",
-        default="gemini-3.1-flash-image",
-        help="Model to use for image generation (default: gemini-3.1-flash-image)"
+        default="gemini-3.1-flash-image-preview",
+        help="Model to use for image generation (default: gemini-3.1-flash-image-preview)"
     )
 
     args = parser.parse_args()

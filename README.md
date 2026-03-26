@@ -5,6 +5,9 @@
 </div>
 
 <p align="center">
+<a href="https://openlair.github.io/dr-claw">
+<img src="https://img.shields.io/badge/%F0%9F%8C%90-Homepage-CB2B3E?style=for-the-badge" alt="Homepage" />
+</a>
 <a href="https://github.com/OpenLAIR/dr-claw">
 <img src="https://img.shields.io/badge/%F0%9F%A6%9E-Dr.%20Claw-CB2B3E?style=for-the-badge" alt="Dr. Claw" />
 </a>
@@ -32,6 +35,7 @@
 - [Highlights](#highlights)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
+- [OpenClaw Integration](#openclaw-integration)
 - [Research Lab - Quick Example](#research-lab-quick-example)
 - [Usage Guide](#usage-guide)
 - [Additional Details](#additional-details)
@@ -70,6 +74,19 @@ Dr. Claw is a general-purpose AI research assistant designed to help researchers
 - **📚 100+ Research Skills** — A curated library spanning idea generation, code survey, experiment development & analysis, paper writing, review response, and delivery — automatically discovered by agents and applied as task-level assistance
 - **🗂️ Chat-Driven Pipeline** — Describe your research idea in Chat; the agent uses the `inno-pipeline-planner` skill to interactively generate a structured research brief and task list — no manual templates needed
 - **🤖 Multi-Agent Backend** — Seamlessly switch between Claude Code, Gemini CLI, and Codex as your execution engines
+
+### What the Pipeline Produces
+
+| | Artifact | Location | Description |
+|---|---|---|---|
+| 📚 | Survey reports | `Survey/reports/` | Literature reviews with citations from arXiv, Semantic Scholar, and web sources |
+| 💡 | Research ideas | `Ideation/ideas/` | Brainstorming outputs with multi-persona evaluation scores |
+| 🔬 | Experiment code | `Experiment/core_code/` | Implementation from the plan → implement → judge loop |
+| 📊 | Analysis results | `Experiment/analysis/` | Statistical analysis, tables, and paper-ready figures |
+| 📝 | Paper draft | `Publication/paper/` | Academic manuscript (IEEE/ACM format) with citations and LaTeX math |
+| 🎞️ | Presentation | `Promotion/slides/` | Slide deck, TTS narration audio, and demo video |
+
+> See [docs/pipeline-outputs.md](docs/pipeline-outputs.md) for the full artifact list and project directory structure.
 
 <details>
 <summary><span style="font-size: 1.17em; font-weight: 600;">More Features</span></summary>
@@ -117,7 +134,7 @@ Dr. Claw is a general-purpose AI research assistant designed to help researchers
 
 Cursor agent support is in progress and coming soon.
 
-### Installation
+### Installation 
 
 1. **Clone the repository:**
 ```bash
@@ -139,14 +156,314 @@ cp .env.example .env
 Need custom ports, auth, or workspace settings? See [docs/configuration.md](docs/configuration.md).
 
 4. **Start the application:**
+
 ```bash
 # Development mode (with hot reload)
 npm run dev
 ```
 
-5. **Open your browser** at `http://localhost:5173` (or the port you configured in `.env`)
+Then create your account via the bowser `http://localhost:5173`.
 
-If agent web search does not work later, see **Troubleshooting Web Search** below.
+5. **Use the application**
+
+There are two ways to interact with Dr. Claw: the **frontend UI** workflow or the **terminal-only**. The UI provides richer visualization but may encounter occasional bugs; the terminal approach is more stable and lightweight.
+
+#### Option A: Frontend UI
+
+Open your browser at `http://localhost:5173` (or the port you configured in `.env`).
+
+
+
+#### Option B: Terminal Only
+
+<p align="center">
+  <img src="public/screenshots/terminal_example1.png" alt="Terminal workflow example" width="800">
+</p>
+
+Open a **second terminal** (keep `npm run dev` running in the first) and install the `drclaw` CLI harness:
+
+```bash
+pip install -e ./agent-harness
+```
+
+Then log in with the credentials you created during setup:
+
+```bash
+drclaw auth login --username YOUR_USERNAME --password YOUR_PASSWORD
+```
+
+Install at least one agent CLI (if you haven't already):
+
+| Agent | Install | Auth |
+|-------|---------|------|
+| Claude Code | `npm install -g @anthropic-ai/claude-code` | `claude` → follow OAuth prompt |
+| Gemini CLI | `npm install -g @google/gemini-cli` | `gemini` → Google sign-in, or `export GOOGLE_API_KEY=...` |
+| Codex CLI | `npm install -g @openai/codex` | `codex login`, or `export OPENAI_API_KEY=...` |
+
+Navigate to the project directory you want to work in and launch any of the agents:
+
+```bash
+cd /path/to/your/project
+claude    # or: gemini | codex
+```
+
+Skills from `dr-claw/skills/` are automatically symlinked into each project's `.claude/skills/` directory when the project is created, so the agent discovers them without extra configuration. You can also reference any skill manually inside a session:
+
+```
+> Read .claude/skills/inno-experiment-analysis/SKILL.md and follow it to analyze my results.
+```
+
+
+
+If agent web search does not work later, see [Troubleshooting Web Search](#troubleshooting-web-search) below.
+
+## OpenClaw Integration
+
+This section is written for **new users integrating OpenClaw with Dr. Claw for the first time**. The goal is not to expose every detail. The goal is to get a reliable first integration running quickly:
+
+- OpenClaw can see which Dr. Claw projects exist
+- OpenClaw can find sessions waiting for user input
+- OpenClaw can reply into a chosen session so Dr. Claw keeps going
+- OpenClaw can summarize project / portfolio progress and recommend what to focus on next
+
+The clean mental model is:
+- **Dr. Claw**: owns the real projects, sessions, pipelines, artifacts, and execution
+- **`drclaw` CLI**: exposes that state through a stable local control surface exposed primarily as `drclaw`
+- **OpenClaw**: acts as the user-facing secretary on mobile, chat, or voice
+
+### Fastest path for new users
+
+If you only want the shortest successful path, do these 5 things:
+
+1. Start Dr. Claw
+2. Install the `drclaw` CLI
+3. Give OpenClaw local shell / `exec` access
+4. Install the provided OpenClaw skill
+5. Make `chat waiting` and `digest portfolio` work end-to-end
+
+Once those two commands work, OpenClaw already behaves like a usable research secretary.
+
+### Step 0: confirm the prerequisites
+
+Before integrating, make sure:
+- you can already run Dr. Claw locally
+- you already have at least one project, or can create one under `~/vibelab/...`
+- you have configured at least one execution backend such as Claude Code, Gemini CLI, or Codex
+- your OpenClaw instance is allowed to run local tools
+
+If those are not true yet, get Dr. Claw itself working first.
+
+### Step 1: start and verify the Dr. Claw server
+
+From the repo root:
+
+```bash
+npm install
+npm run dev
+```
+
+In another terminal:
+
+```bash
+drclaw --json auth status
+drclaw server status
+```
+
+Use `auth status` as the primary reachability check. If it returns JSON, the server is reachable.
+
+`drclaw server status` only reports the daemon launched by `drclaw server on`. If you started the app manually with `npm run dev`, it may still show `STOPPED` even though `http://localhost:3001` is working.
+
+If you want Dr. Claw to manage the background process for you:
+
+```bash
+drclaw server on
+```
+
+### Step 2: install and verify the `drclaw` CLI
+
+From the repo root:
+
+```bash
+pip install -e ./agent-harness
+```
+
+Then verify:
+
+```bash
+drclaw --help
+drclaw --json auth status
+drclaw --json projects list
+```
+
+A good sequence is:
+- `drclaw --json auth status` should return JSON if the server is reachable
+- `drclaw --json projects list` will work only after login or if you already have a saved token
+
+If `projects list` returns `Not logged in`, authenticate first:
+
+```bash
+drclaw auth login --username <username> --password <password>
+```
+
+### Step 3: give OpenClaw local CLI execution capability
+
+The key integration is not a deep API bridge. The key is that **OpenClaw can directly execute `drclaw ...` locally**.
+
+At minimum, OpenClaw should be able to run commands such as:
+
+```bash
+drclaw --json chat waiting
+drclaw --json digest portfolio
+drclaw --json chat reply --project <project> --session <session-id> -m "<message>"
+drclaw --json workflow continue --project <project> --session <session-id> -m "<instruction>"
+```
+
+Recommended approach:
+- enable local `exec` / shell for OpenClaw
+- prefer direct local CLI calls
+- avoid building an extra proxy layer at the beginning
+
+The thinner this layer is, the easier it is to debug and keep reliable.
+
+### Step 4: link OpenClaw in one command
+
+Run:
+
+```bash
+drclaw install --server-url http://localhost:3001
+```
+
+This will automatically:
+- copy the Dr. Claw skill into `~/.openclaw/workspace/skills/drclaw`
+- install the helper scripts OpenClaw uses for serialized local turns
+- save the Dr. Claw server URL for future CLI / OpenClaw use
+- remember the local `drclaw` executable path
+
+If you also want to save the default push channel during setup:
+
+```bash
+drclaw install --server-url http://localhost:3001 --push-channel feishu:<chat_id>
+```
+
+The compatibility form is still available:
+
+```bash
+drclaw openclaw install --server-url http://localhost:3001
+```
+
+### Step 5: make two core commands work first
+
+For a new user, do not start with everything. Start with these two:
+
+1. **Find which sessions are waiting for user input**
+```bash
+drclaw --json chat waiting
+```
+
+2. **Get portfolio-wide progress and recommendations**
+```bash
+drclaw --json digest portfolio
+```
+
+If OpenClaw can call both commands and summarize the result back to the user, your minimum viable integration is already working.
+
+### Step 6: add the reply loop
+
+The next common user action is: see a waiting session, then ask OpenClaw to answer it.
+
+The fixed pattern is:
+
+1. Find waiting sessions:
+```bash
+drclaw --json chat waiting
+```
+
+2. Let the user choose a project and session
+
+3. Send the reply:
+```bash
+drclaw --json chat reply --project <project> --session <session-id> -m "<message>"
+```
+
+4. Immediately re-check whether it is still waiting:
+```bash
+drclaw --json chat waiting --project <project>
+```
+
+If the user wants to keep discussing the same project/session, switch to:
+
+```bash
+drclaw --json chat project --project <project> --session <session-id> -m "<instruction>"
+```
+
+That is the better pattern for multi-turn project-scoped discussion.
+
+### Step 7: recommended fixed operating patterns
+
+Recommended OpenClaw flows:
+
+1. **User asks: what needs my attention right now?**
+```bash
+drclaw --json digest portfolio
+```
+
+2. **User asks: which sessions are waiting for me?**
+```bash
+drclaw --json chat waiting
+```
+
+3. **User asks: what is the latest state of this project?**
+```bash
+drclaw --json projects latest <project>
+drclaw --json projects progress <project>
+```
+
+4. **User says: reply to this session and keep it moving**
+```bash
+drclaw --json chat reply --project <project> --session <session-id> -m "<message>"
+```
+
+5. **User says: I just had a new idea, create a project and help me shape it**
+```bash
+drclaw --json projects idea /absolute/path/to/project --name "<display-name>" --idea "<idea text>"
+```
+
+### Step 8: prefer serialized local turns
+
+When OpenClaw repeatedly runs `openclaw agent --local`, use the serialized wrapper to avoid session-lock collisions:
+
+```bash
+agent-harness/skills/dr-claw/scripts/openclaw_drclaw_turn.sh
+```
+
+Example:
+
+```bash
+openclaw_drclaw_turn.sh --json -m "Use your exec tool to run `drclaw --json digest portfolio`. Return only raw stdout."
+```
+
+In practice: **when OpenClaw calls Dr. Claw locally, stable serial turns are better than risky parallel turns.**
+
+### Step 9: how to know the integration is successful
+
+A new user can consider the integration complete once all 4 are true:
+- OpenClaw can list Dr. Claw projects
+- OpenClaw can identify waiting sessions
+- OpenClaw can successfully send one reply into a chosen session
+- OpenClaw can produce one `digest portfolio` style summary with recommendations
+
+At that point, OpenClaw is no longer just a chat surface. It becomes Dr. Claw's mobile secretary.
+
+### Step 10: what end users can say afterwards
+
+After setup, users should be able to talk to OpenClaw naturally:
+- “Check which Dr. Claw projects are waiting for my reply.”
+- “Summarize the last message and current progress of this project.”
+- “Reply to this session: continue with option B and report back when finished.”
+- “Summarize recent experiment progress across projects and recommend what I should focus on today.”
+- “I just had a new idea. Create a Dr. Claw project, discuss it with me, refine it, and start execution planning.”
+
+The goal is not to replace Dr. Claw. The goal is to make Dr. Claw **callable, reportable, steerable, and remotely manageable** through OpenClaw.
 
 ## Configuration
 
@@ -255,6 +572,7 @@ If you want Dr. Claw to execute the generated task list end-to-end for you, use 
 
 </details>
 
+<a id="troubleshooting-web-search"></a>
 <details>
 <summary><strong>Step 4 — Troubleshooting Web Search</strong></summary>
 
@@ -416,6 +734,17 @@ We welcome contributions! Please follow these guidelines:
 
 For setup help and troubleshooting, see [FAQ](docs/faq.md).
 
+## Legacy Compatibility & Deprecation
+
+Dr. Claw was previously known as **VibeLab**. For users migrating from VibeLab, we provide a compatibility layer during the transition phase:
+
+- **CLI Alias**: The `vibelab` command is still supported as an alias for `drclaw` but will issue a deprecation warning.
+- **Python Package**: The `VibeLab` class in the `agent-harness` is deprecated; please use the `DrClaw` class instead.
+- **Session Files**: The CLI now defaults to `~/.drclaw_session.json` but will automatically check for and migrate `~/.vibelab_session.json` if found.
+- **Environment Variables**: `DRCLAW_URL` and `DRCLAW_TOKEN` are preferred, but `VIBELAB_URL` and `VIBELAB_TOKEN` are still supported as fallbacks.
+
+**Timeline**: We plan to remove legacy `vibelab` support in Version 2.0 (estimated Q3 2026). Please update your scripts and integrations as soon as possible.
+
 ## License
 
 This repository contains a combined work.
@@ -430,11 +759,12 @@ If you find Dr. Claw useful in your research, please cite:
 
 ```bibtex
 @misc{song2026drclaw,
-  author       = {Dingjie Song and Hanrong Zhang and Dawei Liu and Yixin Liu and Zhengqing Yuan and Siqi Zhang and Lichao Sun},
+  author       = {Dingjie Song and Hanrong Zhang and Dawei Liu and Yixin Liu and Zhengqing Yuan and Zongxia Li and Siqi Zhang and Lichao Sun},
   title        = {Dr. Claw: An AI Research Workspace from Idea to Paper},
   year         = {2026},
   organization = {GitHub},
   url          = {https://github.com/OpenLAIR/dr-claw},
+  homepage     = {https://openlair.github.io/dr-claw},
 }
 ```
 

@@ -4,8 +4,13 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { createRequestId, waitForToolApproval, matchesToolPermission } from './utils/permissions.js';
-import { ensureProjectSkillLinks } from './projects.js';
+import { encodeProjectPath, ensureProjectSkillLinks, reconcileGeminiSessionIndex } from './projects.js';
 import { writeProjectTemplates } from './templates/index.js';
+import { stripInternalContextPrefix } from './utils/sessionFormatting.js';
+import { applyStageTagsToSession, recordIndexedSession } from './utils/sessionIndex.js';
+import { buildTempAttachmentFilename, toPortableAtPath } from './utils/imageAttachmentFiles.js';
+import { splitLegacyGeminiThoughtContent } from '../shared/geminiThoughtParser.js';
+import { classifyError } from '../shared/errorClassifier.js';
 
 // Use cross-spawn on Windows for better command execution
 const spawnFunction = process.platform === 'win32' ? crossSpawn : spawn;
@@ -71,6 +76,25 @@ const GEMINI_PLAN_BLOCKED_TOOLS = new Set([
   'Edit'
 ]);
 
+async function persistGeminiSessionMetadata(sessionId, projectPath, sessionMode) {
+  if (!sessionId || !projectPath) return;
+
+  try {
+    const { sessionDb } = await import('./database/db.js');
+    sessionDb.upsertSession(
+      sessionId,
+      encodeProjectPath(projectPath),
+      'gemini',
+      'Untitled Session',
+      new Date().toISOString(),
+      0,
+      { sessionMode: sessionMode || 'research' },
+    );
+  } catch (error) {
+    console.warn('[Gemini] Failed to persist session metadata:', error.message);
+  }
+}
+
 function normalizeGeminiToolName(name) {
   if (!name || typeof name !== 'string') return name;
   const normalized = name.trim();
@@ -109,31 +133,42 @@ function isAllowedBeforeTodos(rawToolName) {
   ].includes(normalized);
 }
 
-function stripInternalContextPrefix(text) {
-  if (typeof text !== 'string') return '';
-  let cleaned = text;
-  const contextPrefixPattern = /^\s*\[Context:[^\]]*]\s*(?:\r?\n\s*)*/i;
-  while (contextPrefixPattern.test(cleaned)) {
-    cleaned = cleaned.replace(contextPrefixPattern, '');
-  }
-  return cleaned;
-}
-
 function sanitizePersistedGeminiContent(content) {
   if (typeof content === 'string') {
-    return stripInternalContextPrefix(content);
+    return stripInternalContextPrefix(content, false);
   }
 
   if (Array.isArray(content)) {
     return content.map((part) => {
       if (part && typeof part === 'object' && typeof part.text === 'string') {
-        return { ...part, text: stripInternalContextPrefix(part.text) };
+        return { ...part, text: stripInternalContextPrefix(part.text, false) };
       }
       return part;
     });
   }
 
   return content;
+}
+
+// Exported for testing only
+export function normalizePersistedGeminiAssistantEntries(content) {
+  const normalizedContent = typeof content === 'string'
+    ? stripInternalContextPrefix(content, false)
+    : content;
+  const legacySegments = splitLegacyGeminiThoughtContent(normalizedContent);
+
+  if (!legacySegments) {
+    return [{
+      role: 'assistant',
+      content: normalizedContent,
+      type: 'message'
+    }];
+  }
+
+  return legacySegments.map((segment) => segment.isThinking
+    ? { role: 'assistant', type: 'thinking', content: segment.content }
+    : { role: 'assistant', content: segment.content, type: 'message' }
+  );
 }
 
 function summarizeGeminiErrorOutput(rawErrorOutput, fallbackModel) {
@@ -345,46 +380,47 @@ async function enrichListDirectoryResult(toolContext, outputText, workingDir) {
   }
 }
 
-async function handleGeminiImages(command, images, workingDir) {
-  const tempImagePaths = [];
+async function handleGeminiAttachments(command, attachments, workingDir) {
+  const tempFilePaths = [];
   let tempDir = null;
-  if (!Array.isArray(images) || images.length === 0) {
-    return { modifiedCommand: command, tempImagePaths, tempDir };
+  if (!Array.isArray(attachments) || attachments.length === 0) {
+    return { modifiedCommand: command, tempFilePaths, tempDir };
   }
 
   try {
-    tempDir = path.join(workingDir || process.cwd(), '.tmp', 'images', Date.now().toString());
+    tempDir = path.join(workingDir || process.cwd(), '.tmp', 'attachments', Date.now().toString());
     await fs.mkdir(tempDir, { recursive: true });
 
-    for (const [index, image] of images.entries()) {
-      const data = String(image?.data || '');
+    for (const [index, item] of attachments.entries()) {
+      const data = String(item?.data || '');
       const matches = data.match(/^data:([^;]+);base64,(.+)$/);
       if (!matches) continue;
       const [, mimeType, base64Data] = matches;
-      const ext = mimeType.includes('/') ? mimeType.split('/')[1] : 'bin';
-      const originalName = image?.name ? String(image.name).replace(/[^a-zA-Z0-9._-]/g, '_') : null;
-      const filename = originalName || `image_${index}.${ext}`;
+      const filename = buildTempAttachmentFilename(index, item?.name, mimeType);
       const filepath = path.join(tempDir, filename);
       await fs.writeFile(filepath, Buffer.from(base64Data, 'base64'));
-      tempImagePaths.push(filepath);
+      tempFilePaths.push(filepath);
     }
 
-    if (tempImagePaths.length === 0) {
-      return { modifiedCommand: command, tempImagePaths, tempDir };
+    if (tempFilePaths.length === 0) {
+      return { modifiedCommand: command, tempFilePaths, tempDir };
     }
 
-    const note = `\n\n[Attached image files]\n${tempImagePaths.map((p, i) => `${i + 1}. ${p}`).join('\n')}`;
-    return { modifiedCommand: `${command}${note}`, tempImagePaths, tempDir };
+    const referencedPaths = tempFilePaths.map((filePath) => {
+      return toPortableAtPath(filePath, workingDir || process.cwd());
+    });
+    const note = `\n\nAttached files:\n${referencedPaths.join('\n')}`;
+    return { modifiedCommand: `${command}${note}`, tempFilePaths, tempDir };
   } catch (error) {
-    console.error('[Gemini] Failed to process images:', error.message);
-    return { modifiedCommand: command, tempImagePaths, tempDir };
+    console.error('[Gemini] Failed to process attachments:', error.message);
+    return { modifiedCommand: command, tempFilePaths, tempDir };
   }
 }
 
-async function cleanupGeminiTempFiles(tempImagePaths, tempDir) {
-  if (!Array.isArray(tempImagePaths) || tempImagePaths.length === 0) return;
-  for (const imagePath of tempImagePaths) {
-    try { await fs.unlink(imagePath); } catch {}
+async function cleanupGeminiTempFiles(tempFilePaths, tempDir) {
+  if (!Array.isArray(tempFilePaths) || tempFilePaths.length === 0) return;
+  for (const filePath of tempFilePaths) {
+    try { await fs.unlink(filePath); } catch {}
   }
   if (tempDir) {
     try { await fs.rm(tempDir, { recursive: true, force: true }); } catch {}
@@ -395,7 +431,7 @@ async function cleanupGeminiTempFiles(tempImagePaths, tempDir) {
  * Ensures a session directory exists and creates a basic JSONL metadata file if it doesn't.
  * This helps Dr. Claw discover the session even if the CLI hasn't written to it yet.
  */
-async function syncSessionMetadata(sessionId, projectPath) {
+async function syncSessionMetadata(sessionId, projectPath, sessionMode = 'research') {
   if (!sessionId || !projectPath) return;
   
   const geminiSessionsDir = path.join(os.homedir(), '.gemini', 'sessions');
@@ -411,15 +447,17 @@ async function syncSessionMetadata(sessionId, projectPath) {
       return;
     } catch (e) {
       // File doesn't exist, create it with metadata
+      const timestamp = new Date().toISOString();
       const initialEntry = {
         type: 'session_meta',
         payload: {
           id: sessionId,
           cwd: projectPath,
-          timestamp: new Date().toISOString()
+          timestamp,
+          sessionMode: sessionMode || 'research',
         },
         cwd: projectPath, // Compatibility
-        timestamp: new Date().toISOString()
+        timestamp,
       };
       
       await fs.writeFile(sessionFile, JSON.stringify(initialEntry) + '\n', 'utf8');
@@ -439,14 +477,14 @@ async function syncSessionMetadata(sessionId, projectPath) {
  */
 export async function spawnGemini(command, options = {}, ws) {
   return new Promise(async (resolve, reject) => {
-    const { sessionId, projectPath, cwd, model, images, permissionMode, toolsSettings, sessionMode, env } = options;
+    const { sessionId, projectPath, cwd, model, images, attachments, permissionMode, toolsSettings, sessionMode, stageTagKeys, stageTagSource = 'task_context', env } = options;
     let capturedSessionId = sessionId;
     let sessionCreatedSent = false;
     let messageStartedSent = false;
     let contentBlockStarted = false;
     let currentBlockIndex = 0;
     let messageBuffer = '';
-    let tempImagePaths = [];
+    let tempFilePaths = [];
     let tempDir = null;
     // Default: do not hard-require native write_todos.
     // Keep compatibility with markdown/shim flows unless explicitly enabled.
@@ -459,6 +497,16 @@ export async function spawnGemini(command, options = {}, ws) {
     let policyViolationTriggered = false;
     
     const workingDir = cwd || projectPath || process.cwd();
+
+    // Synchronous (better-sqlite3) — no await needed.
+    if (sessionId && workingDir) {
+      applyStageTagsToSession({
+        sessionId,
+        projectPath: workingDir,
+        stageTagKeys,
+        source: stageTagSource,
+      });
+    }
 
     // Keep Gemini session bootstrap parity with Claude sessions:
     // ensure skill links and instruction templates exist in project workspace.
@@ -485,21 +533,11 @@ export async function spawnGemini(command, options = {}, ws) {
     }
 
     if (command && command.trim()) {
-      // const workflowPromptSuffix = [
-      //   '',
-      //   '[Dr. Claw workflow requirements]',
-      //   '- Follow project instructions from AGENTS.md / CLAUDE.md when available.',
-      //   '- For any request requiring 2+ steps, call write_todos first and keep it updated (one in_progress at a time).',
-      //   '- Maintain and update task state in .pipeline/tasks/tasks.json and .pipeline/docs/research_brief.json when progressing pipeline work.',
-      //   '- Canonical pipeline files: .pipeline/docs/research_brief.json and .pipeline/tasks/tasks.json. Do not use guessed shortcuts like research_brief.json.',
-      //   '- Do not claim a file was updated unless a write/edit tool call succeeded. If a file is missing or a tool failed, explicitly state that failure.',
-      //   '- Use todo/task tools when available to keep an explicit execution plan.'
-      // ].join('\n');
-      // const effectivePrompt = `${command}\n\n${workflowPromptSuffix}`;
-      const imageResult = await handleGeminiImages(command, images, workingDir);
-      tempImagePaths = imageResult.tempImagePaths;
-      tempDir = imageResult.tempDir;
-      const effectivePrompt = `${imageResult.modifiedCommand}`;
+      const effectiveAttachments = attachments || images;
+      const attachmentResult = await handleGeminiAttachments(command, effectiveAttachments, workingDir);
+      tempFilePaths = attachmentResult.tempFilePaths;
+      tempDir = attachmentResult.tempDir;
+      const effectivePrompt = `${attachmentResult.modifiedCommand}`;
       args.push('--prompt', effectivePrompt);
 
       if (model) {
@@ -569,29 +607,31 @@ export async function spawnGemini(command, options = {}, ws) {
     console.log(`[Gemini] Process spawned with PID: ${geminiProcess.pid}`);
     
     const initialKey = capturedSessionId || `temp-${Date.now()}`;
-    
-    const statusHeartbeat = setInterval(() => {
-      ws.send({
-        type: 'gemini-status',
-        data: { status: 'Working...', can_interrupt: true },
-        sessionId: capturedSessionId || sessionId || null
-      });
-    }, 2000);
+    const startTimeValue = Date.now();
 
     const sessionData = {
       process: geminiProcess,
-      heartbeat: statusHeartbeat,
       sessionId: capturedSessionId,
+      startTime: startTimeValue,
       options,
       sessionAllowedTools,
       sessionDisallowedTools
     };
 
+    const statusHeartbeat = setInterval(() => {
+      ws.send({
+        type: 'gemini-status',
+        data: { status: 'Working...', can_interrupt: true, startTime: sessionData.startTime },
+        sessionId: capturedSessionId || sessionId || null
+      });
+    }, 2000);
+
+    sessionData.heartbeat = statusHeartbeat;
     activeGeminiSessions.set(initialKey, sessionData);
 
     ws.send({
       type: 'gemini-status',
-      data: { status: 'Working...', can_interrupt: true },
+      data: { status: 'Working...', can_interrupt: true, startTime: startTimeValue },
       sessionId: capturedSessionId || sessionId || null
     });
 
@@ -602,7 +642,8 @@ export async function spawnGemini(command, options = {}, ws) {
           type: 'gemini-response',
           data: {
             type: 'message_start',
-            message: { id: `msg_gemini_${Date.now()}`, role: 'assistant', content: [], model: model || 'gemini' }
+            message: { id: `msg_gemini_${Date.now()}`, role: 'assistant', content: [], model: model || 'gemini' },
+            startTime: sessionData.startTime
           },
           sessionId: id || capturedSessionId || sessionId || null
         });
@@ -618,7 +659,8 @@ export async function spawnGemini(command, options = {}, ws) {
         data: {
           type: 'content_block_start',
           index: index,
-          content_block: type === 'text' ? { type: 'text', text: '' } : { type: 'tool_use', id: `tool_${Date.now()}`, name: '', input: {} }
+          content_block: type === 'text' ? { type: 'text', text: '' } : { type: 'tool_use', id: `tool_${Date.now()}`, name: '', input: {} },
+          startTime: sessionData.startTime
         },
         sessionId: id || capturedSessionId || sessionId || null
       });
@@ -641,9 +683,14 @@ export async function spawnGemini(command, options = {}, ws) {
         return;
       }
       lastSentGeminiErrorSummary = summary;
+
+      const { errorType, isRetryable } = classifyError(summary);
+
       ws.send({
         type: 'gemini-error',
         error: summary,
+        errorType,
+        isRetryable,
         ...(typeof details === 'string' && details.trim() ? { details } : {}),
         sessionId: capturedSessionId || sessionId || null
       });
@@ -733,6 +780,14 @@ export async function spawnGemini(command, options = {}, ws) {
       }
     };
 
+    const persistAssistantMessageBuffer = async (sid, content) => {
+      if (!content) return;
+      const normalizedEntries = normalizePersistedGeminiAssistantEntries(content);
+      for (const entry of normalizedEntries) {
+        await appendToSessionFile(sid, entry);
+      }
+    };
+
     const processLine = async (line) => {
       if (!line.trim()) return;
       if (policyViolationTriggered) return;
@@ -748,7 +803,8 @@ export async function spawnGemini(command, options = {}, ws) {
               capturedSessionId = sid;
               
               // Persist metadata to filesystem so Dr. Claw can discover it on refresh
-              await syncSessionMetadata(capturedSessionId, workingDir);
+              await syncSessionMetadata(capturedSessionId, workingDir, sessionMode);
+              await persistGeminiSessionMetadata(capturedSessionId, workingDir, sessionMode);
               
               // NEW: If we have an initial command, save it now that we have a real SID
               if (cleanedInitialUserCommand) {
@@ -771,6 +827,14 @@ export async function spawnGemini(command, options = {}, ws) {
               if (ws.setSessionId && typeof ws.setSessionId === 'function') ws.setSessionId(capturedSessionId);
               if (!sessionCreatedSent) {
                 sessionCreatedSent = true;
+                recordIndexedSession({
+                  sessionId: capturedSessionId,
+                  provider: 'gemini',
+                  projectPath: workingDir,
+                  sessionMode: sessionMode || 'research',
+                  stageTagKeys,
+                  tagSource: stageTagSource,
+                });
                 ws.send({ type: 'session-created', sessionId: capturedSessionId, provider: 'gemini', mode: sessionMode || 'research' });
               }
             }
@@ -1048,11 +1112,7 @@ export async function spawnGemini(command, options = {}, ws) {
 
           case 'result':
             if (messageBuffer && (capturedSessionId || sessionId)) {
-              await appendToSessionFile(capturedSessionId || sessionId || initialKey, {
-                role: 'assistant',
-                content: messageBuffer,
-                type: 'message'
-              });
+              await persistAssistantMessageBuffer(capturedSessionId || sessionId || initialKey, messageBuffer);
               messageBuffer = '';
             }
             break;
@@ -1123,19 +1183,27 @@ export async function spawnGemini(command, options = {}, ws) {
     geminiProcess.on('close', async (code) => {
       await processingQueue;
       if (messageBuffer && (capturedSessionId || sessionId || initialKey)) {
-        await appendToSessionFile(capturedSessionId || sessionId || initialKey, {
-          role: 'assistant',
-          content: messageBuffer,
-          type: 'message'
-        });
+        await persistAssistantMessageBuffer(capturedSessionId || sessionId || initialKey, messageBuffer);
         messageBuffer = '';
       }
       const finalSessionId = capturedSessionId || sessionId || initialKey;
       const sessionData = activeGeminiSessions.get(finalSessionId);
       if (sessionData?.heartbeat) clearInterval(sessionData.heartbeat);
-      activeGeminiSessions.delete(finalSessionId);
-      await cleanupGeminiTempFiles(tempImagePaths, tempDir);
+      await cleanupGeminiTempFiles(tempFilePaths, tempDir);
+      // Send completion event immediately so the UI can settle
       ws.send({ type: 'gemini-complete', sessionId: finalSessionId, exitCode: code, isNewSession: (!sessionId || sessionId.startsWith('new-session-')) && !!command });
+      activeGeminiSessions.delete(finalSessionId);
+      // Post-completion housekeeping — runs after the UI receives the completion signal
+      if (workingDir && finalSessionId) {
+        try {
+          await reconcileGeminiSessionIndex(workingDir, {
+            sessionId: finalSessionId,
+            projectName: encodeProjectPath(workingDir),
+          });
+        } catch (error) {
+          console.warn(`[Gemini] Failed to reconcile indexed session ${finalSessionId}:`, error.message);
+        }
+      }
       if (policyViolationTriggered || code === 0 || code === null) resolve();
       else reject(new Error(`Gemini CLI exited with code ${code}`));
     });
@@ -1146,7 +1214,7 @@ export async function spawnGemini(command, options = {}, ws) {
       const sessionData = activeGeminiSessions.get(finalSessionId);
       if (sessionData && sessionData.heartbeat) clearInterval(sessionData.heartbeat);
       activeGeminiSessions.delete(finalSessionId);
-      cleanupGeminiTempFiles(tempImagePaths, tempDir).catch(() => {});
+      cleanupGeminiTempFiles(tempFilePaths, tempDir).catch(() => {});
       sendGeminiError(error.message);
       reject(error);
     });
@@ -1188,4 +1256,12 @@ export function abortGeminiSession(sessionId) {
 }
 
 export function isGeminiSessionActive(sessionId) { return activeGeminiSessions.has(sessionId); }
-export function getActiveGeminiSessions() { return Array.from(activeGeminiSessions.keys()); }
+
+export function getGeminiSessionStartTime(sessionId) {
+  const session = activeGeminiSessions.get(sessionId);
+  return session ? session.startTime : null;
+}
+
+export function getActiveGeminiSessions() {
+  return Array.from(activeGeminiSessions.keys());
+}

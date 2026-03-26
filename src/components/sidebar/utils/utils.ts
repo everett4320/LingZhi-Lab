@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next';
 import type { Project } from '../../../types/app';
+import { stripInternalContextPrefix } from '../../../utils/sessionFormatting';
 import type {
   AdditionalSessionsByProject,
   ProjectSortOrder,
@@ -45,31 +46,30 @@ export const getSessionDate = (session: SessionWithProvider): Date => {
   }
 
   if (session.__provider === 'codex' || session.__provider === 'gemini') {
-    return new Date(session.createdAt || session.lastActivity || 0);
+    return new Date(session.lastActivity || session.createdAt || 0);
   }
 
   return new Date(session.lastActivity || 0);
 };
 
 export const getSessionName = (session: SessionWithProvider, t: TFunction): string => {
+  let name = '';
   if (session.__provider === 'cursor') {
-    return session.name || t('projects.untitledSession');
+    name = session.name || t('projects.untitledSession');
+  } else if (session.__provider === 'codex') {
+    name = session.summary || session.name || t('projects.codexSession');
+  } else if (session.__provider === 'gemini') {
+    name = session.summary || session.name || 'Gemini Session';
+  } else {
+    name = session.summary || t('projects.newSession');
   }
-
-  if (session.__provider === 'codex') {
-    return session.summary || session.name || t('projects.codexSession');
-  }
-
-  if (session.__provider === 'gemini') {
-    return session.summary || session.name || 'Gemini Session';
-  }
-
-  return session.summary || t('projects.newSession');
+  
+  return stripInternalContextPrefix(name) || t('projects.newSession');
 };
 
 export const getSessionMode = (session: SessionWithProvider) => {
-  if (session.mode === 'workspace_qa') {
-    return 'workspace_qa';
+  if (session.mode === 'workspace_qa' || session.mode === 'research') {
+    return session.mode;
   }
 
   if (typeof window !== 'undefined' && session.__projectName) {
@@ -88,7 +88,7 @@ export const getSessionTime = (session: SessionWithProvider): string => {
   }
 
   if (session.__provider === 'codex' || session.__provider === 'gemini') {
-    return String(session.createdAt || session.lastActivity || '');
+    return String(session.lastActivity || session.createdAt || '');
   }
 
   return String(session.lastActivity || '');

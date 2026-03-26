@@ -952,6 +952,67 @@ function computeNextGuidance(tasks = []) {
     };
 }
 
+function computeTaskmasterStatus(taskMasterResult, mcpResult) {
+    let status = 'not-configured';
+    if (taskMasterResult.hasTaskmaster && taskMasterResult.hasEssentialFiles) {
+        if (mcpResult.hasMCPServer && mcpResult.isConfigured) {
+            status = 'fully-configured';
+        } else {
+            status = 'taskmaster-only';
+        }
+    } else if (mcpResult.hasMCPServer && mcpResult.isConfigured) {
+        status = 'mcp-only';
+    }
+    return status;
+}
+
+function buildTaskmasterSummaryPayload({
+    projectName,
+    projectPath,
+    status,
+    tasks = [],
+    nextTask = null,
+    guidance = null,
+    updatedAt = new Date().toISOString(),
+}) {
+    const tasksByStatus = tasks.reduce((acc, task) => {
+        const taskStatus = normalizeTaskStatus(task.status);
+        acc[taskStatus] = (acc[taskStatus] || 0) + 1;
+        return acc;
+    }, {
+        pending: 0,
+        'in-progress': 0,
+        done: 0,
+        review: 0,
+        deferred: 0,
+        cancelled: 0,
+        blocked: 0,
+    });
+
+    const total = tasks.length;
+    const completed = tasksByStatus.done || 0;
+
+    return {
+        project: projectName,
+        status,
+        project_path: projectPath,
+        counts: {
+            total,
+            completed,
+            in_progress: tasksByStatus['in-progress'] || 0,
+            pending: tasksByStatus.pending || 0,
+            blocked: tasksByStatus.blocked || 0,
+            review: tasksByStatus.review || 0,
+            deferred: tasksByStatus.deferred || 0,
+            cancelled: tasksByStatus.cancelled || 0,
+            completion_rate: total > 0 ? Math.round((completed / total) * 1000) / 10 : 0,
+        },
+        next_task: nextTask,
+        guidance,
+        updated_at: updatedAt,
+    };
+}
+
 function dedupeGeneratedTasks(existingTasks = [], generatedTasks = []) {
     const signature = (task) => `${String(task.title || '').trim().toLowerCase()}|${String(task.description || '').trim().toLowerCase()}`;
     const existingSignatures = new Set(existingTasks.map(signature));
@@ -1180,17 +1241,7 @@ router.get('/detect/:projectName', async (req, res) => {
             detectTaskMasterMCPServer()
         ]);
 
-        // Determine overall status
-        let status = 'not-configured';
-        if (taskMasterResult.hasTaskmaster && taskMasterResult.hasEssentialFiles) {
-            if (mcpResult.hasMCPServer && mcpResult.isConfigured) {
-                status = 'fully-configured';
-            } else {
-                status = 'taskmaster-only';
-            }
-        } else if (mcpResult.hasMCPServer && mcpResult.isConfigured) {
-            status = 'mcp-only';
-        }
+        const status = computeTaskmasterStatus(taskMasterResult, mcpResult);
 
         const responseData = {
             projectName,
@@ -1243,17 +1294,7 @@ router.get('/detect-all', async (req, res) => {
                     detectTaskMasterMCPServer()
                 ]);
 
-                // Determine status
-                let status = 'not-configured';
-                if (taskMasterResult.hasTaskmaster && taskMasterResult.hasEssentialFiles) {
-                    if (mcpResult.hasMCPServer && mcpResult.isConfigured) {
-                        status = 'fully-configured';
-                    } else {
-                        status = 'taskmaster-only';
-                    }
-                } else if (mcpResult.hasMCPServer && mcpResult.isConfigured) {
-                    status = 'mcp-only';
-                }
+                const status = computeTaskmasterStatus(taskMasterResult, mcpResult);
 
                 return {
                     projectName: project.name,
@@ -1416,6 +1457,58 @@ router.get('/next-guidance/:projectName', async (req, res) => {
 });
 
 /**
+ * GET /api/taskmaster/summary/:projectName
+ * Build a compact TaskMaster summary for CLI / OpenClaw reporting
+ */
+router.get('/summary/:projectName', async (req, res) => {
+    try {
+        const { projectName } = req.params;
+
+        let projectPath;
+        try {
+            projectPath = await extractProjectDirectory(projectName);
+        } catch (error) {
+            return res.status(404).json({
+                error: 'Project not found',
+                message: `Project "${projectName}" does not exist`,
+            });
+        }
+
+        const paths = await ensurePipelineInitialized(projectPath);
+        const [taskMasterResult, mcpResult, tasksResult] = await Promise.all([
+            detectTaskMasterFolder(projectPath),
+            detectTaskMasterMCPServer(),
+            readTasksFile(paths.tasksFile),
+        ]);
+
+        const tasks = tasksResult.tasks || [];
+        const guidanceResult = computeNextGuidance(tasks);
+        const status = computeTaskmasterStatus(taskMasterResult, mcpResult);
+
+        res.json(buildTaskmasterSummaryPayload({
+            projectName,
+            projectPath,
+            status,
+            tasks,
+            nextTask: guidanceResult.nextTask,
+            guidance: {
+                whyNext: guidanceResult.whyNext,
+                requiredInputs: guidanceResult.requiredInputs,
+                suggestedSkills: guidanceResult.suggestedSkills,
+                nextActionPrompt: guidanceResult.nextActionPrompt,
+            },
+            updatedAt: new Date().toISOString(),
+        }));
+    } catch (error) {
+        console.error('TaskMaster summary error:', error);
+        res.status(500).json({
+            error: 'Failed to build TaskMaster summary',
+            message: error.message,
+        });
+    }
+});
+
+/**
  * GET /api/taskmaster/tasks/:projectName
  * Load actual tasks from .pipeline/tasks/tasks.json
  */
@@ -1482,6 +1575,44 @@ router.get('/tasks/:projectName', async (req, res) => {
         res.status(500).json({
             error: 'Failed to load TaskMaster tasks',
             message: error.message
+        });
+    }
+});
+
+/**
+ * GET /api/taskmaster/artifacts/:projectName
+ * Summarize recent project artifacts for mobile/reporting workflows.
+ */
+router.get('/artifacts/:projectName', async (req, res) => {
+    try {
+        const { projectName } = req.params;
+
+        let projectPath;
+        try {
+            projectPath = await extractProjectDirectory(projectName);
+        } catch (error) {
+            return res.status(404).json({
+                error: 'Project not found',
+                message: `Project "${projectName}" does not exist`
+            });
+        }
+
+        const artifacts = await summarizeProjectArtifacts(projectPath);
+        const latest = artifacts.length > 0 ? artifacts[0] : null;
+
+        res.json({
+            projectName,
+            projectPath,
+            artifacts,
+            latestArtifact: latest,
+            totalArtifacts: artifacts.length,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        console.error('TaskMaster artifact summary error:', error);
+        res.status(500).json({
+            error: 'Failed to summarize project artifacts',
+            message: error.message,
         });
     }
 });
@@ -2219,6 +2350,53 @@ function normalizeLoadedTemplate(template = {}) {
 
 function cloneJsonCompatible(value) {
     return JSON.parse(JSON.stringify(value));
+}
+
+async function summarizeProjectArtifacts(projectPath, limit = 12) {
+    const candidates = [
+        '.pipeline/docs',
+        '.pipeline/tasks',
+        'results',
+        'reports',
+        'artifacts',
+        'output',
+        'outputs',
+        'analysis',
+        'figures',
+        'plots',
+        'tables',
+        'paper',
+        'drafts',
+    ];
+
+    const artifactFiles = [];
+    for (const relativeDir of candidates) {
+        const targetDir = path.join(projectPath, relativeDir);
+        try {
+            const entries = await fsPromises.readdir(targetDir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (!entry.isFile()) {
+                    continue;
+                }
+                const fullPath = path.join(targetDir, entry.name);
+                const stats = await fsPromises.stat(fullPath);
+                artifactFiles.push({
+                    name: entry.name,
+                    relativePath: path.relative(projectPath, fullPath),
+                    category: relativeDir,
+                    size: stats.size,
+                    modified: stats.mtime.toISOString(),
+                });
+            }
+        } catch (error) {
+            if (error?.code !== 'ENOENT') {
+                console.warn('[TaskMaster] Artifact scan skipped for', targetDir, error.message);
+            }
+        }
+    }
+
+    artifactFiles.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    return artifactFiles.slice(0, limit);
 }
 
 function buildBriefFromTemplate(template, nowDate) {

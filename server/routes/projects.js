@@ -112,7 +112,6 @@ export async function validateWorkspacePath(requestedPath) {
         } catch (parentError) {
           if (parentError.code === 'ENOENT') {
             // Parent doesn't exist either - use the absolute path as-is
-            // We'll validate it's within allowed root
             realPath = absolutePath;
           } else {
             throw parentError;
@@ -150,7 +149,7 @@ export async function validateWorkspacePath(requestedPath) {
       const stats = await fs.lstat(absolutePath);
 
       if (stats.isSymbolicLink()) {
-        // Verify symlink target is also within allowed root
+        // Resolve target
         const linkTarget = await fs.readlink(absolutePath);
         const resolvedTarget = path.resolve(path.dirname(absolutePath), linkTarget);
         const realTarget = await fs.realpath(resolvedTarget);

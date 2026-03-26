@@ -4,6 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { stripInternalContextPrefix } from '../utils/sessionFormatting.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,6 +22,15 @@ const c = {
     bright: (text) => `${colors.bright}${text}${colors.reset}`,
     dim: (text) => `${colors.dim}${text}${colors.reset}`,
 };
+
+const DEFAULT_STAGE_TAGS = [
+  { tagKey: 'survey', label: 'Survey', color: 'sky', sortOrder: 10 },
+  { tagKey: 'ideation', label: 'Ideation', color: 'amber', sortOrder: 20 },
+  { tagKey: 'experiment', label: 'Experiment', color: 'cyan', sortOrder: 30 },
+  { tagKey: 'publication', label: 'Publication', color: 'purple', sortOrder: 40 },
+  { tagKey: 'promotion', label: 'Promotion', color: 'pink', sortOrder: 50 },
+];
+const STAGE_TAG_DECISIONS_KEY = 'stageTagDecisions';
 
 // Use DATABASE_PATH environment variable if set, otherwise use default location
 const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, 'auth.db');
@@ -58,6 +68,7 @@ if (DB_PATH !== LEGACY_DB_PATH && !fs.existsSync(DB_PATH) && fs.existsSync(LEGAC
 
 // Create database connection
 const db = new Database(DB_PATH);
+db.pragma('foreign_keys = ON');
 
 // Show app installation path prominently
 const appInstallPath = path.join(__dirname, '../..');
@@ -120,6 +131,36 @@ const runMigrations = () => {
         `);
       }
     }
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS project_tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_name TEXT NOT NULL,
+        tag_key TEXT NOT NULL,
+        tag_type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        color TEXT,
+        sort_order INTEGER DEFAULT 0,
+        metadata TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(project_name, tag_type, tag_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_project_tags_project ON project_tags(project_name);
+      CREATE INDEX IF NOT EXISTS idx_project_tags_type ON project_tags(tag_type);
+      CREATE TABLE IF NOT EXISTS session_tag_links (
+        session_id TEXT NOT NULL,
+        tag_id INTEGER NOT NULL,
+        linked_by TEXT,
+        source TEXT,
+        metadata TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(session_id, tag_id),
+        FOREIGN KEY (session_id) REFERENCES session_metadata(id) ON DELETE CASCADE,
+        FOREIGN KEY (tag_id) REFERENCES project_tags(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_session_tag_links_session ON session_tag_links(session_id);
+      CREATE INDEX IF NOT EXISTS idx_session_tag_links_tag ON session_tag_links(tag_id);
+    `);
 
     console.log('Database migrations completed successfully');
   } catch (error) {
@@ -565,32 +606,431 @@ const githubTokensDb = {
 };
 
 // Session metadata index operations
+function parseSessionRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    ...row,
+    metadata: row.metadata ? JSON.parse(row.metadata) : null,
+    tags: Array.isArray(row.tags) ? row.tags : [],
+  };
+}
+
+function parseTagRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    projectName: row.project_name,
+    tagKey: row.tag_key,
+    tagType: row.tag_type,
+    label: row.label,
+    color: row.color ?? null,
+    sortOrder: row.sort_order,
+    metadata: row.metadata ? JSON.parse(row.metadata) : null,
+    createdAt: row.created_at,
+    source: row.source ?? null,
+    linkedBy: row.linked_by ?? null,
+    linkedAt: row.linked_at ?? null,
+    linkMetadata: row.link_metadata ? JSON.parse(row.link_metadata) : null,
+  };
+}
+
+function normalizeSessionDisplayName(displayName) {
+  if (displayName === null || displayName === undefined) {
+    return null;
+  }
+
+  return stripInternalContextPrefix(displayName);
+}
+
+function normalizeSessionTimestamp(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  const value = timestamp instanceof Date ? timestamp.toISOString() : String(timestamp).trim();
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+}
+
+// Returns "YYYY-MM-DD HH:MM:SS" format for SQLite created_at column convention
+function normalizeSessionCreatedAt(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  const value = timestamp instanceof Date ? timestamp.toISOString() : String(timestamp).trim();
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().replace('T', ' ').slice(0, 19);
+  }
+
+  return value;
+}
+
+function mergeSessionMetadata(existingMetadata, incomingMetadata) {
+  const base = existingMetadata && typeof existingMetadata === 'object' ? existingMetadata : {};
+  const incoming = incomingMetadata && typeof incomingMetadata === 'object' ? incomingMetadata : {};
+  return {
+    ...base,
+    ...incoming,
+  };
+}
+
+function resolveLatestActivity(existingActivity, incomingActivity) {
+  const normalizedExisting = normalizeSessionTimestamp(existingActivity);
+  const normalizedIncoming = normalizeSessionTimestamp(incomingActivity);
+  if (!normalizedExisting) {
+    return normalizedIncoming;
+  }
+  if (!normalizedIncoming) {
+    return normalizedExisting;
+  }
+
+  const existingTime = new Date(normalizedExisting).getTime();
+  const incomingTime = new Date(normalizedIncoming).getTime();
+  if (Number.isNaN(existingTime)) {
+    return normalizedIncoming;
+  }
+  if (Number.isNaN(incomingTime)) {
+    return normalizedExisting;
+  }
+
+  return incomingTime >= existingTime ? normalizedIncoming : normalizedExisting;
+}
+
+function resolveMessageCount(existingCount, incomingCount) {
+  const normalizedExisting = Number(existingCount || 0);
+  const normalizedIncoming = Number(incomingCount || 0);
+  return Math.max(normalizedExisting, normalizedIncoming);
+}
+
+function normalizeMetadataObject(metadata) {
+  return metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? { ...metadata }
+    : {};
+}
+
+function serializeMetadata(metadata) {
+  const normalized = normalizeMetadataObject(metadata);
+  return Object.keys(normalized).length > 0 ? JSON.stringify(normalized) : null;
+}
+
+function getStageTagDecisions(metadata) {
+  const metadataObject = normalizeMetadataObject(metadata);
+  const decisions = metadataObject[STAGE_TAG_DECISIONS_KEY];
+  return decisions && typeof decisions === 'object' && !Array.isArray(decisions)
+    ? { ...decisions }
+    : {};
+}
+
+function applyManualStageTagDecisions(existingMetadata, projectStageTags = [], selectedTags = []) {
+  const metadataObject = normalizeMetadataObject(existingMetadata);
+  const decisions = getStageTagDecisions(metadataObject);
+  const selectedStageKeys = new Set(
+    (Array.isArray(selectedTags) ? selectedTags : [])
+      .filter((tag) => tag?.tagType === 'stage')
+      .map((tag) => tag.tagKey)
+      .filter(Boolean)
+  );
+  const timestamp = new Date().toISOString();
+
+  (Array.isArray(projectStageTags) ? projectStageTags : []).forEach((tag) => {
+    const tagKey = tag?.tagKey || tag?.tag_key;
+    if (!tagKey) {
+      return;
+    }
+
+    decisions[tagKey] = {
+      decision: selectedStageKeys.has(tagKey) ? 'selected' : 'excluded',
+      source: 'manual',
+      updatedAt: timestamp,
+    };
+  });
+
+  metadataObject[STAGE_TAG_DECISIONS_KEY] = decisions;
+  return metadataObject;
+}
+
+function isAutomaticStageTagBlocked(metadata, tagType, tagKey, source) {
+  if (tagType !== 'stage' || !tagKey || source === 'manual') {
+    return false;
+  }
+
+  const decisions = getStageTagDecisions(metadata);
+  const decision = decisions[tagKey];
+  return decision?.decision === 'excluded' && decision?.source === 'manual';
+}
+
+function hydrateSessionRowsWithTags(rows = []) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return [];
+  }
+
+  const sessionIds = Array.from(new Set(rows.map((row) => row?.id).filter(Boolean)));
+  if (sessionIds.length === 0) {
+    return rows.map(parseSessionRow).filter(Boolean);
+  }
+
+  // SQLite default SQLITE_MAX_VARIABLE_NUMBER is 999; use 900 to leave headroom.
+  const chunkSize = 900;
+  const tagsBySessionId = new Map();
+
+  for (let index = 0; index < sessionIds.length; index += chunkSize) {
+    const chunk = sessionIds.slice(index, index + chunkSize);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const tagRows = db.prepare(`
+      SELECT
+        stl.session_id,
+        pt.id,
+        pt.project_name,
+        pt.tag_key,
+        pt.tag_type,
+        pt.label,
+        pt.color,
+        pt.sort_order,
+        pt.metadata,
+        pt.created_at,
+        stl.linked_by,
+        stl.source,
+        stl.metadata AS link_metadata,
+        stl.created_at AS linked_at
+      FROM session_tag_links stl
+      JOIN project_tags pt ON pt.id = stl.tag_id
+      WHERE stl.session_id IN (${placeholders})
+      ORDER BY pt.sort_order ASC, pt.label COLLATE NOCASE ASC, pt.id ASC
+    `).all(...chunk);
+
+    tagRows.forEach((tagRow) => {
+      const parsed = parseTagRow(tagRow);
+      if (!parsed) {
+        return;
+      }
+
+      const existing = tagsBySessionId.get(tagRow.session_id) || [];
+      existing.push(parsed);
+      tagsBySessionId.set(tagRow.session_id, existing);
+    });
+  }
+
+  return rows.map((row) => parseSessionRow({
+    ...row,
+    tags: tagsBySessionId.get(row.id) || [],
+  })).filter(Boolean);
+}
+
 const sessionDb = {
   // Upsert session metadata (insert if not exists, update if exists)
   upsertSession: (id, projectName, provider, displayName, lastActivity, messageCount = 0, metadata = null) => {
     try {
-      const stmt = db.prepare(`
-        INSERT INTO session_metadata (id, project_name, provider, display_name, last_activity, message_count, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          display_name = COALESCE(excluded.display_name, session_metadata.display_name),
-          last_activity = COALESCE(excluded.last_activity, session_metadata.last_activity),
-          message_count = COALESCE(excluded.message_count, session_metadata.message_count),
-          metadata = COALESCE(excluded.metadata, session_metadata.metadata)
-      `);
-      stmt.run(id, projectName, provider, displayName, lastActivity, messageCount, metadata ? JSON.stringify(metadata) : null);
+      sessionDb.upsertSessionFromSource(id, projectName, provider, {
+        displayName,
+        lastActivity,
+        messageCount,
+        metadata,
+      });
     } catch (err) {
       console.error('Error upserting session metadata:', err.message);
+    }
+  },
+
+  upsertSessionPlaceholder: (id, projectName, provider, displayName = null, lastActivity = null, metadata = null) => {
+    try {
+      const existing = parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(id));
+      const cleanedDisplayName = normalizeSessionDisplayName(displayName);
+      const mergedMetadata = mergeSessionMetadata(existing?.metadata, metadata);
+      const normalizedLastActivity = resolveLatestActivity(existing?.last_activity, lastActivity);
+
+      if (!existing) {
+        db.prepare(`
+          INSERT INTO session_metadata (id, project_name, provider, display_name, last_activity, message_count, metadata, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id,
+          projectName,
+          provider,
+          cleanedDisplayName,
+          normalizedLastActivity,
+          0,
+          Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+          normalizeSessionCreatedAt(lastActivity) || normalizeSessionCreatedAt(new Date())
+        );
+        return;
+      }
+
+      db.prepare(`
+        UPDATE session_metadata
+        SET project_name = ?,
+            provider = ?,
+            last_activity = ?,
+            metadata = ?,
+            display_name = CASE
+              WHEN display_name IS NULL OR trim(display_name) = '' THEN ?
+              ELSE display_name
+            END
+        WHERE id = ?
+      `).run(
+        projectName,
+        provider,
+        normalizedLastActivity,
+        Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+        cleanedDisplayName,
+        id
+      );
+    } catch (err) {
+      console.error('Error upserting placeholder session metadata:', err.message);
+    }
+  },
+
+  upsertSessionFromSource: (id, projectName, provider, payload = {}) => {
+    try {
+      const existing = parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(id));
+      const incomingDisplayName = normalizeSessionDisplayName(payload.displayName);
+      const mergedMetadata = mergeSessionMetadata(existing?.metadata, payload.metadata);
+      const normalizedLastActivity = resolveLatestActivity(existing?.last_activity, payload.lastActivity);
+      const resolvedMessageCount = resolveMessageCount(existing?.message_count, payload.messageCount);
+      const createdAt =
+        existing?.created_at ||
+        normalizeSessionCreatedAt(payload.createdAt) ||
+        normalizeSessionCreatedAt(payload.lastActivity) ||
+        normalizeSessionCreatedAt(new Date());
+      const resolvedStarred = Number(payload.isStarred ?? existing?.is_starred ?? 0);
+
+      if (!existing) {
+        db.prepare(`
+          INSERT INTO session_metadata (id, project_name, provider, display_name, last_activity, message_count, is_starred, metadata, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id,
+          projectName,
+          provider,
+          incomingDisplayName,
+          normalizedLastActivity,
+          resolvedMessageCount,
+          resolvedStarred,
+          Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+          createdAt
+        );
+        return;
+      }
+
+      db.prepare(`
+        UPDATE session_metadata
+        SET project_name = ?,
+            provider = ?,
+            display_name = ?,
+            last_activity = ?,
+            message_count = ?,
+            is_starred = ?,
+            metadata = ?
+        WHERE id = ?
+      `).run(
+        projectName || existing.project_name,
+        provider || existing.provider,
+        incomingDisplayName || existing.display_name,
+        normalizedLastActivity,
+        resolvedMessageCount,
+        resolvedStarred,
+        Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+        id
+      );
+    } catch (err) {
+      console.error('Error upserting session metadata from source:', err.message);
     }
   },
 
   // Update session name ONLY (priority for manual rename)
   updateSessionName: (id, displayName) => {
     try {
+      const cleanedDisplayName = normalizeSessionDisplayName(displayName);
       const stmt = db.prepare('UPDATE session_metadata SET display_name = ? WHERE id = ?');
-      stmt.run(displayName, id);
+      stmt.run(cleanedDisplayName, id);
     } catch (err) {
       console.error('Error updating session name:', err.message);
+    }
+  },
+
+  migrateSessionId: (oldId, newId, provider = null, projectName = null) => {
+    try {
+      if (!oldId || !newId || oldId === newId) {
+        return;
+      }
+
+      const oldRow = parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(oldId));
+      if (!oldRow) {
+        return;
+      }
+
+      const newRow = parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(newId));
+      const mergedMetadata = mergeSessionMetadata(oldRow.metadata, newRow?.metadata);
+      const mergedLastActivity = resolveLatestActivity(oldRow.last_activity, newRow?.last_activity);
+      const mergedMessageCount = resolveMessageCount(oldRow.message_count, newRow?.message_count);
+      const mergedDisplayName =
+        normalizeSessionDisplayName(newRow?.display_name) ||
+        normalizeSessionDisplayName(oldRow.display_name);
+      const mergedCreatedAt = newRow?.created_at || oldRow.created_at || normalizeSessionCreatedAt(mergedLastActivity) || normalizeSessionCreatedAt(new Date());
+      const mergedStarred = Number(newRow?.is_starred || oldRow.is_starred || 0);
+
+      const migrate = db.transaction(() => {
+        if (!newRow) {
+          db.prepare(`
+            INSERT INTO session_metadata (id, project_name, provider, display_name, last_activity, message_count, is_starred, metadata, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            newId,
+            projectName || oldRow.project_name,
+            provider || oldRow.provider,
+            mergedDisplayName,
+            mergedLastActivity,
+            mergedMessageCount,
+            mergedStarred,
+            Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+            mergedCreatedAt
+          );
+        } else {
+          db.prepare(`
+            UPDATE session_metadata
+            SET project_name = ?,
+                provider = ?,
+                display_name = ?,
+                last_activity = ?,
+                message_count = ?,
+                is_starred = ?,
+                metadata = ?,
+                created_at = ?
+            WHERE id = ?
+          `).run(
+            projectName || newRow.project_name || oldRow.project_name,
+            provider || newRow.provider || oldRow.provider,
+            mergedDisplayName,
+            mergedLastActivity,
+            mergedMessageCount,
+            mergedStarred,
+            Object.keys(mergedMetadata).length > 0 ? JSON.stringify(mergedMetadata) : null,
+            mergedCreatedAt,
+            newId
+          );
+        }
+
+        db.prepare('DELETE FROM session_metadata WHERE id = ?').run(oldId);
+      });
+
+      migrate();
+    } catch (err) {
+      console.error('Error migrating session metadata ID:', err.message);
     }
   },
 
@@ -598,12 +1038,35 @@ const sessionDb = {
   getSessionsByProject: (projectName) => {
     try {
       const rows = db.prepare('SELECT * FROM session_metadata WHERE project_name = ?').all(projectName);
-      return rows.map(row => ({
-        ...row,
-        metadata: row.metadata ? JSON.parse(row.metadata) : null
-      }));
+      return hydrateSessionRowsWithTags(rows);
     } catch (err) {
       console.error('Error getting project sessions:', err.message);
+      return [];
+    }
+  },
+
+  getSessionsByProjects: (projectNames = []) => {
+    try {
+      if (!Array.isArray(projectNames) || projectNames.length === 0) {
+        return [];
+      }
+
+      // SQLite default SQLITE_MAX_VARIABLE_NUMBER is 999; use 900 to leave headroom.
+  const chunkSize = 900;
+      const allRows = [];
+
+      for (let index = 0; index < projectNames.length; index += chunkSize) {
+        const chunk = projectNames.slice(index, index + chunkSize);
+        const placeholders = chunk.map(() => '?').join(', ');
+        const rows = db.prepare(
+          `SELECT * FROM session_metadata WHERE project_name IN (${placeholders}) ORDER BY datetime(last_activity) DESC, datetime(created_at) DESC`
+        ).all(...chunk);
+        allRows.push(...rows);
+      }
+
+      return hydrateSessionRowsWithTags(allRows);
+    } catch (err) {
+      console.error('Error getting sessions for projects:', err.message);
       return [];
     }
   },
@@ -611,13 +1074,35 @@ const sessionDb = {
   // Get metadata for a specific session
   getSessionById: (id) => {
     try {
-      const row = db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(id);
-      if (row && row.metadata) {
-        row.metadata = JSON.parse(row.metadata);
-      }
-      return row;
+      return hydrateSessionRowsWithTags([
+        db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(id)
+      ])[0] || null;
     } catch (err) {
       console.error('Error getting session metadata:', err.message);
+      return null;
+    }
+  },
+
+  updateSessionMetadata: (id, updater) => {
+    try {
+      const row = db.prepare('SELECT metadata FROM session_metadata WHERE id = ?').get(id);
+      if (!row) {
+        return null;
+      }
+
+      const currentMetadata = row.metadata ? JSON.parse(row.metadata) : null;
+      const nextMetadata = typeof updater === 'function'
+        ? updater(normalizeMetadataObject(currentMetadata))
+        : mergeSessionMetadata(currentMetadata, updater);
+
+      db.prepare('UPDATE session_metadata SET metadata = ? WHERE id = ?').run(
+        serializeMetadata(nextMetadata),
+        id
+      );
+
+      return sessionDb.getSessionById(id);
+    } catch (err) {
+      console.error('Error updating session metadata:', err.message);
       return null;
     }
   },
@@ -628,7 +1113,249 @@ const sessionDb = {
     } catch (err) {
       console.error('Error deleting session metadata:', err.message);
     }
+  },
+
+  deleteSessionsByProject: (projectName) => {
+    try {
+      db.prepare('DELETE FROM session_metadata WHERE project_name = ?').run(projectName);
+    } catch (err) {
+      console.error('Error deleting project session metadata:', err.message);
+    }
   }
+};
+
+const tagDb = {
+  ensureDefaultStageTags: (projectName) => {
+    if (!projectName) {
+      return [];
+    }
+
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO project_tags (
+        project_name, tag_key, tag_type, label, color, sort_order, metadata
+      ) VALUES (?, ?, 'stage', ?, ?, ?, ?)
+    `);
+
+    const run = db.transaction(() => {
+      DEFAULT_STAGE_TAGS.forEach((tag) => {
+        insert.run(
+          projectName,
+          tag.tagKey,
+          tag.label,
+          tag.color,
+          tag.sortOrder,
+          null
+        );
+      });
+    });
+
+    try {
+      run();
+    } catch (err) {
+      console.error('Error ensuring default stage tags:', err.message);
+    }
+
+    return tagDb.listProjectTags(projectName, 'stage');
+  },
+
+  listProjectTags: (projectName, tagType = null) => {
+    try {
+      const rows = tagType
+        ? db.prepare(`
+            SELECT * FROM project_tags
+            WHERE project_name = ? AND tag_type = ?
+            ORDER BY sort_order ASC, label COLLATE NOCASE ASC, id ASC
+          `).all(projectName, tagType)
+        : db.prepare(`
+            SELECT * FROM project_tags
+            WHERE project_name = ?
+            ORDER BY tag_type COLLATE NOCASE ASC, sort_order ASC, label COLLATE NOCASE ASC, id ASC
+          `).all(projectName);
+      return rows.map(parseTagRow).filter(Boolean);
+    } catch (err) {
+      console.error('Error listing project tags:', err.message);
+      return [];
+    }
+  },
+
+  getTagByProjectAndKey: (projectName, tagType, tagKey) => {
+    try {
+      return parseTagRow(db.prepare(`
+        SELECT * FROM project_tags
+        WHERE project_name = ? AND tag_type = ? AND tag_key = ?
+      `).get(projectName, tagType, tagKey));
+    } catch (err) {
+      console.error('Error getting project tag:', err.message);
+      return null;
+    }
+  },
+
+  getTagsByIds: (projectName, tagIds = []) => {
+    try {
+      if (!Array.isArray(tagIds) || tagIds.length === 0) {
+        return [];
+      }
+
+      const normalizedIds = Array.from(new Set(
+        tagIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0)
+      ));
+
+      if (normalizedIds.length === 0) {
+        return [];
+      }
+
+      const placeholders = normalizedIds.map(() => '?').join(', ');
+      const rows = db.prepare(`
+        SELECT * FROM project_tags
+        WHERE project_name = ? AND id IN (${placeholders})
+        ORDER BY sort_order ASC, label COLLATE NOCASE ASC, id ASC
+      `).all(projectName, ...normalizedIds);
+      return rows.map(parseTagRow).filter(Boolean);
+    } catch (err) {
+      console.error('Error getting project tags by ids:', err.message);
+      return [];
+    }
+  },
+
+  listTagsForSession: (sessionId) => {
+    try {
+      const rows = db.prepare(`
+        SELECT
+          pt.id,
+          pt.project_name,
+          pt.tag_key,
+          pt.tag_type,
+          pt.label,
+          pt.color,
+          pt.sort_order,
+          pt.metadata,
+          pt.created_at,
+          stl.linked_by,
+          stl.source,
+          stl.metadata AS link_metadata,
+          stl.created_at AS linked_at
+        FROM session_tag_links stl
+        JOIN project_tags pt ON pt.id = stl.tag_id
+        WHERE stl.session_id = ?
+        ORDER BY pt.sort_order ASC, pt.label COLLATE NOCASE ASC, pt.id ASC
+      `).all(sessionId);
+      return rows.map(parseTagRow).filter(Boolean);
+    } catch (err) {
+      console.error('Error listing session tags:', err.message);
+      return [];
+    }
+  },
+
+  listSessionIdsForTag: (projectName, tagType, tagKey) => {
+    try {
+      const rows = db.prepare(`
+        SELECT stl.session_id
+        FROM session_tag_links stl
+        JOIN project_tags pt ON pt.id = stl.tag_id
+        WHERE pt.project_name = ? AND pt.tag_type = ? AND pt.tag_key = ?
+        ORDER BY datetime(stl.created_at) DESC
+      `).all(projectName, tagType, tagKey);
+      return rows.map((row) => row.session_id).filter(Boolean);
+    } catch (err) {
+      console.error('Error listing session ids for tag:', err.message);
+      return [];
+    }
+  },
+
+  replaceSessionTags: (sessionId, projectName, tagIds = [], options = {}) => {
+    try {
+      const selectedTags = tagDb.getTagsByIds(projectName, tagIds);
+      const projectStageTags = tagDb.listProjectTags(projectName, 'stage');
+      const normalizedTagIds = selectedTags.map((tag) => tag.id);
+      const linkedBy = options.linkedBy || null;
+      const source = options.source || null;
+      const metadata = options.metadata && typeof options.metadata === 'object'
+        ? JSON.stringify(options.metadata)
+        : null;
+
+      const replace = db.transaction(() => {
+        db.prepare(`
+          DELETE FROM session_tag_links
+          WHERE session_id = ?
+            AND tag_id IN (SELECT id FROM project_tags WHERE project_name = ?)
+        `).run(sessionId, projectName);
+
+        const insert = db.prepare(`
+          INSERT OR IGNORE INTO session_tag_links (
+            session_id, tag_id, linked_by, source, metadata
+          ) VALUES (?, ?, ?, ?, ?)
+        `);
+
+        normalizedTagIds.forEach((tagId) => {
+          insert.run(sessionId, tagId, linkedBy, source, metadata);
+        });
+
+        if (source === 'manual') {
+          const session = parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(sessionId));
+          if (session) {
+            const nextMetadata = applyManualStageTagDecisions(session.metadata, projectStageTags, selectedTags);
+            db.prepare('UPDATE session_metadata SET metadata = ? WHERE id = ?').run(
+              serializeMetadata(nextMetadata),
+              sessionId
+            );
+          }
+        }
+      });
+
+      replace();
+      return tagDb.listTagsForSession(sessionId);
+    } catch (err) {
+      console.error('Error replacing session tags:', err.message);
+      return [];
+    }
+  },
+
+  appendSessionTagsByKeys: (sessionId, projectName, tagType, tagKeys = [], options = {}) => {
+    try {
+      const normalizedKeys = Array.from(new Set(
+        (Array.isArray(tagKeys) ? tagKeys : [])
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      ));
+
+      if (normalizedKeys.length === 0) {
+        return tagDb.listTagsForSession(sessionId);
+      }
+
+      const session = parseSessionRow(db.prepare('SELECT * FROM session_metadata WHERE id = ?').get(sessionId));
+      const linkedBy = options.linkedBy || null;
+      const source = options.source || null;
+      const metadata = options.metadata && typeof options.metadata === 'object'
+        ? JSON.stringify(options.metadata)
+        : null;
+      const insert = db.prepare(`
+        INSERT OR IGNORE INTO session_tag_links (
+          session_id, tag_id, linked_by, source, metadata
+        ) VALUES (?, ?, ?, ?, ?)
+      `);
+
+      const append = db.transaction(() => {
+        normalizedKeys.forEach((tagKey) => {
+          if (isAutomaticStageTagBlocked(session?.metadata, tagType, tagKey, source)) {
+            return;
+          }
+
+          const tag = tagDb.getTagByProjectAndKey(projectName, tagType, tagKey);
+          if (tag) {
+            insert.run(sessionId, tag.id, linkedBy, source, metadata);
+          }
+        });
+      });
+
+      append();
+      return tagDb.listTagsForSession(sessionId);
+    } catch (err) {
+      console.error('Error appending session tags:', err.message);
+      return [];
+    }
+  },
 };
 
 // Project index operations
@@ -687,6 +1414,25 @@ const projectDb = {
       return row;
     } catch (err) {
       console.error('Error getting project metadata:', err.message);
+      return null;
+    }
+  },
+
+  // Get project by its file-system path (uses idx_projects_path index)
+  getProjectByPath: (projectPath, userId = null) => {
+    try {
+      const query = userId
+        ? 'SELECT * FROM projects WHERE path = ? AND user_id = ?'
+        : 'SELECT * FROM projects WHERE path = ?';
+      const row = userId
+        ? db.prepare(query).get(projectPath, userId)
+        : db.prepare(query).get(projectPath);
+      if (row && row.metadata) {
+        row.metadata = JSON.parse(row.metadata);
+      }
+      return row || null;
+    } catch (err) {
+      console.error('Error getting project by path:', err.message);
       return null;
     }
   },
@@ -1045,6 +1791,8 @@ export {
   credentialsDb,
   githubTokensDb, // Backward compatibility
   sessionDb,
+  tagDb,
   projectDb,
-  referencesDb
+  referencesDb,
+  normalizeSessionTimestamp
 };
