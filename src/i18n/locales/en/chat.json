@@ -197,6 +197,8 @@
   "session": {
     "mode": {
       "title": "Choose Session Type",
+      "badge_one": "{{count}} mode",
+      "badge_other": "{{count}} modes",
       "subtitle": "Decide whether this session should drive research planning or stay focused on workspace questions.",
       "research": "Research",
       "workspaceQa": "Files Q&A",
@@ -204,6 +206,7 @@
       "researchDescription": "Use the project research workflow, onboarding prompts, and pipeline guidance.",
       "workspaceQaTitle": "Workspace Q&A",
       "workspaceQaDescription": "Ask about files, modules, and implementation details without triggering the research workflow.",
+      "workspaceQaGreeting": "Ask about any file, module, or implementation detail in this workspace. I will stay focused on code and project structure unless you explicitly ask to start research planning.",
       "workspaceQaHint": "This session stays focused on repository questions unless you explicitly ask to start research planning."
     },
     "continue": {
@@ -223,6 +226,54 @@
       "loadingAll": "Loading all messages...",
       "allLoaded": "All messages loaded",
       "perfWarning": "All messages loaded — scrolling may be slower. Click \"Scroll to bottom\" to restore performance."
+    }
+  },
+  "sessionContext": {
+    "title": "Session Context",
+    "description": "Files, tasks, and outputs actually observed in this session trace.",
+    "codexNotice": "Codex visibility is partial and depends on the tool events currently exposed by the runtime.",
+    "traceError": "Failed to load the full session trace. Showing live in-memory messages only.",
+    "stats": {
+      "mode": "Mode",
+      "provider": "Provider",
+      "contextFiles": "Context Files",
+      "unreadOutputs": "Unread Outputs"
+    },
+    "sections": {
+      "injectedContext": "Injected Context",
+      "taskContext": "Task Context",
+      "reviewQueue": "Review Queue",
+      "fileReview": "File Review"
+    },
+    "actions": {
+      "collapse": "Collapse context sidebar",
+      "expand": "Expand context sidebar",
+      "resize": "Drag to resize"
+    },
+    "filters": {
+      "all": "All",
+      "unread": "Unread",
+      "reviewed": "Reviewed"
+    },
+    "kinds": {
+      "task": "task",
+      "todo": "todo",
+      "skill": "skill",
+      "directory": "directory"
+    },
+    "empty": {
+      "injectedContext": "No file or directory context has been observed yet.",
+      "taskContext": "No task or todo context captured yet.",
+      "reviewQueue": "No generated files found for this session yet."
+    },
+    "preview": {
+      "titleFallback": "Preview",
+      "selectFile": "Select a file to preview",
+      "open": "Open",
+      "loading": "Loading preview...",
+      "loadError": "Failed to load preview. {{error}}",
+      "selectToReview": "Select a file to review",
+      "unreadHint": "Outputs stay unread until you open them from the review queue."
     }
   },
   "shell": {

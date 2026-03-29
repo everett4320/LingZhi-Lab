@@ -846,6 +846,45 @@ app.put('/api/projects/:projectName/sessions/:sessionId/tags', authenticateToken
     }
 });
 
+app.get('/api/projects/:projectName/sessions/:sessionId/context-review', authenticateToken, async (req, res) => {
+    try {
+        const { projectName, sessionId } = req.params;
+        const session = sessionDb.getSessionById(sessionId);
+
+        if (!session || session.project_name !== projectName) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        res.json({
+            sessionId,
+            projectName,
+            reviews: sessionDb.getSessionContextReview(sessionId),
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put('/api/projects/:projectName/sessions/:sessionId/context-review', authenticateToken, async (req, res) => {
+    try {
+        const { projectName, sessionId } = req.params;
+        const { reviews } = req.body || {};
+        const session = sessionDb.getSessionById(sessionId);
+
+        if (!session || session.project_name !== projectName) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        res.json({
+            sessionId,
+            projectName,
+            reviews: sessionDb.updateSessionContextReview(sessionId, reviews),
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Rename project endpoint
 app.put('/api/projects/:projectName/rename', authenticateToken, async (req, res) => {
     try {

@@ -183,7 +183,7 @@ export default function ProviderSelectionEmptyState({
                   {t('session.mode.title')}
                 </h2>
                 <span className="rounded-full border border-border/70 bg-card/70 px-2 py-1 text-[10px] font-medium text-muted-foreground">
-                  2 modes
+                  {t('session.mode.badge', { count: sessionModeChoices.length })}
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground/75 mb-3">

@@ -468,17 +468,21 @@ export const convertSessionMessages = (rawMessages: any[]): ChatMessage[] => {
       const visibleText = isSkillRelated ? (text || rawText.trim()) : text;
 
       // Parse <task-notification> blocks
-      const taskNotifRegex = /<task-notification>\s*<task-id>[^<]*<\/task-id>\s*<output-file>[^<]*<\/output-file>\s*<status>([^<]*)<\/status>\s*<summary>([^<]*)<\/summary>\s*<\/task-notification>/g;
+      const taskNotifRegex = /<task-notification>\s*<task-id>([^<]*)<\/task-id>\s*<output-file>([^<]*)<\/output-file>\s*<status>([^<]*)<\/status>\s*<summary>([^<]*)<\/summary>\s*<\/task-notification>/g;
       const taskNotifMatch = taskNotifRegex.exec(rawText);
       if (taskNotifMatch) {
-        const status = taskNotifMatch[1]?.trim() || 'completed';
-        const summary = taskNotifMatch[2]?.trim() || 'Background task finished';
+        const taskId = taskNotifMatch[1]?.trim() || null;
+        const outputFile = taskNotifMatch[2]?.trim() || null;
+        const status = taskNotifMatch[3]?.trim() || 'completed';
+        const summary = taskNotifMatch[4]?.trim() || 'Background task finished';
         converted.push({
           type: 'assistant',
           content: summary,
           timestamp: message.timestamp || new Date().toISOString(),
           isTaskNotification: true,
           taskStatus: status,
+          taskId,
+          taskOutputFile: outputFile,
         });
       } else if (isSkillRelated) {
         if (!visibleText) {

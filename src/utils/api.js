@@ -108,6 +108,13 @@ export const api = {
     }
     return authenticatedFetch(url);
   },
+  sessionContextReview: (projectName, sessionId) =>
+    authenticatedFetch(`/api/projects/${projectName}/sessions/${sessionId}/context-review`),
+  updateSessionContextReview: (projectName, sessionId, reviews) =>
+    authenticatedFetch(`/api/projects/${projectName}/sessions/${sessionId}/context-review`, {
+      method: 'PUT',
+      body: JSON.stringify({ reviews }),
+    }),
   renameProject: (projectName, displayName) =>
     authenticatedFetch(`/api/projects/${projectName}/rename`, {
       method: 'PUT',

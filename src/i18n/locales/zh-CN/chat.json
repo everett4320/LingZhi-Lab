@@ -197,13 +197,16 @@
   "session": {
     "mode": {
       "title": "选择会话类型",
+      "badge_one": "{{count}} 种模式",
+      "badge_other": "{{count}} 种模式",
       "subtitle": "决定这个会话是用于研究流程，还是仅用于项目文件问答。",
       "research": "研究",
       "workspaceQa": "文件问答",
-      "researchTitle": "Research Session",
+      "researchTitle": "研究会话",
       "researchDescription": "使用研究工作流、onboarding 提示和 pipeline 引导。",
-      "workspaceQaTitle": "Workspace Q&A",
+      "workspaceQaTitle": "工作区问答",
       "workspaceQaDescription": "只询问文件、模块和实现细节，不触发研究流程。",
+      "workspaceQaGreeting": "你可以询问这个工作区中的任意文件、模块或实现细节。除非你明确要求开始研究规划，否则我会始终聚焦于代码和项目结构。",
       "workspaceQaHint": "这个会话会聚焦仓库问题，除非你明确要求开始研究规划。"
     },
     "continue": {
@@ -223,6 +226,54 @@
       "loadingAll": "正在加载全部消息...",
       "allLoaded": "全部消息已加载",
       "perfWarning": "已加载全部消息 - 滚动可能变慢。点击「滚动到底部」恢复性能。"
+    }
+  },
+  "sessionContext": {
+    "title": "会话上下文",
+    "description": "这里展示本次会话轨迹中实际出现过的文件、任务和输出。",
+    "codexNotice": "Codex 的可见性目前并不完整，取决于运行时当前暴露的工具事件。",
+    "traceError": "完整会话轨迹加载失败，当前仅显示内存中的实时消息。",
+    "stats": {
+      "mode": "模式",
+      "provider": "提供方",
+      "contextFiles": "上下文文件",
+      "unreadOutputs": "未读输出"
+    },
+    "sections": {
+      "injectedContext": "注入上下文",
+      "taskContext": "任务上下文",
+      "reviewQueue": "审阅队列",
+      "fileReview": "文件审阅"
+    },
+    "actions": {
+      "collapse": "折叠上下文侧栏",
+      "expand": "展开上下文侧栏",
+      "resize": "拖动以调整宽度"
+    },
+    "filters": {
+      "all": "全部",
+      "unread": "未读",
+      "reviewed": "已读"
+    },
+    "kinds": {
+      "task": "任务",
+      "todo": "待办",
+      "skill": "技能",
+      "directory": "目录"
+    },
+    "empty": {
+      "injectedContext": "当前还没有观察到文件或目录上下文。",
+      "taskContext": "当前还没有捕获到任务或待办上下文。",
+      "reviewQueue": "当前会话还没有发现生成文件。"
+    },
+    "preview": {
+      "titleFallback": "预览",
+      "selectFile": "选择一个文件进行预览",
+      "open": "打开",
+      "loading": "正在加载预览...",
+      "loadError": "加载预览失败。{{error}}",
+      "selectToReview": "选择一个文件进行审阅",
+      "unreadHint": "输出文件会保持未读状态，直到你从审阅队列中打开它。"
     }
   },
   "shell": {
