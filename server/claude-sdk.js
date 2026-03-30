@@ -739,21 +739,23 @@ async function abortClaudeSDKSession(sessionId) {
   try {
     console.log(`Aborting SDK session: ${sessionId}`);
 
-    // Call interrupt() on the query instance
-    await session.instance.interrupt();
+    // interrupt() can hang if the subprocess is unresponsive; race against a timeout
+    await Promise.race([
+      session.instance.interrupt(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('interrupt timed out after 5s')), 5000))
+    ]);
 
-    // Update session status
     session.status = 'aborted';
-
-    // Clean up temporary image files
     await cleanupTempFiles(session.tempImagePaths, session.tempDir);
-
-    // Clean up session
     removeSession(sessionId);
 
     return true;
   } catch (error) {
     console.error(`Error aborting session ${sessionId}:`, error);
+    // Still clean up the session even if interrupt failed/timed out
+    session.status = 'aborted';
+    removeSession(sessionId);
+    cleanupTempFiles(session.tempImagePaths, session.tempDir).catch(() => {});
     return false;
   }
 }

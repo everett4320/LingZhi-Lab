@@ -22,7 +22,7 @@ import type { GeminiThinkingModeId } from '../../../../shared/geminiThinkingSupp
 import { getSupportedGeminiThinkingModes } from '../../../../shared/geminiThinkingSupport';
 
 import { grantToolPermission } from '../utils/chatPermissions';
-import { getProviderSettingsKey, persistSessionTimerStart, safeLocalStorage } from '../utils/chatStorage';
+import { clearSessionTimerStart, getProviderSettingsKey, persistSessionTimerStart, safeLocalStorage } from '../utils/chatStorage';
 import { consumeWorkspaceQaDraft, WORKSPACE_QA_DRAFT_EVENT } from '../../../utils/workspaceQa';
 import { consumeReferenceChatDraft, REFERENCE_CHAT_DRAFT_EVENT } from '../../../utils/referenceChatDraft';
 import type {
@@ -1426,6 +1426,16 @@ export function useChatComposerState({
 
   const handleAbortSession = useCallback(() => {
     if (!canAbortSession) {
+      // Force-reset the UI when Stop is clicked but no active abort is possible.
+      // This handles stale state after server restarts or lost WebSocket connections.
+      if (isLoading) {
+        setIsLoading(false);
+        setCanAbortSession(false);
+        setClaudeStatus(null);
+        setPendingPermissionRequests([]);
+        const sessionId = currentSessionId || selectedSession?.id;
+        if (sessionId) clearSessionTimerStart(sessionId);
+      }
       return;
     }
 
@@ -1475,8 +1485,9 @@ export function useChatComposerState({
       setIsLoading(false);
       setCanAbortSession(false);
       setClaudeStatus(null);
+      if (targetSessionId) clearSessionTimerStart(targetSessionId);
     }, 5000);
-  }, [canAbortSession, currentSessionId, pendingViewSessionRef, provider, selectedSession?.id, sendMessage, setCanAbortSession, setChatMessages, setClaudeStatus, setIsLoading]);
+  }, [canAbortSession, currentSessionId, isLoading, pendingViewSessionRef, provider, selectedSession?.id, sendMessage, setCanAbortSession, setChatMessages, setClaudeStatus, setIsLoading, setPendingPermissionRequests]);
 
   const handleTranscript = useCallback((text: string) => {
     if (!text.trim()) {
