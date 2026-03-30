@@ -171,6 +171,98 @@
     },
     "buttonTitle": "Thinking mode: {{mode}}"
   },
+  "codexReasoningEffort": {
+    "selector": {
+      "title": "Reasoning Effort",
+      "description": "Control how much deliberate reasoning Codex uses before responding",
+      "active": "Active",
+      "tip": "Higher reasoning effort usually improves hard-task quality, but increases latency"
+    },
+    "levels": {
+      "default": {
+        "name": "Default",
+        "description": "Use the model default reasoning effort"
+      },
+      "minimal": {
+        "name": "Minimal",
+        "description": "Fastest response with minimal deliberate reasoning"
+      },
+      "low": {
+        "name": "Low",
+        "description": "Light reasoning with lower latency"
+      },
+      "medium": {
+        "name": "Medium",
+        "description": "Balanced depth and latency"
+      },
+      "high": {
+        "name": "High",
+        "description": "More deliberate reasoning for harder tasks"
+      },
+      "xhigh": {
+        "name": "Max",
+        "description": "Maximum reasoning effort"
+      }
+    },
+    "buttonTitle": "Reasoning effort: {{level}}"
+  },
+  "geminiThinking": {
+    "selector": {
+      "title": "Thinking Strength",
+      "descriptionGemini3": "Gemini 3 models use official thinking levels",
+      "descriptionGemini25": "Gemini 2.5 models use fixed thinking-budget presets",
+      "active": "Active",
+      "tipGemini3": "Gemini 3 uses official thinking levels. Higher levels usually improve reasoning depth but increase latency.",
+      "tipGemini25": "Gemini 2.5 uses token budgets. Higher budgets allow more reasoning tokens before the final answer."
+    },
+    "modes": {
+      "default": {
+        "name": "Default",
+        "description": "Use Gemini CLI default behavior for this model"
+      },
+      "minimal": {
+        "name": "Minimal",
+        "description": "Lowest official thinking level"
+      },
+      "low": {
+        "name": "Low",
+        "description": "Lower latency with light reasoning"
+      },
+      "medium": {
+        "name": "Medium",
+        "description": "Balanced reasoning depth and latency"
+      },
+      "high": {
+        "name": "High",
+        "description": "Maximum official thinking level"
+      },
+      "dynamic": {
+        "name": "Dynamic",
+        "description": "Let the model adjust its thinking budget dynamically"
+      },
+      "off": {
+        "name": "Off",
+        "description": "Disable thinking"
+      },
+      "light": {
+        "name": "Light",
+        "description": "Use a small fixed thinking budget ({{budget}} tokens)"
+      },
+      "balanced": {
+        "name": "Balanced",
+        "description": "Use a medium thinking budget ({{budget}} tokens)"
+      },
+      "deep": {
+        "name": "Deep",
+        "description": "Use a large thinking budget ({{budget}} tokens)"
+      },
+      "max": {
+        "name": "Max",
+        "description": "Use the maximum supported thinking budget ({{budget}} tokens)"
+      }
+    },
+    "buttonTitle": "Thinking strength: {{mode}}"
+  },
   "providerSelection": {
     "title": "Choose Your AI Assistant",
     "description": "Select a provider to start a new conversation",

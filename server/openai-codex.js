@@ -329,7 +329,7 @@ async function cleanupCodexTempFiles(tempImagePaths, tempDir) {
 /**
  * Execute a Codex query with streaming
  * @param {string} command - The prompt to send
- * @param {object} options - Options including cwd, sessionId, model, permissionMode
+ * @param {object} options - Options including cwd, sessionId, model, permissionMode, modelReasoningEffort
  * @param {WebSocket|object} ws - WebSocket connection or response writer
  */
 export async function queryCodex(command, options = {}, ws) {
@@ -342,6 +342,7 @@ export async function queryCodex(command, options = {}, ws) {
     attachments,
     images,
     permissionMode = 'default',
+    modelReasoningEffort,
     sessionMode,
     stageTagKeys,
     stageTagSource = 'task_context',
@@ -377,7 +378,8 @@ export async function queryCodex(command, options = {}, ws) {
       skipGitRepoCheck: true,
       sandboxMode,
       approvalPolicy,
-      model
+      model,
+      modelReasoningEffort,
     };
 
     // Start or resume thread

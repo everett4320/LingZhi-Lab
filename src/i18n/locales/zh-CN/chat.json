@@ -171,6 +171,98 @@
     },
     "buttonTitle": "思考模式：{{mode}}"
   },
+  "codexReasoningEffort": {
+    "selector": {
+      "title": "思考强度",
+      "description": "控制 Codex 在响应前投入多少审慎推理",
+      "active": "激活",
+      "tip": "更高的思考强度通常能提升复杂任务质量，但会增加响应时延"
+    },
+    "levels": {
+      "default": {
+        "name": "默认",
+        "description": "使用模型默认的思考强度"
+      },
+      "minimal": {
+        "name": "极低",
+        "description": "最快响应，仅进行最少量的审慎推理"
+      },
+      "low": {
+        "name": "低",
+        "description": "较轻量推理，延迟更低"
+      },
+      "medium": {
+        "name": "中",
+        "description": "在深度与延迟之间取得平衡"
+      },
+      "high": {
+        "name": "高",
+        "description": "为更难任务投入更多推理"
+      },
+      "xhigh": {
+        "name": "最高",
+        "description": "最大推理强度"
+      }
+    },
+    "buttonTitle": "思考强度：{{level}}"
+  },
+  "geminiThinking": {
+    "selector": {
+      "title": "思考强度",
+      "descriptionGemini3": "Gemini 3 模型使用官方 thinking level",
+      "descriptionGemini25": "Gemini 2.5 模型使用固定的 thinking budget 预设",
+      "active": "激活",
+      "tipGemini3": "Gemini 3 使用官方 thinking level。更高等级通常会提升推理深度，但也会增加延迟。",
+      "tipGemini25": "Gemini 2.5 使用 token budget。更高预算会允许模型在最终回答前使用更多推理 token。"
+    },
+    "modes": {
+      "default": {
+        "name": "默认",
+        "description": "使用该模型在 Gemini CLI 中的默认行为"
+      },
+      "minimal": {
+        "name": "极低",
+        "description": "最低官方 thinking level"
+      },
+      "low": {
+        "name": "低",
+        "description": "更低延迟的轻量推理"
+      },
+      "medium": {
+        "name": "中",
+        "description": "在推理深度与延迟之间取得平衡"
+      },
+      "high": {
+        "name": "高",
+        "description": "最高官方 thinking level"
+      },
+      "dynamic": {
+        "name": "动态",
+        "description": "让模型动态调整 thinking budget"
+      },
+      "off": {
+        "name": "关闭",
+        "description": "关闭思考"
+      },
+      "light": {
+        "name": "轻量",
+        "description": "使用较小的固定 thinking budget（{{budget}} tokens）"
+      },
+      "balanced": {
+        "name": "平衡",
+        "description": "使用中等 thinking budget（{{budget}} tokens）"
+      },
+      "deep": {
+        "name": "深入",
+        "description": "使用较大的 thinking budget（{{budget}} tokens）"
+      },
+      "max": {
+        "name": "最高",
+        "description": "使用该模型支持的最大 thinking budget（{{budget}} tokens）"
+      }
+    },
+    "buttonTitle": "思考强度：{{mode}}"
+  },
   "providerSelection": {
     "title": "选择您的 AI 助手",
     "description": "选择一个供应商以开始新对话",

@@ -171,6 +171,98 @@
     },
     "buttonTitle": "Thinking 모드: {{mode}}"
   },
+  "codexReasoningEffort": {
+    "selector": {
+      "title": "추론 강도",
+      "description": "Codex가 응답 전에 얼마나 신중하게 추론할지 제어합니다",
+      "active": "활성",
+      "tip": "높은 추론 강도는 어려운 작업의 품질을 높이는 대신 응답 시간이 더 길어질 수 있습니다"
+    },
+    "levels": {
+      "default": {
+        "name": "기본값",
+        "description": "모델 기본 추론 강도 사용"
+      },
+      "minimal": {
+        "name": "최소",
+        "description": "가장 빠른 응답, 최소한의 신중한 추론"
+      },
+      "low": {
+        "name": "낮음",
+        "description": "가벼운 추론, 더 낮은 지연 시간"
+      },
+      "medium": {
+        "name": "보통",
+        "description": "깊이와 지연 시간의 균형"
+      },
+      "high": {
+        "name": "높음",
+        "description": "어려운 작업에 더 신중한 추론"
+      },
+      "xhigh": {
+        "name": "최대",
+        "description": "최대 추론 강도"
+      }
+    },
+    "buttonTitle": "추론 강도: {{level}}"
+  },
+  "geminiThinking": {
+    "selector": {
+      "title": "Thinking 강도",
+      "descriptionGemini3": "Gemini 3 모델은 공식 thinking level을 사용합니다",
+      "descriptionGemini25": "Gemini 2.5 모델은 고정 thinking budget 프리셋을 사용합니다",
+      "active": "활성",
+      "tipGemini3": "Gemini 3는 공식 thinking level을 사용합니다. 높은 수준은 보통 추론 깊이를 높이지만 지연 시간도 늘립니다.",
+      "tipGemini25": "Gemini 2.5는 token budget을 사용합니다. 높은 예산은 최종 답변 전에 더 많은 추론 토큰을 허용합니다."
+    },
+    "modes": {
+      "default": {
+        "name": "기본값",
+        "description": "이 모델의 Gemini CLI 기본 동작 사용"
+      },
+      "minimal": {
+        "name": "최소",
+        "description": "가장 낮은 공식 thinking level"
+      },
+      "low": {
+        "name": "낮음",
+        "description": "가벼운 추론과 더 낮은 지연 시간"
+      },
+      "medium": {
+        "name": "보통",
+        "description": "추론 깊이와 지연 시간의 균형"
+      },
+      "high": {
+        "name": "높음",
+        "description": "가장 높은 공식 thinking level"
+      },
+      "dynamic": {
+        "name": "동적",
+        "description": "모델이 thinking budget을 동적으로 조정하도록 둡니다"
+      },
+      "off": {
+        "name": "끔",
+        "description": "thinking 비활성화"
+      },
+      "light": {
+        "name": "가볍게",
+        "description": "작은 고정 thinking budget 사용 ({{budget}} tokens)"
+      },
+      "balanced": {
+        "name": "균형",
+        "description": "중간 thinking budget 사용 ({{budget}} tokens)"
+      },
+      "deep": {
+        "name": "깊게",
+        "description": "큰 thinking budget 사용 ({{budget}} tokens)"
+      },
+      "max": {
+        "name": "최대",
+        "description": "이 모델이 지원하는 최대 thinking budget 사용 ({{budget}} tokens)"
+      }
+    },
+    "buttonTitle": "Thinking 강도: {{mode}}"
+  },
   "providerSelection": {
     "title": "AI 어시스턴트 선택",
     "description": "새 대화를 시작할 프로바이더를 선택하세요",
