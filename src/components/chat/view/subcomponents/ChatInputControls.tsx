@@ -2,9 +2,12 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import ThinkingModeSelector from './ThinkingModeSelector';
 import CodexReasoningEffortSelector from './CodexReasoningEffortSelector';
+import GeminiThinkingSelector from './GeminiThinkingSelector';
 import TokenUsagePie from './TokenUsagePie';
 import type { CodexReasoningEffortId } from '../../constants/codexReasoningEfforts';
 import { supportsExplicitCodexReasoningEffort } from '../../constants/codexReasoningSupport';
+import type { GeminiThinkingModeId } from '../../../../../shared/geminiThinkingSupport';
+import { supportsExplicitGeminiThinkingMode } from '../../../../../shared/geminiThinkingSupport';
 import type { PermissionMode, Provider, TokenBudget } from '../../types/types';
 
 interface ChatInputControlsProps {
@@ -12,10 +15,13 @@ interface ChatInputControlsProps {
   onModeSwitch: () => void;
   provider: Provider | string;
   codexModel: string;
+  geminiModel: string;
   thinkingMode: string;
   setThinkingMode: React.Dispatch<React.SetStateAction<string>>;
   codexReasoningEffort: CodexReasoningEffortId;
   setCodexReasoningEffort: React.Dispatch<React.SetStateAction<CodexReasoningEffortId>>;
+  geminiThinkingMode: GeminiThinkingModeId;
+  setGeminiThinkingMode: React.Dispatch<React.SetStateAction<GeminiThinkingModeId>>;
   tokenBudget: TokenBudget | null;
   slashCommandsCount: number;
   onToggleCommandMenu: () => void;
@@ -31,10 +37,13 @@ export default function ChatInputControls({
   onModeSwitch,
   provider,
   codexModel,
+  geminiModel,
   thinkingMode,
   setThinkingMode,
   codexReasoningEffort,
   setCodexReasoningEffort,
+  geminiThinkingMode,
+  setGeminiThinkingMode,
   tokenBudget,
   slashCommandsCount,
   onToggleCommandMenu,
@@ -92,6 +101,16 @@ export default function ChatInputControls({
           model={codexModel}
           selectedEffort={codexReasoningEffort}
           onEffortChange={setCodexReasoningEffort}
+          onClose={() => {}}
+          className=""
+        />
+      )}
+
+      {provider === 'gemini' && supportsExplicitGeminiThinkingMode(geminiModel) && (
+        <GeminiThinkingSelector
+          model={geminiModel}
+          selectedMode={geminiThinkingMode}
+          onModeChange={setGeminiThinkingMode}
           onClose={() => {}}
           className=""
         />

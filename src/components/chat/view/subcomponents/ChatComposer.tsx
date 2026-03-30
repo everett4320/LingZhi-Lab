@@ -21,6 +21,7 @@ import type {
   TouchEvent,
 } from 'react';
 import type { CodexReasoningEffortId } from '../../constants/codexReasoningEfforts';
+import type { GeminiThinkingModeId } from '../../../../../shared/geminiThinkingSupport';
 import type { AttachedPrompt, PendingPermissionRequest, PermissionMode, Provider, TokenBudget } from '../../types/types';
 
 interface MentionableFile {
@@ -56,10 +57,13 @@ interface ChatComposerProps {
   permissionMode: PermissionMode | string;
   onModeSwitch: () => void;
   codexModel: string;
+  geminiModel: string;
   thinkingMode: string;
   setThinkingMode: Dispatch<SetStateAction<string>>;
   codexReasoningEffort: CodexReasoningEffortId;
   setCodexReasoningEffort: Dispatch<SetStateAction<CodexReasoningEffortId>>;
+  geminiThinkingMode: GeminiThinkingModeId;
+  setGeminiThinkingMode: Dispatch<SetStateAction<GeminiThinkingModeId>>;
   tokenBudget: TokenBudget | null;
   slashCommandsCount: number;
   onToggleCommandMenu: () => void;
@@ -121,10 +125,13 @@ export default function ChatComposer({
   permissionMode,
   onModeSwitch,
   codexModel,
+  geminiModel,
   thinkingMode,
   setThinkingMode,
   codexReasoningEffort,
   setCodexReasoningEffort,
+  geminiThinkingMode,
+  setGeminiThinkingMode,
   tokenBudget,
   slashCommandsCount,
   onToggleCommandMenu,
@@ -216,10 +223,13 @@ export default function ChatComposer({
           onModeSwitch={onModeSwitch}
           provider={provider}
           codexModel={codexModel}
+          geminiModel={geminiModel}
           thinkingMode={thinkingMode}
           setThinkingMode={setThinkingMode}
           codexReasoningEffort={codexReasoningEffort}
           setCodexReasoningEffort={setCodexReasoningEffort}
+          geminiThinkingMode={geminiThinkingMode}
+          setGeminiThinkingMode={setGeminiThinkingMode}
           tokenBudget={tokenBudget}
           slashCommandsCount={slashCommandsCount}
           onToggleCommandMenu={onToggleCommandMenu}

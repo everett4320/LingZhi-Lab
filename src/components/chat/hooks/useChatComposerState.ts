@@ -18,6 +18,8 @@ import { isTelemetryEnabled } from '../../../utils/telemetry';
 import { thinkingModes } from '../constants/thinkingModes';
 import type { CodexReasoningEffortId } from '../constants/codexReasoningEfforts';
 import { getSupportedCodexReasoningEfforts } from '../constants/codexReasoningSupport';
+import type { GeminiThinkingModeId } from '../../../../shared/geminiThinkingSupport';
+import { getSupportedGeminiThinkingModes } from '../../../../shared/geminiThinkingSupport';
 
 import { grantToolPermission } from '../utils/chatPermissions';
 import { getProviderSettingsKey, persistSessionTimerStart, safeLocalStorage } from '../utils/chatStorage';
@@ -243,6 +245,25 @@ export function useChatComposerState({
         return savedValue;
       default:
         return 'default';
+      }
+  });
+  const [geminiThinkingMode, setGeminiThinkingMode] = useState<GeminiThinkingModeId>(() => {
+    const savedValue = safeLocalStorage.getItem('gemini-thinking-mode');
+    switch (savedValue) {
+      case 'default':
+      case 'minimal':
+      case 'low':
+      case 'medium':
+      case 'high':
+      case 'dynamic':
+      case 'off':
+      case 'light':
+      case 'balanced':
+      case 'deep':
+      case 'max':
+        return savedValue;
+      default:
+        return 'default';
     }
   });
   const [intakeGreeting, setIntakeGreeting] = useState<string | null>(null);
@@ -275,11 +296,22 @@ export function useChatComposerState({
   }, [codexReasoningEffort]);
 
   useEffect(() => {
+    safeLocalStorage.setItem('gemini-thinking-mode', geminiThinkingMode);
+  }, [geminiThinkingMode]);
+
+  useEffect(() => {
     const supportedEfforts = getSupportedCodexReasoningEfforts(codexModel);
     if (!supportedEfforts.includes(codexReasoningEffort)) {
       setCodexReasoningEffort('default');
     }
   }, [codexModel, codexReasoningEffort]);
+
+  useEffect(() => {
+    const supportedModes = getSupportedGeminiThinkingModes(geminiModel);
+    if (!supportedModes.includes(geminiThinkingMode)) {
+      setGeminiThinkingMode('default');
+    }
+  }, [geminiModel, geminiThinkingMode]);
 
   const handleBuiltInCommand = useCallback(
     (result: CommandExecutionResult) => {
@@ -1046,6 +1078,7 @@ export function useChatComposerState({
             resume: Boolean(effectiveSessionId),
             model: geminiModel,
             permissionMode,
+            thinkingMode: geminiThinkingMode,
             images: uploadedImages.length > 0 ? uploadedImages : undefined,
             toolsSettings,
             telemetryEnabled,
@@ -1144,6 +1177,7 @@ export function useChatComposerState({
       currentSessionId,
       cursorModel,
       executeCommand,
+      geminiThinkingMode,
       geminiModel,
       openrouterModel,
       isLoading,
@@ -1548,6 +1582,8 @@ export function useChatComposerState({
     setThinkingMode,
     codexReasoningEffort,
     setCodexReasoningEffort,
+    geminiThinkingMode,
+    setGeminiThinkingMode,
     slashCommandsCount,
     filteredCommands,
     frequentCommands,
