@@ -79,6 +79,10 @@ export default function AccountContent({ agent, authStatus, onLogin }) {
   const [isVerifyingOpenAI, setIsVerifyingOpenAI] = useState(false);
   const [openaiVerifyResult, setOpenaiVerifyResult] = useState(null);
 
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [isVerifyingGemini, setIsVerifyingGemini] = useState(false);
+  const [geminiVerifyResult, setGeminiVerifyResult] = useState(null);
+
   const handleVerifyCustomApi = async () => {
     setIsVerifying(true);
     setVerifyResult(null);
@@ -144,6 +148,28 @@ export default function AccountContent({ agent, authStatus, onLogin }) {
       setOpenaiVerifyResult({ success: false, message: err.message });
     } finally {
       setIsVerifyingOpenAI(false);
+    }
+  };
+
+  const handleVerifyGeminiKey = async () => {
+    setIsVerifyingGemini(true);
+    setGeminiVerifyResult(null);
+    try {
+      const res = await authenticatedFetch('/api/cli/gemini/verify-api-key', {
+        method: 'POST',
+        body: JSON.stringify({ apiKey: geminiApiKey.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setGeminiVerifyResult({ success: true, message: data.message || 'API key verified and saved.' });
+        setGeminiApiKey('');
+      } else {
+        setGeminiVerifyResult({ success: false, message: data.error || 'Invalid API key' });
+      }
+    } catch (err) {
+      setGeminiVerifyResult({ success: false, message: err.message });
+    } finally {
+      setIsVerifyingGemini(false);
     }
   };
 
@@ -323,6 +349,53 @@ export default function AccountContent({ agent, authStatus, onLogin }) {
                   </a>
                   {' · '}
                   <span>Used for Codex agent and voice transcription.</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {agent === 'gemini' && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Key className="w-4 h-4 text-blue-500" />
+                <div className={`font-medium ${config.textClass}`}>Google API Key</div>
+              </div>
+              <p className={`text-sm ${config.subtextClass} mb-3`}>
+                {authStatus?.authenticated
+                  ? 'Your API key is configured. Enter a new key below to replace it.'
+                  : 'Enter your Google API key to use Gemini. Get one at aistudio.google.com/apikey.'}
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1 flex items-center gap-1">
+                    <Key className="w-3.5 h-3.5" /> API Key
+                  </label>
+                  <Input
+                    type="password"
+                    placeholder="AIza..."
+                    value={geminiApiKey}
+                    onChange={e => setGeminiApiKey(e.target.value)}
+                  />
+                </div>
+                <Button
+                  onClick={handleVerifyGeminiKey}
+                  disabled={isVerifyingGemini || !geminiApiKey.trim()}
+                  size="sm"
+                  className={`${config.buttonClass} text-white w-full`}
+                >
+                  {isVerifyingGemini ? 'Verifying...' : 'Verify & Save Key'}
+                </Button>
+                {geminiVerifyResult && (
+                  <div className={`text-sm ${geminiVerifyResult.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {geminiVerifyResult.message}
+                  </div>
+                )}
+                <div className="text-xs text-muted-foreground mt-2">
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
+                    Get an API key at aistudio.google.com
+                  </a>
+                  {' · '}
+                  <span>Used for Gemini CLI agent.</span>
                 </div>
               </div>
             </div>

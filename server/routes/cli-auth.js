@@ -157,6 +157,16 @@ async function checkGeminiCredentials() {
     cliCommand = resolvedCliCommand || cliCommand;
 
     if (!resolvedCliCommand) {
+      if (process.env.GOOGLE_API_KEY) {
+        return {
+          authenticated: true,
+          email: 'API Key Connected',
+          method: 'custom_api',
+          cliAvailable: false,
+          cliCommand,
+          installHint: buildCliInstallHint('gemini')
+        };
+      }
       return {
         authenticated: false,
         email: null,
@@ -675,6 +685,41 @@ router.post('/openrouter/verify-api-key', async (req, res) => {
       process.env.OPENROUTER_API_KEY = apiKey;
 
       return res.json({ success: true, message: 'OpenRouter API key verified and saved.' });
+    } else {
+      return res.status(401).json({ error: 'Invalid API key' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/gemini/verify-api-key', async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    if (!apiKey) return res.status(400).json({ error: 'API key is required' });
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+
+    if (response.ok) {
+      const envPath = path.join(process.cwd(), '.env');
+      let envContent = '';
+      try { envContent = await fs.readFile(envPath, 'utf8'); } catch {}
+
+      const lines = envContent.split('\n');
+      let found = false;
+      const newLines = lines.map(line => {
+        if (line.trim().startsWith('GOOGLE_API_KEY=')) {
+          found = true;
+          return `GOOGLE_API_KEY=${apiKey}`;
+        }
+        return line;
+      }).filter(l => l.trim() !== '' || found);
+
+      if (!found) newLines.push(`GOOGLE_API_KEY=${apiKey}`);
+      await fs.writeFile(envPath, newLines.join('\n') + '\n');
+      process.env.GOOGLE_API_KEY = apiKey;
+
+      return res.json({ success: true, message: 'Google API key verified and saved.' });
     } else {
       return res.status(401).json({ error: 'Invalid API key' });
     }
