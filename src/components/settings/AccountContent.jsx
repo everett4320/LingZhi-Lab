@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
-import { LogIn, Server, Key } from 'lucide-react';
+import { LogIn, Server, Key, Cpu, RefreshCw, HardDrive, Zap, MonitorSpeaker } from 'lucide-react';
 import SessionProviderLogo from '../SessionProviderLogo';
 import { useTranslation } from 'react-i18next';
 import { authenticatedFetch } from '../../utils/api';
@@ -58,6 +58,16 @@ const agentConfig = {
     subtextClass: 'text-violet-700 dark:text-violet-300',
     buttonClass: 'bg-violet-600 hover:bg-violet-700',
   },
+  local: {
+    name: 'Local GPU',
+    description: 'Run open-source models on your own GPU',
+    cliCommand: null,
+    bgClass: 'bg-emerald-50 dark:bg-emerald-900/20',
+    borderClass: 'border-emerald-200 dark:border-emerald-800',
+    textClass: 'text-emerald-900 dark:text-emerald-100',
+    subtextClass: 'text-emerald-700 dark:text-emerald-300',
+    buttonClass: 'bg-emerald-600 hover:bg-emerald-700',
+  },
 };
 
 export default function AccountContent({ agent, authStatus, onLogin }) {
@@ -82,6 +92,82 @@ export default function AccountContent({ agent, authStatus, onLogin }) {
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [isVerifyingGemini, setIsVerifyingGemini] = useState(false);
   const [geminiVerifyResult, setGeminiVerifyResult] = useState(null);
+
+  const [gpuInfo, setGpuInfo] = useState(null);
+  const [isDetectingGpu, setIsDetectingGpu] = useState(false);
+  const [gpuError, setGpuError] = useState(null);
+  const [selectedGpu, setSelectedGpu] = useState(() =>
+    localStorage.getItem('local-gpu-selected') || ''
+  );
+  const [localServerUrl, setLocalServerUrl] = useState(() =>
+    localStorage.getItem('local-gpu-server-url') || 'http://localhost:8000'
+  );
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployResult, setDeployResult] = useState(null);
+
+  const handleDetectGpus = useCallback(async () => {
+    setIsDetectingGpu(true);
+    setGpuError(null);
+    try {
+      const res = await authenticatedFetch('/api/cli/local/gpu-info');
+      const data = await res.json();
+      if (res.ok && data.gpus) {
+        setGpuInfo(data);
+        if (data.gpus.length > 0 && !selectedGpu) {
+          setSelectedGpu(data.gpus[0].id);
+          localStorage.setItem('local-gpu-selected', data.gpus[0].id);
+        }
+      } else {
+        setGpuError(data.error || 'Could not detect GPUs');
+      }
+    } catch {
+      setGpuError('GPU detection backend not available yet. Configure your local inference server URL below.');
+    } finally {
+      setIsDetectingGpu(false);
+    }
+  }, [selectedGpu]);
+
+  useEffect(() => {
+    if (agent === 'local' && !gpuInfo && !gpuError) {
+      handleDetectGpus();
+    }
+  }, [agent, gpuInfo, gpuError, handleDetectGpus]);
+
+  const handleSaveLocalConfig = () => {
+    localStorage.setItem('local-gpu-server-url', localServerUrl);
+    localStorage.setItem('local-gpu-selected', selectedGpu);
+    setDeployResult({ success: true, message: 'Local GPU configuration saved.' });
+  };
+
+  const handleTestConnection = async () => {
+    setIsDeploying(true);
+    setDeployResult(null);
+    try {
+      const url = localServerUrl.replace(/\/+$/, '');
+      const res = await fetch(`${url}/v1/models`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const modelCount = data.data?.length || 0;
+        setDeployResult({
+          success: true,
+          message: `Connected! Server has ${modelCount} model${modelCount !== 1 ? 's' : ''} available.`,
+        });
+      } else {
+        setDeployResult({ success: false, message: `Server responded with status ${res.status}` });
+      }
+    } catch (err) {
+      setDeployResult({
+        success: false,
+        message: `Cannot reach ${localServerUrl}. Make sure your inference server (vLLM, Ollama, etc.) is running.`,
+      });
+    } finally {
+      setIsDeploying(false);
+    }
+  };
 
   const handleVerifyCustomApi = async () => {
     setIsVerifying(true);
@@ -225,7 +311,7 @@ export default function AccountContent({ agent, authStatus, onLogin }) {
             </div>
           </div>
 
-          {agent !== 'openrouter' && (
+          {agent !== 'openrouter' && agent !== 'local' && (
             <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -443,6 +529,161 @@ export default function AccountContent({ agent, authStatus, onLogin }) {
                   </a>
                   {' · '}
                   <span>Supports 200+ models including GPT-5, Claude, Gemini, DeepSeek, Llama, and more.</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {agent === 'local' && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-5">
+              {/* GPU Detection */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-emerald-500" />
+                    <div className={`font-medium ${config.textClass}`}>GPU Resources</div>
+                  </div>
+                  <Button
+                    onClick={handleDetectGpus}
+                    disabled={isDetectingGpu}
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                  >
+                    <RefreshCw className={`w-3 h-3 mr-1.5 ${isDetectingGpu ? 'animate-spin' : ''}`} />
+                    {isDetectingGpu ? 'Detecting...' : 'Detect GPUs'}
+                  </Button>
+                </div>
+
+                {gpuError && !gpuInfo && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                    <div className="flex items-start gap-2">
+                      <MonitorSpeaker className="w-4 h-4 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-medium text-xs">No GPU info available</p>
+                        <p className="text-xs mt-1 opacity-80">{gpuError}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {gpuInfo && gpuInfo.gpus && gpuInfo.gpus.length > 0 && (
+                  <div className="space-y-2">
+                    {gpuInfo.gpus.map((gpu, idx) => (
+                      <label
+                        key={gpu.id || idx}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                          selectedGpu === (gpu.id || String(idx))
+                            ? 'border-emerald-400 bg-emerald-50/50 dark:border-emerald-600 dark:bg-emerald-900/20 ring-1 ring-emerald-400/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="gpu-select"
+                          value={gpu.id || String(idx)}
+                          checked={selectedGpu === (gpu.id || String(idx))}
+                          onChange={(e) => {
+                            setSelectedGpu(e.target.value);
+                            localStorage.setItem('local-gpu-selected', e.target.value);
+                          }}
+                          className="sr-only"
+                        />
+                        <div className={`w-3 h-3 rounded-full border-2 flex items-center justify-center ${
+                          selectedGpu === (gpu.id || String(idx))
+                            ? 'border-emerald-500'
+                            : 'border-gray-400'
+                        }`}>
+                          {selectedGpu === (gpu.id || String(idx)) && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          )}
+                        </div>
+                        <Zap className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-foreground truncate">{gpu.name}</div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                            {gpu.memory && (
+                              <span className="flex items-center gap-1">
+                                <HardDrive className="w-3 h-3" />
+                                {gpu.memory}
+                              </span>
+                            )}
+                            {gpu.utilization !== undefined && (
+                              <span>Util: {gpu.utilization}%</span>
+                            )}
+                            {gpu.temperature !== undefined && (
+                              <span>{gpu.temperature}°C</span>
+                            )}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                    {gpuInfo.system && (
+                      <div className="text-xs text-muted-foreground px-1 pt-1">
+                        {gpuInfo.system.driver && <span>Driver: {gpuInfo.system.driver}</span>}
+                        {gpuInfo.system.cuda && <span className="ml-3">CUDA: {gpuInfo.system.cuda}</span>}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {gpuInfo && gpuInfo.gpus && gpuInfo.gpus.length === 0 && (
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2.5 text-sm text-muted-foreground">
+                    No GPUs detected on this machine.
+                  </div>
+                )}
+              </div>
+
+              {/* Inference Server URL */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Server className="w-4 h-4 text-emerald-500" />
+                  <div className={`font-medium ${config.textClass}`}>Inference Server</div>
+                </div>
+                <p className={`text-sm ${config.subtextClass} mb-3`}>
+                  Connect to a local inference server running vLLM, Ollama, TGI, or any OpenAI-compatible API.
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-sm text-gray-600 dark:text-gray-400 block mb-1">Server URL</label>
+                    <Input
+                      placeholder="http://localhost:8000"
+                      value={localServerUrl}
+                      onChange={e => setLocalServerUrl(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleTestConnection}
+                      disabled={isDeploying || !localServerUrl.trim()}
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      {isDeploying ? 'Testing...' : 'Test Connection'}
+                    </Button>
+                    <Button
+                      onClick={handleSaveLocalConfig}
+                      size="sm"
+                      className={`${config.buttonClass} text-white flex-1`}
+                    >
+                      Save Configuration
+                    </Button>
+                  </div>
+                  {deployResult && (
+                    <div className={`text-sm ${deployResult.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {deployResult.message}
+                    </div>
+                  )}
+                  <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                    <p className="font-medium">Supported servers:</p>
+                    <ul className="list-disc list-inside space-y-0.5 text-muted-foreground/80">
+                      <li><a href="https://docs.vllm.ai" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">vLLM</a> — <code className="text-[10px]">vllm serve model-name</code></li>
+                      <li><a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Ollama</a> — <code className="text-[10px]">ollama serve</code> (default: localhost:11434)</li>
+                      <li><a href="https://huggingface.co/docs/text-generation-inference" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">TGI</a> — HuggingFace Text Generation Inference</li>
+                      <li>Any OpenAI-compatible API endpoint</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>

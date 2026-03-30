@@ -38,6 +38,8 @@ interface ChatMessagesPaneProps {
   setGeminiModel: (model: string) => void;
   openrouterModel: string;
   setOpenrouterModel: (model: string) => void;
+  localModel: string;
+  setLocalModel: (model: string) => void;
   isLoadingMoreMessages: boolean;
   hasMoreMessages: boolean;
   totalMessages: number;
@@ -91,6 +93,8 @@ export default function ChatMessagesPane({
   setGeminiModel,
   openrouterModel,
   setOpenrouterModel,
+  localModel,
+  setLocalModel,
   isLoadingMoreMessages,
   hasMoreMessages,
   totalMessages,
@@ -206,6 +210,8 @@ export default function ChatMessagesPane({
             setGeminiModel={setGeminiModel}
             openrouterModel={openrouterModel}
             setOpenrouterModel={setOpenrouterModel}
+            localModel={localModel}
+            setLocalModel={setLocalModel}
             projectName={selectedProject.name}
             setInput={setInput}
             setAttachedPrompt={setAttachedPrompt}

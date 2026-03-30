@@ -30,6 +30,7 @@ const DEFAULT_PROVIDER_AVAILABILITY: Record<Provider, ProviderAvailability> = {
   codex: { cliAvailable: true, cliCommand: 'codex', installHint: null },
   gemini: { cliAvailable: true, cliCommand: 'gemini', installHint: null },
   openrouter: { cliAvailable: true, cliCommand: 'openrouter', installHint: null },
+  local: { cliAvailable: true, cliCommand: null, installHint: null },
 };
 
 const INTAKE_GREETING = `Hello! I'm your Dr. Claw research assistant, here to help you set up your research pipeline.\n\nTo get started, could you tell me about your research field or topic?`;
@@ -130,6 +131,8 @@ function ChatInterface({
     setGeminiModel,
     openrouterModel,
     setOpenrouterModel,
+    localModel,
+    setLocalModel,
     permissionMode,
     pendingPermissionRequests,
     setPendingPermissionRequests,
@@ -255,6 +258,7 @@ function ChatInterface({
     codexModel,
     geminiModel,
     openrouterModel,
+    localModel,
     isLoading,
     canAbortSession,
     tokenBudget,
@@ -348,6 +352,7 @@ function ChatInterface({
       codex: cached.codex ?? DEFAULT_PROVIDER_AVAILABILITY.codex,
       gemini: cached.gemini ?? DEFAULT_PROVIDER_AVAILABILITY.gemini,
       openrouter: cached.openrouter ?? DEFAULT_PROVIDER_AVAILABILITY.openrouter,
+      local: cached.local ?? DEFAULT_PROVIDER_AVAILABILITY.local,
     };
   });
 
@@ -356,8 +361,9 @@ function ChatInterface({
     if (importedProjectAnalysisProvider === 'codex') return codexModel;
     if (importedProjectAnalysisProvider === 'gemini') return geminiModel;
     if (importedProjectAnalysisProvider === 'openrouter') return openrouterModel;
+    if (importedProjectAnalysisProvider === 'local') return localModel;
     return cursorModel;
-  }, [claudeModel, codexModel, cursorModel, geminiModel, openrouterModel, importedProjectAnalysisProvider]);
+  }, [claudeModel, codexModel, cursorModel, geminiModel, openrouterModel, localModel, importedProjectAnalysisProvider]);
 
   const handleStartTaskInChat = useCallback((prompt?: string, task?: { stage?: string } | null) => {
     const nextPrompt = prompt && prompt.trim()
@@ -751,6 +757,8 @@ function ChatInterface({
           setGeminiModel={setGeminiModel}
           openrouterModel={openrouterModel}
           setOpenrouterModel={setOpenrouterModel}
+          localModel={localModel}
+          setLocalModel={setLocalModel}
           isLoadingMoreMessages={isLoadingMoreMessages}
           hasMoreMessages={hasMoreMessages}
           totalMessages={totalMessages}

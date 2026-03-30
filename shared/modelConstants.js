@@ -112,6 +112,30 @@ export const OPENROUTER_MODELS = {
 };
 
 /**
+ * Local GPU Models (open-source models for self-hosted deployment)
+ */
+export const LOCAL_MODELS = {
+  OPTIONS: [
+    { value: 'llama-4-maverick', label: 'Llama 4 Maverick (Meta)' },
+    { value: 'llama-4-scout', label: 'Llama 4 Scout (Meta)' },
+    { value: 'deepseek-r1', label: 'DeepSeek R1' },
+    { value: 'deepseek-v3-0324', label: 'DeepSeek V3 0324' },
+    { value: 'qwen3-235b-a22b', label: 'Qwen3 235B' },
+    { value: 'qwen3-32b', label: 'Qwen3 32B' },
+    { value: 'qwen3-8b', label: 'Qwen3 8B' },
+    { value: 'mistral-large', label: 'Mistral Large' },
+    { value: 'codestral', label: 'Codestral (Mistral)' },
+    { value: 'gemma-3-27b', label: 'Gemma 3 27B (Google)' },
+    { value: 'phi-4', label: 'Phi-4 (Microsoft)' },
+    { value: 'command-a', label: 'Command A (Cohere)' },
+  ],
+
+  ALLOWS_CUSTOM: true,
+
+  DEFAULT: 'qwen3-32b'
+};
+
+/**
  * Gemini (Google) Models
  */
 export const GEMINI_MODELS = {

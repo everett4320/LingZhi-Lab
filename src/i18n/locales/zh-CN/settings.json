@@ -344,6 +344,9 @@
       },
       "openrouter": {
         "description": "通过 OpenRouter API 路由到任意模型"
+      },
+      "local": {
+        "description": "在本地 GPU 上运行开源模型"
       }
     },
     "connectionStatus": "连接状态",

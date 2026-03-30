@@ -195,5 +195,14 @@ export function getProviderDisplayName(provider: string): string {
     }
     return 'OpenRouter';
   }
+  if (provider === 'local') {
+    const model = localStorage.getItem('local-model') || '';
+    if (model) {
+      return model
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    return 'Local GPU';
+  }
   return 'Claude';
 }

@@ -1,4 +1,4 @@
-export type SessionProvider = 'claude' | 'cursor' | 'codex' | 'gemini' | 'openrouter';
+export type SessionProvider = 'claude' | 'cursor' | 'codex' | 'gemini' | 'openrouter' | 'local';
 
 export type SessionMode = 'research' | 'workspace_qa';
 

@@ -344,6 +344,9 @@
       },
       "openrouter": {
         "description": "Route to any model via OpenRouter API"
+      },
+      "local": {
+        "description": "Run open-source models on your own GPU"
       }
     },
     "connectionStatus": "Connection Status",

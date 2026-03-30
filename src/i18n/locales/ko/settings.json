@@ -344,6 +344,9 @@
       },
       "openrouter": {
         "description": "OpenRouter API를 통해 모든 모델로 라우팅"
+      },
+      "local": {
+        "description": "로컬 GPU에서 오픈소스 모델 실행"
       }
     },
     "connectionStatus": "연결 상태",

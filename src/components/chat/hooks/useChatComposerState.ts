@@ -57,6 +57,7 @@ interface UseChatComposerStateArgs {
   codexModel: string;
   geminiModel: string;
   openrouterModel: string;
+  localModel: string;
   isLoading: boolean;
   canAbortSession: boolean;
   tokenBudget: TokenBudget | null;
@@ -201,6 +202,7 @@ export function useChatComposerState({
   codexModel,
   geminiModel,
   openrouterModel,
+  localModel,
   isLoading,
   canAbortSession,
   tokenBudget,
@@ -1129,6 +1131,28 @@ export function useChatComposerState({
             stageTagSource: 'task_context',
           },
         });
+      } else if (provider === 'local') {
+        console.log('[DEBUG] Sending local-command');
+        sendMessage({
+          type: 'local-command',
+          command: messageContent,
+          sessionId: effectiveSessionId,
+          options: {
+            cwd: resolvedProjectPath,
+            projectPath: resolvedProjectPath,
+            sessionId: effectiveSessionId,
+            resume: Boolean(effectiveSessionId),
+            model: localModel,
+            serverUrl: localStorage.getItem('local-gpu-server-url') || 'http://localhost:8000',
+            gpuId: localStorage.getItem('local-gpu-selected') || undefined,
+            permissionMode,
+            toolsSettings,
+            telemetryEnabled,
+            sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
+            stageTagKeys: pendingStageTagKeys,
+            stageTagSource: 'task_context',
+          },
+        });
       } else {
         console.log('[DEBUG] Sending claude-command');
         sendMessage({
@@ -1180,6 +1204,7 @@ export function useChatComposerState({
       geminiThinkingMode,
       geminiModel,
       openrouterModel,
+      localModel,
       isLoading,
       onSessionActive,
       pendingViewSessionRef,

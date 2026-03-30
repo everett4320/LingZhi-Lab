@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { authenticatedFetch } from '../../../utils/api';
-import { CLAUDE_MODELS, CODEX_MODELS, CURSOR_MODELS, GEMINI_MODELS, OPENROUTER_MODELS } from '../../../../shared/modelConstants';
+import { CLAUDE_MODELS, CODEX_MODELS, CURSOR_MODELS, GEMINI_MODELS, LOCAL_MODELS, OPENROUTER_MODELS } from '../../../../shared/modelConstants';
 import type { PendingPermissionRequest, PermissionMode, Provider } from '../types/types';
 import type { ProjectSession, SessionProvider } from '../../../types/app';
 
@@ -28,6 +28,9 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
   });
   const [openrouterModel, setOpenrouterModel] = useState<string>(() => {
     return localStorage.getItem('openrouter-model') || OPENROUTER_MODELS.DEFAULT;
+  });
+  const [localModel, setLocalModel] = useState<string>(() => {
+    return localStorage.getItem('local-model') || LOCAL_MODELS.DEFAULT;
   });
 
   const lastProviderRef = useRef(provider);
@@ -132,6 +135,8 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
     setGeminiModel,
     openrouterModel,
     setOpenrouterModel,
+    localModel,
+    setLocalModel,
     permissionMode,
     setPermissionMode,
     pendingPermissionRequests,

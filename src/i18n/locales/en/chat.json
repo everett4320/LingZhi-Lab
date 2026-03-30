@@ -275,7 +275,8 @@
       "openai": "by OpenAI",
       "google": "by Google",
       "cursorEditor": "AI Code Editor",
-      "openrouter": "Any Model via API"
+      "openrouter": "Any Model via API",
+      "local": "Run on Your GPU"
     },
     "readyPrompt": {
       "claude": "Ready to use Claude with {{model}}. Start typing your message below.",
@@ -283,6 +284,7 @@
       "gemini": "Ready to use Gemini with {{model}}. Start typing your message below.",
       "codex": "Ready to use Codex with {{model}}. Start typing your message below.",
       "openrouter": "Ready to use OpenRouter with {{model}}. Start typing your message below.",
+      "local": "Ready to use Local GPU with {{model}}. Start typing your message below.",
       "default": "Select a provider above to begin"
     }
   },

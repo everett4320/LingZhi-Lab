@@ -168,6 +168,15 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
     loading: true,
     error: null
   });
+  const [localAuthStatus] = useState({
+    authenticated: !!localStorage.getItem('local-gpu-server-url'),
+    email: localStorage.getItem('local-gpu-server-url') || null,
+    cliAvailable: true,
+    cliCommand: null,
+    installHint: null,
+    loading: false,
+    error: null
+  });
 
   const buildDefaultAuthState = (overrides = {}) => ({
     authenticated: false,
@@ -1603,6 +1612,13 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
                       onClick={() => setSelectedAgent('openrouter')}
                       isMobile={true}
                     />
+                    <AgentListItem
+                      agentId="local"
+                      authStatus={localAuthStatus}
+                      isSelected={selectedAgent === 'local'}
+                      onClick={() => setSelectedAgent('local')}
+                      isMobile={true}
+                    />
                   </div>
                 </div>
 
@@ -1632,6 +1648,12 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
                       authStatus={openrouterAuthStatus}
                       isSelected={selectedAgent === 'openrouter'}
                       onClick={() => setSelectedAgent('openrouter')}
+                    />
+                    <AgentListItem
+                      agentId="local"
+                      authStatus={localAuthStatus}
+                      isSelected={selectedAgent === 'local'}
+                      onClick={() => setSelectedAgent('local')}
                     />
                   </div>
                 </div>
@@ -1685,6 +1707,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
                           selectedAgent === 'cursor' ? cursorAuthStatus :
                           selectedAgent === 'gemini' ? geminiAuthStatus :
                           selectedAgent === 'openrouter' ? openrouterAuthStatus :
+                          selectedAgent === 'local' ? localAuthStatus :
                           codexAuthStatus
                         }
                         onLogin={
@@ -1692,6 +1715,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
                           selectedAgent === 'cursor' ? handleCursorLogin :
                           selectedAgent === 'gemini' ? handleGeminiLogin :
                           selectedAgent === 'openrouter' ? (() => {}) :
+                          selectedAgent === 'local' ? (() => {}) :
                           handleCodexLogin
                         }
                       />

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Check, Search, Plus, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import SessionProviderLogo from '../../../SessionProviderLogo';
-import { CLAUDE_MODELS, CURSOR_MODELS, CODEX_MODELS, GEMINI_MODELS, OPENROUTER_MODELS } from '../../../../../shared/modelConstants';
+import { CLAUDE_MODELS, CURSOR_MODELS, CODEX_MODELS, GEMINI_MODELS, LOCAL_MODELS, OPENROUTER_MODELS } from '../../../../../shared/modelConstants';
 import { authenticatedFetch } from '../../../../utils/api';
 import type { ProjectSession, SessionMode, SessionProvider } from '../../../../types/app';
 import GuidedPromptStarter from './GuidedPromptStarter';
@@ -24,6 +24,8 @@ interface ProviderSelectionEmptyStateProps {
   setGeminiModel: (model: string) => void;
   openrouterModel: string;
   setOpenrouterModel: (model: string) => void;
+  localModel: string;
+  setLocalModel: (model: string) => void;
   projectName: string;
   setInput: React.Dispatch<React.SetStateAction<string>>;
   setAttachedPrompt?: (prompt: AttachedPrompt | null) => void;
@@ -83,6 +85,14 @@ const PROVIDERS: ProviderDef[] = [
     ring: 'ring-violet-500/15',
     check: 'bg-violet-500 text-white',
   },
+  {
+    id: 'local',
+    name: 'Local GPU',
+    infoKey: 'providerSelection.providerInfo.local',
+    accent: 'border-emerald-500 dark:border-emerald-400',
+    ring: 'ring-emerald-500/15',
+    check: 'bg-emerald-500 text-white',
+  },
 ];
 
 function getModelConfig(p: SessionProvider) {
@@ -90,14 +100,16 @@ function getModelConfig(p: SessionProvider) {
   if (p === 'codex') return CODEX_MODELS;
   if (p === 'gemini') return GEMINI_MODELS;
   if (p === 'openrouter') return OPENROUTER_MODELS;
+  if (p === 'local') return LOCAL_MODELS;
   return CURSOR_MODELS;
 }
 
-function getModelValue(p: SessionProvider, c: string, cu: string, co: string, g: string, or: string) {
+function getModelValue(p: SessionProvider, c: string, cu: string, co: string, g: string, or: string, lo: string) {
   if (p === 'claude') return c;
   if (p === 'codex') return co;
   if (p === 'gemini') return g;
   if (p === 'openrouter') return or;
+  if (p === 'local') return lo;
   return cu;
 }
 
@@ -117,6 +129,8 @@ export default function ProviderSelectionEmptyState({
   setGeminiModel,
   openrouterModel,
   setOpenrouterModel,
+  localModel,
+  setLocalModel,
   projectName,
   setInput,
   setAttachedPrompt,
@@ -154,11 +168,12 @@ export default function ProviderSelectionEmptyState({
     else if (provider === 'codex') { setCodexModel(value); localStorage.setItem('codex-model', value); }
     else if (provider === 'gemini') { setGeminiModel(value); localStorage.setItem('gemini-model', value); }
     else if (provider === 'openrouter') { setOpenrouterModel(value); localStorage.setItem('openrouter-model', value); }
+    else if (provider === 'local') { setLocalModel(value); localStorage.setItem('local-model', value); }
     else { setCursorModel(value); localStorage.setItem('cursor-model', value); }
   };
 
   const modelConfig = getModelConfig(provider);
-  const currentModel = getModelValue(provider, claudeModel, cursorModel, codexModel, geminiModel, openrouterModel);
+  const currentModel = getModelValue(provider, claudeModel, cursorModel, codexModel, geminiModel, openrouterModel, localModel);
   const readyPromptKey =
     provider === 'claude'
       ? 'providerSelection.readyPrompt.claude'
@@ -168,9 +183,11 @@ export default function ProviderSelectionEmptyState({
           ? 'providerSelection.readyPrompt.gemini'
           : provider === 'openrouter'
             ? 'providerSelection.readyPrompt.openrouter'
-            : provider === 'cursor'
-              ? 'providerSelection.readyPrompt.cursor'
-              : 'providerSelection.readyPrompt.default';
+            : provider === 'local'
+              ? 'providerSelection.readyPrompt.local'
+              : provider === 'cursor'
+                ? 'providerSelection.readyPrompt.cursor'
+                : 'providerSelection.readyPrompt.default';
 
   if (!selectedSession && !currentSessionId) {
     return (
