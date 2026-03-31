@@ -148,6 +148,30 @@ const KNOWN_FILE_EXTENSIONS = new Set([
 
 const normalizePath = (value: string) => value.replace(/\\/g, '/').replace(/\/+/g, '/');
 
+const trimTrailingPathPunctuation = (value: string) => {
+  let normalized = normalizePath(value).replace(/[),:;]+$/, '');
+
+  while (normalized.endsWith('.')) {
+    const candidate = normalized.slice(0, -1);
+    if (!candidate || candidate === '.' || candidate === '..') {
+      break;
+    }
+
+    const basename = candidate.replace(/\/$/, '').split('/').pop() || candidate;
+    const extension = basename.includes('.') ? basename.split('.').pop()?.toLowerCase() || '' : '';
+    const looksLikeDirectory = candidate.includes('/') && !basename.includes('.');
+    const looksLikeKnownFile = KNOWN_FILE_BASENAMES.has(basename) || (Boolean(extension) && KNOWN_FILE_EXTENSIONS.has(extension));
+
+    if (!looksLikeDirectory && !looksLikeKnownFile) {
+      break;
+    }
+
+    normalized = candidate;
+  }
+
+  return normalized;
+};
+
 const isAbsolutePath = (value: string) => value.startsWith('/') || WINDOWS_ABS_PATTERN.test(value);
 
 
@@ -181,8 +205,23 @@ const parseJsonValue = (value: unknown): any => {
   }
 };
 
+const toRelativePath = (filePath: string, projectRoot: string): string | null => {
+  const normalizedPath = trimTrailingPathPunctuation(String(filePath || '').trim());
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const normalizedRoot = normalizePath(String(projectRoot || '').trim()).replace(/\/$/, '');
+  if (normalizedRoot && normalizedPath.startsWith(`${normalizedRoot}/`)) {
+    return normalizedPath.slice(normalizedRoot.length + 1);
+  }
+
+  return normalizedPath.replace(/^\.\//, '');
+};
+
+
 const toAbsolutePath = (filePath: string, projectRoot: string): string | null => {
-  const normalizedPath = normalizePath(String(filePath || '').trim());
+  const normalizedPath = trimTrailingPathPunctuation(String(filePath || '').trim());
   if (!normalizedPath) {
     return null;
   }
@@ -338,7 +377,7 @@ const isLikelyDirectoryPath = (value: string) => {
 };
 
 const looksLikePathToken = (value: string) => {
-  const normalized = normalizePath(value);
+  const normalized = trimTrailingPathPunctuation(value);
   if (!normalized || normalized.startsWith('-') || normalized.includes('://') || SHELL_COMMAND_BREAKS.has(normalized)) {
     return false;
   }
@@ -347,21 +386,21 @@ const looksLikePathToken = (value: string) => {
     return false;
   }
 
-  if (normalized.startsWith('/') || normalized.startsWith('./') || normalized.startsWith('../')) {
-    return true;
-  }
-
-  if (normalized.includes('/')) {
-    return true;
-  }
-
   const basename = normalized.split('/').pop() || normalized;
   if (KNOWN_FILE_BASENAMES.has(basename)) {
     return true;
   }
 
   const extension = basename.includes('.') ? basename.split('.').pop()?.toLowerCase() || '' : '';
-  return Boolean(extension) && KNOWN_FILE_EXTENSIONS.has(extension);
+  if (Boolean(extension) && KNOWN_FILE_EXTENSIONS.has(extension)) {
+    return true;
+  }
+
+  if (normalized.startsWith('/') || normalized.startsWith('./') || normalized.startsWith('../') || normalized.includes('/')) {
+    return !basename.includes('.');
+  }
+
+  return false;
 };
 
 const extractPathsFromText = (value: string): string[] => {
@@ -369,7 +408,7 @@ const extractPathsFromText = (value: string): string[] => {
 
   const candidates = new Set<string>();
   const pushMatch = (matchValue: string) => {
-    const normalized = normalizePath(matchValue.replace(/[),:]+$/, ''));
+    const normalized = trimTrailingPathPunctuation(matchValue);
     if (!normalized || normalized.includes('://')) return;
     candidates.add(normalized);
   };
@@ -421,14 +460,14 @@ const extractShellContext = (
       if (!looksLikePathToken(token)) {
         const colonPath = token.includes(':') ? token.slice(token.indexOf(':') + 1) : '';
         if (colonPath && looksLikePathToken(colonPath)) {
-          const normalized = normalizePath(colonPath);
+          const normalized = trimTrailingPathPunctuation(colonPath);
           if (isLikelyDirectoryPath(normalized)) directories.add(normalized);
           else files.add(normalized);
         }
         return;
       }
 
-      const normalized = normalizePath(token);
+      const normalized = trimTrailingPathPunctuation(token);
       if (isLikelyDirectoryPath(normalized)) directories.add(normalized);
       else files.add(normalized);
     });

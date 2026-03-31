@@ -218,6 +218,35 @@ describe('deriveSessionContextSummary', () => {
     expect(contextPaths.some((path) => path.includes('sections.survey'))).toBe(false);
     expect(contextPaths.some((path) => path.includes('open_gaps'))).toBe(false);
   });
+
+  it('strips trailing punctuation from real paths and rejects slash-delimited prose fragments', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        timestamp: '2026-03-31T12:05:00.000Z',
+        isToolUse: true,
+        toolName: 'Bash',
+        toolInput: JSON.stringify({
+          command: 'cat ./pipeline/docs/research_brief.json. ./Survey/reports/model_dataset_inventory.json. 3.0/GPT-5.3.',
+          workdir: projectRoot,
+        }),
+        toolResult: {
+          content: 'Wrote ./pipeline/tasks/tasks.json.',
+          isError: false,
+        },
+      },
+    ] as any;
+
+    const summary = deriveSessionContextSummary(messages, projectRoot);
+    const contextPaths = summary.contextFiles.map((item) => item.relativePath).sort();
+
+    expect(contextPaths).toContain('pipeline/docs/research_brief.json');
+    expect(contextPaths).toContain('Survey/reports/model_dataset_inventory.json');
+    expect(contextPaths).toContain('pipeline/tasks/tasks.json');
+    expect(contextPaths.some((path) => path.endsWith('.'))).toBe(false);
+    expect(contextPaths).not.toContain('3.0/GPT-5.3.');
+    expect(contextPaths).not.toContain('3.0/GPT-5.3');
+  });
 });
 
 describe('mergeDistinctChatMessages', () => {
