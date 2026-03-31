@@ -192,6 +192,32 @@ describe('deriveSessionContextSummary', () => {
     expect(summary.tasks.some((item) => item.label === 'https://developers.openai.com/api/docs')).toBe(true);
     expect(summary.tasks.some((item) => item.label === 'session')).toBe(true);
   });
+
+  it('ignores dotted shell fragments that are not real file paths', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        timestamp: '2026-03-31T12:00:00.000Z',
+        isToolUse: true,
+        toolName: 'Bash',
+        toolInput: JSON.stringify({
+          command: "jq '.sections.survey.synthesis_summary, .sections.survey.open_gaps' pipeline/docs/research_brief.json",
+          workdir: projectRoot,
+        }),
+        toolResult: {
+          content: '',
+          isError: false,
+        },
+      },
+    ] as any;
+
+    const summary = deriveSessionContextSummary(messages, projectRoot);
+    const contextPaths = summary.contextFiles.map((item) => item.relativePath);
+
+    expect(contextPaths).toContain('pipeline/docs/research_brief.json');
+    expect(contextPaths.some((path) => path.includes('sections.survey'))).toBe(false);
+    expect(contextPaths.some((path) => path.includes('open_gaps'))).toBe(false);
+  });
 });
 
 describe('mergeDistinctChatMessages', () => {

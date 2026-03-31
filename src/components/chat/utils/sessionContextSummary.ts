@@ -67,6 +67,16 @@ const RELATIVE_PATH_IN_TEXT_PATTERN = /(?:^|[\s("'`])((?:\.\.?\/)?(?:[A-Za-z0-9.
 const SHELL_TOKEN_PATTERN = /"[^"]*"|'[^']*'|`[^`]*`|\S+/g;
 const SHELL_COMMAND_BREAKS = new Set(['|', '||', '&&', ';']);
 const KNOWN_FILE_BASENAMES = new Set([
+  '.env',
+  '.env.example',
+  '.gitignore',
+  '.npmrc',
+  '.prettierrc',
+  '.prettierrc.js',
+  '.prettierrc.json',
+  '.eslintrc',
+  '.eslintrc.js',
+  '.eslintrc.json',
   'Dockerfile',
   'Makefile',
   'README',
@@ -86,6 +96,54 @@ const KNOWN_FILE_BASENAMES = new Set([
   'AGENTS.md',
   'SKILL.md',
   'CLAUDE.md',
+]);
+const KNOWN_FILE_EXTENSIONS = new Set([
+  'c',
+  'cc',
+  'cpp',
+  'css',
+  'csv',
+  'gif',
+  'go',
+  'h',
+  'hpp',
+  'html',
+  'ini',
+  'ipynb',
+  'java',
+  'jpeg',
+  'jpg',
+  'js',
+  'json',
+  'jsonl',
+  'jsx',
+  'kt',
+  'less',
+  'lock',
+  'log',
+  'lua',
+  'md',
+  'mdx',
+  'mjs',
+  'pdf',
+  'php',
+  'png',
+  'py',
+  'rb',
+  'rs',
+  'scss',
+  'sh',
+  'sql',
+  'svg',
+  'swift',
+  'toml',
+  'ts',
+  'tsx',
+  'txt',
+  'tsv',
+  'xml',
+  'yaml',
+  'yml',
 ]);
 
 const normalizePath = (value: string) => value.replace(/\\/g, '/').replace(/\/+/g, '/');
@@ -285,6 +343,10 @@ const looksLikePathToken = (value: string) => {
     return false;
   }
 
+  if (!/^[A-Za-z0-9._/-]+$/.test(normalized)) {
+    return false;
+  }
+
   if (normalized.startsWith('/') || normalized.startsWith('./') || normalized.startsWith('../')) {
     return true;
   }
@@ -294,7 +356,12 @@ const looksLikePathToken = (value: string) => {
   }
 
   const basename = normalized.split('/').pop() || normalized;
-  return basename.includes('.') || KNOWN_FILE_BASENAMES.has(basename);
+  if (KNOWN_FILE_BASENAMES.has(basename)) {
+    return true;
+  }
+
+  const extension = basename.includes('.') ? basename.split('.').pop()?.toLowerCase() || '' : '';
+  return Boolean(extension) && KNOWN_FILE_EXTENSIONS.has(extension);
 };
 
 const extractPathsFromText = (value: string): string[] => {
