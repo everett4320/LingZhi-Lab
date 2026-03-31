@@ -315,6 +315,12 @@ export default function ChatContextSidebar({
   const effectiveSessionId = selectedSession?.id || currentSessionId || null;
   const effectiveProvider = (selectedSession?.__provider as SessionProvider | undefined) || provider;
   const projectName = selectedProject?.name || '';
+  const sessionProjectPath =
+    (typeof selectedSession?.cwd === 'string' && selectedSession.cwd.trim())
+    || (typeof selectedSession?.projectPath === 'string' && selectedSession.projectPath.trim())
+    || selectedProject?.fullPath
+    || selectedProject?.path
+    || '';
   const projectPath = selectedProject?.fullPath || selectedProject?.path || '';
 
   useEffect(() => {
@@ -415,8 +421,8 @@ export default function ChatContextSidebar({
   );
 
   const summary = useMemo(
-    () => deriveSessionContextSummary(mergedMessages, projectPath, reviews),
-    [mergedMessages, projectPath, reviews],
+    () => deriveSessionContextSummary(mergedMessages, sessionProjectPath, reviews),
+    [mergedMessages, reviews, sessionProjectPath],
   );
 
   const filteredOutputFiles = useMemo(() => {

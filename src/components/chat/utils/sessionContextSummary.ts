@@ -531,6 +531,116 @@ const extractShellContext = (
   };
 };
 
+const collectProjectRootCandidate = (target: string[], candidate: unknown) => {
+  if (typeof candidate !== 'string' || !candidate.trim()) {
+    return;
+  }
+
+  const normalized = trimTrailingPathPunctuation(candidate).replace(/\/$/, '');
+  if (!normalized || !isAbsolutePath(normalized)) {
+    return;
+  }
+
+  if (isLikelyDirectoryPath(normalized)) {
+    target.push(normalized);
+    return;
+  }
+
+  const lastSlashIndex = normalized.lastIndexOf('/');
+  if (lastSlashIndex > 0) {
+    target.push(normalized.slice(0, lastSlashIndex));
+  }
+};
+
+const longestCommonPathPrefix = (paths: string[]): string => {
+  if (paths.length === 0) {
+    return '';
+  }
+
+  const parts = paths
+    .map((value) => normalizePath(value).replace(/\/$/, ''))
+    .filter(Boolean)
+    .map((value) => value.split('/'));
+
+  if (parts.length === 0) {
+    return '';
+  }
+
+  let sharedLength = parts[0].length;
+  for (let index = 1; index < parts.length; index += 1) {
+    sharedLength = Math.min(sharedLength, parts[index].length);
+    for (let segmentIndex = 0; segmentIndex < sharedLength; segmentIndex += 1) {
+      if (parts[0][segmentIndex] !== parts[index][segmentIndex]) {
+        sharedLength = segmentIndex;
+        break;
+      }
+    }
+  }
+
+  if (sharedLength === 0) {
+    return '';
+  }
+
+  const prefix = parts[0].slice(0, sharedLength).join('/');
+  return prefix === '/' ? '' : prefix;
+};
+
+export const resolveSessionContextProjectRoot = (messages: ChatMessage[], preferredRoot = ''): string => {
+  const normalizedPreferredRoot = normalizePath(String(preferredRoot || '').trim()).replace(/\/$/, '');
+  const explicitRoots: string[] = [];
+  const absolutePathRoots: string[] = [];
+
+  messages.forEach((message) => {
+    collectProjectRootCandidate(explicitRoots, message.cwd);
+    collectProjectRootCandidate(explicitRoots, message.workdir);
+    collectProjectRootCandidate(explicitRoots, message.projectPath);
+
+    const parsedInput = parseJsonValue(message.toolInput) || message.toolInput || {};
+    collectProjectRootCandidate(explicitRoots, parsedInput?.cwd);
+    collectProjectRootCandidate(explicitRoots, parsedInput?.workdir);
+    collectProjectRootCandidate(explicitRoots, parsedInput?.projectPath);
+
+    extractToolInputPaths(parsedInput).forEach((filePath) => {
+      collectProjectRootCandidate(absolutePathRoots, filePath);
+    });
+    extractFilePathsFromResult(message.toolResult).forEach((filePath) => {
+      collectProjectRootCandidate(absolutePathRoots, filePath);
+    });
+
+    if (message.toolName === 'Bash' || message.toolName === 'exec_command') {
+      const shellContext = extractShellContext(parsedInput, message.toolResult);
+      shellContext.files.forEach((filePath) => {
+        collectProjectRootCandidate(absolutePathRoots, filePath);
+      });
+      shellContext.directories.forEach((directoryPath) => {
+        collectProjectRootCandidate(absolutePathRoots, directoryPath);
+      });
+    }
+  });
+
+  const uniqueExplicitRoots = Array.from(new Set(explicitRoots));
+  if (normalizedPreferredRoot && uniqueExplicitRoots.some((root) => root === normalizedPreferredRoot || root.startsWith(`${normalizedPreferredRoot}/`))) {
+    return normalizedPreferredRoot;
+  }
+
+  const explicitRootPrefix = longestCommonPathPrefix(uniqueExplicitRoots);
+  if (explicitRootPrefix) {
+    return explicitRootPrefix;
+  }
+
+  const uniqueAbsolutePathRoots = Array.from(new Set(absolutePathRoots));
+  if (normalizedPreferredRoot && uniqueAbsolutePathRoots.some((root) => root === normalizedPreferredRoot || root.startsWith(`${normalizedPreferredRoot}/`))) {
+    return normalizedPreferredRoot;
+  }
+
+  const absolutePathRootPrefix = longestCommonPathPrefix(uniqueAbsolutePathRoots);
+  if (absolutePathRootPrefix) {
+    return absolutePathRootPrefix;
+  }
+
+  return normalizedPreferredRoot;
+};
+
 const addFile = (
   target: Map<string, FileAccumulator>,
   filePath: string,
@@ -672,6 +782,7 @@ export function deriveSessionContextSummary(
   projectRoot: string,
   reviews: SessionReviewState = {},
 ): SessionContextSummary {
+  const effectiveProjectRoot = resolveSessionContextProjectRoot(messages, projectRoot);
   const contextFiles = new Map<string, FileAccumulator>();
   const outputFiles = new Map<string, FileAccumulator>();
   const tasks = new Map<string, TaskAccumulator>();
@@ -687,7 +798,7 @@ export function deriveSessionContextSummary(
     }
 
     if (message.isTaskNotification && typeof message.taskOutputFile === 'string' && message.taskOutputFile.trim()) {
-      addFile(outputFiles, message.taskOutputFile, projectRoot, 'Task output', timestamp);
+      addFile(outputFiles, message.taskOutputFile, effectiveProjectRoot, 'Task output', timestamp);
       if (message.taskId) {
         addTask(tasks, 'task', `Task ${message.taskId}`, message.content || undefined, timestamp);
       }
@@ -703,7 +814,7 @@ export function deriveSessionContextSummary(
     switch (message.toolName) {
       case 'Read': {
         extractToolInputPaths(parsedInput).forEach((filePath) => {
-          addFile(contextFiles, filePath, projectRoot, 'Read', timestamp);
+          addFile(contextFiles, filePath, effectiveProjectRoot, 'Read', timestamp);
         });
         break;
       }
@@ -712,7 +823,7 @@ export function deriveSessionContextSummary(
       case 'Glob': {
         const searchReason = message.toolName || 'Search';
         extractFilePathsFromResult(message.toolResult).forEach((filePath) => {
-          addFile(contextFiles, filePath, projectRoot, searchReason, timestamp);
+          addFile(contextFiles, filePath, effectiveProjectRoot, searchReason, timestamp);
         });
         break;
       }
@@ -721,10 +832,10 @@ export function deriveSessionContextSummary(
       case 'exec_command': {
         const shellContext = extractShellContext(parsedInput, message.toolResult);
         shellContext.files.forEach((filePath) => {
-          addFile(contextFiles, filePath, projectRoot, 'Shell', timestamp);
+          addFile(contextFiles, filePath, effectiveProjectRoot, 'Shell', timestamp);
         });
         shellContext.directories.forEach((directoryPath) => {
-          addTask(directories, 'directory', toRelativePath(directoryPath, projectRoot) || directoryPath, 'Referenced in shell command', timestamp);
+          addTask(directories, 'directory', toRelativePath(directoryPath, effectiveProjectRoot) || directoryPath, 'Referenced in shell command', timestamp);
         });
         break;
       }
@@ -732,7 +843,7 @@ export function deriveSessionContextSummary(
       case 'LS': {
         const directoryPath = parsedInput?.dir_path || parsedInput?.path || '.';
         if (typeof directoryPath === 'string' && directoryPath.trim()) {
-          addTask(directories, 'directory', toRelativePath(directoryPath, projectRoot) || directoryPath, 'Listed by LS', timestamp);
+          addTask(directories, 'directory', toRelativePath(directoryPath, effectiveProjectRoot) || directoryPath, 'Listed by LS', timestamp);
         }
         break;
       }
@@ -780,7 +891,7 @@ export function deriveSessionContextSummary(
 
       case 'Write': {
         extractToolInputPaths(parsedInput).forEach((filePath) => {
-          addFile(outputFiles, filePath, projectRoot, 'Write', timestamp);
+          addFile(outputFiles, filePath, effectiveProjectRoot, 'Write', timestamp);
         });
         break;
       }
@@ -792,14 +903,14 @@ export function deriveSessionContextSummary(
           ...extractFilePathsFromResult(message.toolResult),
         ]);
         outputPaths.forEach((filePath) => {
-          addFile(outputFiles, filePath, projectRoot, message.toolName === 'Edit' ? 'Edit' : 'Patch', timestamp);
+          addFile(outputFiles, filePath, effectiveProjectRoot, message.toolName === 'Edit' ? 'Edit' : 'Patch', timestamp);
         });
         break;
       }
 
       case 'FileChanges': {
         parseFileChanges(message.toolInput).forEach((filePath) => {
-          addFile(outputFiles, filePath, projectRoot, 'File change', timestamp);
+          addFile(outputFiles, filePath, effectiveProjectRoot, 'File change', timestamp);
         });
         break;
       }
@@ -814,7 +925,7 @@ export function deriveSessionContextSummary(
 
       case 'ViewImage': {
         extractToolInputPaths(parsedInput).forEach((filePath) => {
-          addFile(contextFiles, filePath, projectRoot, 'Image view', timestamp);
+          addFile(contextFiles, filePath, effectiveProjectRoot, 'Image view', timestamp);
         });
         break;
       }

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { deriveSessionContextSummary, mergeDistinctChatMessages } from '../sessionContextSummary';
+import {
+  deriveSessionContextSummary,
+  mergeDistinctChatMessages,
+  resolveSessionContextProjectRoot,
+} from '../sessionContextSummary';
 
 describe('deriveSessionContextSummary', () => {
   const projectRoot = '/workspace/demo';
@@ -279,6 +283,47 @@ describe('deriveSessionContextSummary', () => {
     expect(contextPaths).not.toContain('HealthBench/MedAgentBench');
     expect(contextPaths).not.toContain('GPT-5.3.');
     expect(contextPaths).not.toContain('GPT-5.3');
+  });
+
+  it('prefers session workdir over an unrelated project root when normalizing paths', () => {
+    const wrongProjectRoot = '/workspace/demo';
+    const sessionRoot = '/Users/dingjiesong/vibelab/proj-2026-03-06-16-47-13/Experiment';
+    const messages = [
+      {
+        type: 'assistant',
+        timestamp: '2026-03-31T12:15:00.000Z',
+        isToolUse: true,
+        toolName: 'Bash',
+        toolInput: JSON.stringify({
+          command: `cat ${sessionRoot}/instance.json ./instance.json`,
+          workdir: sessionRoot,
+        }),
+        toolResult: {
+          content: '',
+          isError: false,
+        },
+      },
+      {
+        type: 'assistant',
+        timestamp: '2026-03-31T12:16:00.000Z',
+        isToolUse: true,
+        toolName: 'LS',
+        toolInput: JSON.stringify({
+          path: `${sessionRoot}/analysis`,
+        }),
+      },
+    ] as any;
+
+    expect(resolveSessionContextProjectRoot(messages, wrongProjectRoot)).toBe(sessionRoot);
+
+    const summary = deriveSessionContextSummary(messages, wrongProjectRoot);
+    const contextPaths = summary.contextFiles.map((item) => item.relativePath);
+    const directoryLabels = summary.directories.map((item) => item.label);
+
+    expect(contextPaths).toEqual(['instance.json']);
+    expect(directoryLabels).toEqual(['analysis']);
+    expect(contextPaths.some((path) => path.startsWith('/Users/'))).toBe(false);
+    expect(directoryLabels.some((label) => label.startsWith('/Users/'))).toBe(false);
   });
 });
 
