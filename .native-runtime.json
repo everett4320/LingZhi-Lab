@@ -1,7 +1,0 @@
-{
-  "target": "node",
-  "updatedAt": "2026-03-27T22:26:41.029Z",
-  "node": "v22.22.1",
-  "modules": "127",
-  "electronVersion": "37.10.3"
-}

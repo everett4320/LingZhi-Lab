@@ -126,7 +126,8 @@ function saveWindowState(window) {
 // ---------------------------------------------------------------------------
 
 function resolveAppRoot() {
-  return app.isPackaged ? process.resourcesPath : process.cwd();
+  if (!app.isPackaged) return process.cwd();
+  return path.join(process.resourcesPath, 'app');
 }
 
 function resolveNodeBinary() {
