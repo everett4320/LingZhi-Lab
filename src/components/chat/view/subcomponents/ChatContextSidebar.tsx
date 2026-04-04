@@ -9,15 +9,16 @@ import {
   Eye,
   EyeOff,
   ExternalLink,
+  File,
   FileOutput,
   FileText,
+  Folder,
+  FolderOpen,
   FolderSearch,
   Loader2,
   type LucideIcon,
   MessageSquare,
 } from 'lucide-react';
-
-import { Folder, FolderOpen, File } from 'lucide-react';
 import { cn } from '../../../../lib/utils';
 import { authenticatedFetch, api } from '../../../../utils/api';
 import type { Project, ProjectSession, SessionMode, SessionProvider } from '../../../../types/app';
@@ -35,6 +36,66 @@ type ReviewFilter = 'all' | 'unread' | 'reviewed';
 type SidebarSectionKey = 'context' | 'tasks' | 'review';
 type SidebarSectionState = Record<SidebarSectionKey, boolean>;
 type SectionTone = 'context' | 'tasks' | 'review';
+
+interface FileTreeItem {
+  name: string;
+  path: string;
+  type: 'directory' | 'file';
+  size?: number;
+  modified?: string | null;
+}
+
+function FileTreeNode({
+  item,
+  expandedDirs,
+  onToggleDir,
+  onFileOpen,
+}: {
+  item: FileTreeItem;
+  expandedDirs: Record<string, FileTreeItem[]>;
+  onToggleDir: (dirPath: string) => void;
+  onFileOpen?: (filePath: string) => void;
+}) {
+  const isDir = item.type === 'directory';
+  const isExpanded = !!expandedDirs[item.path];
+  const children = expandedDirs[item.path];
+
+  return (
+    <div>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/60"
+        onClick={() => isDir ? onToggleDir(item.path) : onFileOpen?.(item.path)}
+      >
+        {isDir ? (
+          <>
+            {isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />}
+            {isExpanded ? <FolderOpen className="h-4 w-4 flex-shrink-0 text-amber-500" /> : <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />}
+          </>
+        ) : (
+          <>
+            <span className="w-3.5" />
+            <File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+          </>
+        )}
+        <span className="truncate">{item.name}</span>
+      </button>
+      {isDir && isExpanded && children && (
+        <div className="ml-4 border-l border-border/40 pl-1">
+          {children.map((child) => (
+            <FileTreeNode
+              key={child.path}
+              item={child}
+              expandedDirs={expandedDirs}
+              onToggleDir={onToggleDir}
+              onFileOpen={onFileOpen}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const SIDEBAR_WIDTH_STORAGE_KEY = 'chat-session-context-width';
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'chat-session-context-collapsed';
@@ -267,8 +328,10 @@ export default function ChatContextSidebar({
   const { t, i18n } = useTranslation('chat');
   const { t: tCommon } = useTranslation('common');
   const [sidebarTab, setSidebarTab] = useState<'chat' | 'files'>('chat');
-  const [fileTree, setFileTree] = useState<any[]>([]);
-  const [expandedDirs, setExpandedDirs] = useState<Record<string, any[]>>({});
+  const [fileTree, setFileTree] = useState<FileTreeItem[]>([]);
+  const [expandedDirs, setExpandedDirs] = useState<Record<string, FileTreeItem[]>>({});
+  const expandedDirsRef = useRef(expandedDirs);
+  expandedDirsRef.current = expandedDirs;
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [fetchedMessages, setFetchedMessages] = useState<ChatMessage[]>([]);
   const [isLoadingTrace, setIsLoadingTrace] = useState(false);
@@ -545,6 +608,12 @@ export default function ChatContextSidebar({
     }
   }, [isFilePreview]);
 
+  // Reset file state on project change
+  useEffect(() => {
+    setFileTree([]);
+    setExpandedDirs({});
+  }, [projectName]);
+
   // Fetch file tree when files tab activates
   useEffect(() => {
     if (sidebarTab !== 'files' || !projectName) {
@@ -554,7 +623,7 @@ export default function ChatContextSidebar({
     setIsLoadingFiles(true);
     api.getFiles(projectName, { maxDepth: 1 })
       .then((res: Response) => res.json())
-      .then((data: any[]) => {
+      .then((data: FileTreeItem[]) => {
         if (!cancelled) {
           setFileTree(data);
           setIsLoadingFiles(false);
@@ -569,7 +638,7 @@ export default function ChatContextSidebar({
   }, [sidebarTab, projectName]);
 
   const toggleDir = useCallback(async (dirPath: string) => {
-    if (expandedDirs[dirPath]) {
+    if (expandedDirsRef.current[dirPath]) {
       setExpandedDirs((prev) => {
         const next = { ...prev };
         delete next[dirPath];
@@ -578,13 +647,13 @@ export default function ChatContextSidebar({
     } else {
       try {
         const res = await api.getFiles(projectName, { path: dirPath, maxDepth: 1 });
-        const data = await res.json();
+        const data: FileTreeItem[] = await res.json();
         setExpandedDirs((prev) => ({ ...prev, [dirPath]: data }));
       } catch {
         // ignore
       }
     }
-  }, [projectName, expandedDirs]);
+  }, [projectName]);
 
   if (!selectedProject) {
     return null;
@@ -702,93 +771,19 @@ export default function ChatContextSidebar({
             </div>
           ) : fileTree.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-background/60 px-3 py-3 text-xs text-muted-foreground">
-              No files found
+              {t('sessionContext.empty.files', 'No files found')}
             </div>
           ) : (
             <div className="space-y-0.5">
-              {fileTree.map((item: any) => {
-                const isDir = item.type === 'directory';
-                const isExpanded = !!expandedDirs[item.path];
-                const children = expandedDirs[item.path];
-                return (
-                  <div key={item.path}>
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/60"
-                      onClick={() => isDir ? toggleDir(item.path) : onFileOpen?.(item.path)}
-                    >
-                      {isDir ? (
-                        <>
-                          {isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />}
-                          {isExpanded ? <FolderOpen className="h-4 w-4 flex-shrink-0 text-amber-500" /> : <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />}
-                        </>
-                      ) : (
-                        <>
-                          <span className="w-3.5" />
-                          <File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                        </>
-                      )}
-                      <span className="truncate">{item.name}</span>
-                    </button>
-                    {isDir && isExpanded && children && (
-                      <div className="ml-4 border-l border-border/40 pl-1">
-                        {children.map((child: any) => {
-                          const childIsDir = child.type === 'directory';
-                          const childExpanded = !!expandedDirs[child.path];
-                          const childChildren = expandedDirs[child.path];
-                          return (
-                            <div key={child.path}>
-                              <button
-                                type="button"
-                                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/60"
-                                onClick={() => childIsDir ? toggleDir(child.path) : onFileOpen?.(child.path)}
-                              >
-                                {childIsDir ? (
-                                  <>
-                                    {childExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />}
-                                    {childExpanded ? <FolderOpen className="h-4 w-4 flex-shrink-0 text-amber-500" /> : <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />}
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="w-3.5" />
-                                    <File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                                  </>
-                                )}
-                                <span className="truncate">{child.name}</span>
-                              </button>
-                              {childIsDir && childExpanded && childChildren && (
-                                <div className="ml-4 border-l border-border/40 pl-1">
-                                  {childChildren.map((grandchild: any) => (
-                                    <button
-                                      key={grandchild.path}
-                                      type="button"
-                                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/60"
-                                      onClick={() => grandchild.type === 'directory' ? toggleDir(grandchild.path) : onFileOpen?.(grandchild.path)}
-                                    >
-                                      {grandchild.type === 'directory' ? (
-                                        <>
-                                          {expandedDirs[grandchild.path] ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />}
-                                          <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />
-                                        </>
-                                      ) : (
-                                        <>
-                                          <span className="w-3.5" />
-                                          <File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                                        </>
-                                      )}
-                                      <span className="truncate">{grandchild.name}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {fileTree.map((item) => (
+                <FileTreeNode
+                  key={item.path}
+                  item={item}
+                  expandedDirs={expandedDirs}
+                  onToggleDir={toggleDir}
+                  onFileOpen={onFileOpen}
+                />
+              ))}
             </div>
           )}
         </div>
