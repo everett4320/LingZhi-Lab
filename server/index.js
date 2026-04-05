@@ -282,6 +282,15 @@ const server = http.createServer(app);
 const ptySessionsMap = new Map();
 const PTY_SESSION_TIMEOUT = 30 * 60 * 1000;
 const SHELL_URL_PARSE_BUFFER_LIMIT = 32768;
+
+function safePtyKill(session, sessionKey) {
+    if (!session?.pty?.kill) return;
+    try {
+        session.pty.kill();
+    } catch (err) {
+        console.warn(`⚠️ Failed to kill PTY process (${sessionKey}):`, err.message);
+    }
+}
 const ANSI_ESCAPE_SEQUENCE_REGEX = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
 const TRAILING_URL_PUNCTUATION_REGEX = /[)\]}>.,;:!?]+$/;
 const REPLAY_TERMINAL_QUERY_REGEXES = [
@@ -1840,7 +1849,7 @@ function handleShellConnection(ws) {
                     if (oldSession) {
                         console.log('🧹 Cleaning up existing login session:', ptySessionKey);
                         if (oldSession.timeoutId) clearTimeout(oldSession.timeoutId);
-                        if (oldSession.pty && oldSession.pty.kill) oldSession.pty.kill();
+                        safePtyKill(oldSession, ptySessionKey);
                         ptySessionsMap.delete(ptySessionKey);
                     }
                 }
@@ -2172,9 +2181,7 @@ function handleShellConnection(ws) {
 
                 session.timeoutId = setTimeout(() => {
                     console.log('⏰ PTY session timeout, killing process:', ptySessionKey);
-                    if (session.pty && session.pty.kill) {
-                        session.pty.kill();
-                    }
+                    safePtyKill(session, ptySessionKey);
                     ptySessionsMap.delete(ptySessionKey);
                 }, PTY_SESSION_TIMEOUT);
             }
@@ -2390,9 +2397,7 @@ function handleComputeShellConnection(ws, urlNodeId) {
                 session.ws = null;
                 session.timeoutId = setTimeout(() => {
                     console.log('⏰ Compute PTY session timeout, killing:', ptySessionKey);
-                    if (session.pty && session.pty.kill) {
-                        session.pty.kill();
-                    }
+                    safePtyKill(session, ptySessionKey);
                     ptySessionsMap.delete(ptySessionKey);
                 }, PTY_SESSION_TIMEOUT);
             }
