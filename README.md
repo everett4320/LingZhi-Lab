@@ -5,15 +5,19 @@
 </div>
 
 <p align="center">
-<a href="https://openlair.github.io/dr-claw">
-<img src="https://img.shields.io/badge/%F0%9F%8C%90-Homepage-CB2B3E?style=for-the-badge" alt="Homepage" />
-</a>
 <a href="https://github.com/OpenLAIR/dr-claw">
-<img src="https://img.shields.io/badge/%F0%9F%A6%9E-Dr.%20Claw-CB2B3E?style=for-the-badge" alt="Dr. Claw" />
+<img src="https://img.shields.io/badge/%F0%9F%A6%9E-Dr.%20Claw-7C3AED?style=for-the-badge" alt="Dr. Claw" />
+</a>
+<a href="https://openlair.github.io/dr-claw">
+<img src="https://img.shields.io/badge/%F0%9F%8C%90-Homepage-2563EB?style=for-the-badge" alt="Homepage" />
+</a>
+<a href="https://www.npmjs.com/package/dr-claw">
+<img src="https://img.shields.io/npm/v/dr-claw?style=for-the-badge&logo=npm&color=CB3837" alt="npm version" />
 </a>
 <a href="https://github.com/OpenLAIR/dr-claw/blob/main/LICENSE">
 <img src="https://img.shields.io/badge/License-GPL--3.0%20%2B%20AGPL--3.0-blue?style=for-the-badge" alt="License: GPL-3.0 + AGPL-3.0" />
 </a>
+<br/>
 <a href="https://join.slack.com/t/vibe-lab-group/shared_invite/zt-3r4bkcx5t-iGyRMI~r09zt7p_ND2eP9A">
 <img src="https://img.shields.io/badge/Join-Slack-4A154B?style=for-the-badge&logo=slack" alt="Join Slack" />
 </a>
@@ -70,7 +74,7 @@ Dr. Claw is a general-purpose AI research assistant designed to help researchers
 
 ## What's New
 
-- 🖥️ **Desktop App** `2026-04-06` — Dr. Claw now runs as a native desktop app! Grab the `.dmg` or `.exe` from [GitHub Releases](https://github.com/OpenLAIR/dr-claw/releases) and get started in seconds.
+- 🖥️ **Desktop App & npx** `2026-04-06` — Dr. Claw now runs as a native desktop app! Grab the `.dmg` / `.exe` from [GitHub Releases](https://github.com/OpenLAIR/dr-claw/releases), or run `npx dr-claw` for zero-setup instant start.
 - 🗂️ **Multi-Tab Sidebar** `2026-04-06` — Research Lab and Files now live side-by-side as switchable tabs in the right sidebar — everything you need, one glance away.
 - 📂 **File Preview Overlay** `2026-04-06` — Preview any project file inline with a sleek pill toggle and sidebar browser — no more context-switching!
 - 💬 **Terminal Chat** `2026-04-06` — Love the terminal? Run `dr-claw chat` for a fully agentic session with any OpenRouter model — zero browser required.
@@ -164,7 +168,24 @@ Dr. Claw is a general-purpose AI research assistant designed to help researchers
 
 Cursor agent support is in progress and coming soon.
 
-### Installation 
+### Option 1: Run with npx (Recommended)
+
+No cloning or manual setup required — just run:
+
+```bash
+npx dr-claw
+```
+
+Or install globally for repeated use:
+
+```bash
+npm install -g dr-claw
+dr-claw
+```
+
+Then open your browser at `http://localhost:3001` to create your account and start using Dr. Claw.
+
+### Option 2: Install from Source (For Development)
 
 1. **Clone the repository:**
 ```bash
@@ -192,7 +213,7 @@ Need custom ports, auth, or workspace settings? See [docs/configuration.md](docs
 npm run dev
 ```
 
-Then create your account via the bowser `http://localhost:5173`.
+Then create your account via the browser `http://localhost:5173`.
 
 5. **Use the application**
 
@@ -278,7 +299,7 @@ node server/cli.js chat --model anthropic/claude-sonnet-4 --key sk-or-your-key
 | Flag | Description |
 |------|-------------|
 | `--model <slug>` | OpenRouter model slug (e.g., `moonshotai/kimi-k2.5`, `anthropic/claude-sonnet-4`, `deepseek/deepseek-r1`) |
-| `--key <key>` | OpenRouter API key (defaults to `OPENROUTER_API_KEY` env var) |
+| `--key <key>` | OpenRouter API key (defaults to `OPENROUTER_API_KEY` env var). Prefer the env var over `--key` to avoid exposing secrets in shell history. |
 
 Browse all available models at [openrouter.ai/models](https://openrouter.ai/models).
 
