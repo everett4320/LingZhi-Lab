@@ -84,7 +84,7 @@ const CURRENT_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'dr-claw');
 const DELETED_PROJECTS_CONFIG_KEY = '_deletedProjects';
 
 let projectConfigMutationQueue = Promise.resolve();
-let _lastBootstrapTimestamp = 0;
+const _lastBootstrapByUser = new Map(); // userId -> timestamp
 const BOOTSTRAP_STALENESS_MS = 60_000; // Only re-scan legacy sources every 60 seconds
 
 function isProjectTrashed(projectInfo = null, dbEntry = null) {
@@ -1285,14 +1285,15 @@ async function getProjects(userId, progressCallback = null) {
   // Only re-scan if the last bootstrap was more than 60 seconds ago to avoid
   // O(N) filesystem walks on every getProjects() call. See #86.
   const now = Date.now();
-  if (now - _lastBootstrapTimestamp > BOOTSTRAP_STALENESS_MS) {
+  const userKey = userId || '__anonymous__';
+  if (now - (_lastBootstrapByUser.get(userKey) || 0) > BOOTSTRAP_STALENESS_MS) {
     await bootstrapProjectsIndexFromLegacySources(
       config,
       projectDb,
       userId || null,
       visibleWorkspaceRoots,
     );
-    _lastBootstrapTimestamp = now;
+    _lastBootstrapByUser.set(userKey, now);
   }
   await syncDiscoveredProjectsFromCodexSessions(config, projectDb, userId || null, visibleWorkspaceRoots);
   const dbProjects = projectDb.getAllProjects(userId || null);
@@ -2950,30 +2951,44 @@ async function addProjectManually(projectPath, displayName = null, userId = null
 
   const projectName = encodeProjectPath(absolutePath);
 
-  // Check for existing project with the same path (may have legacy encoded ID)
-  const existingByPath = projectDb.getProjectByPath(absolutePath, userId);
-  if (existingByPath) {
-    if (existingByPath.id !== projectName) {
-      // Legacy ID detected — migrate to new encoding
-      projectDb.migrateProjectIdentity(existingByPath.id, projectName, absolutePath);
+  // Check for existing project with the same path (any user or matching user).
+  // A single lookup handles both same-user exact match and cross-user dedup.
+  const existing = projectDb.getProjectByPath(absolutePath, userId);
+
+  if (existing) {
+    // Migrate legacy encoded IDs if needed
+    if (existing.id !== projectName) {
+      projectDb.migrateProjectIdentity(existing.id, projectName, absolutePath);
     }
-    return {
-      name: projectName,
-      path: absolutePath,
-      fullPath: absolutePath,
-      displayName: displayName || existingByPath.display_name || await generateDisplayName(projectName, absolutePath),
-      isManuallyAdded: Boolean(existingByPath.metadata?.manuallyAdded),
-      createdAt: existingByPath.created_at,
-      sessions: [],
-      cursorSessions: [],
-      alreadyExists: true,
-    };
+
+    // If the existing record already belongs to this user, mark as manually
+    // added and return without creating a duplicate.
+    if (existing.user_id === userId || existing.user_id == null) {
+      // Preserve existing values while marking as manually added
+      const mergedMetadata = { ...(existing.metadata || {}), manuallyAdded: true };
+      projectDb.upsertProject(
+        projectName, userId,
+        displayName || existing.display_name,
+        absolutePath,
+        existing.is_starred || 0,
+        existing.last_accessed || new Date().toISOString(),
+        mergedMetadata,
+      );
+
+      return {
+        name: projectName,
+        path: absolutePath,
+        fullPath: absolutePath,
+        displayName: displayName || existing.display_name || await generateDisplayName(projectName, absolutePath),
+        isManuallyAdded: true,
+        createdAt: existing.created_at,
+        sessions: [],
+        cursorSessions: [],
+        alreadyExists: true,
+      };
+    }
   }
 
-  // Check if a project with this path already exists under a different ID
-  // (e.g., CLI uses '-Users-john-myproject' but manual add encodes as
-  // '-Users-john-myproject'). Prevents duplicates from different encodings. See #86.
-  const existing = projectDb.getProjectByPath(absolutePath, userId ?? null);
   const effectiveId = existing ? existing.id : projectName;
 
   // Preserve existing values so the upsert doesn't silently clear them
