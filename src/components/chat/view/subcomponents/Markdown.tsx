@@ -256,13 +256,16 @@ export function Markdown({ children, className, onFileOpen }: MarkdownProps) {
         if (shouldInline && isFilePath(raw)) {
           const { filePath } = parseFilePath(raw);
           return (
-            <button
+            <span
+              role="button"
+              tabIndex={0}
               onClick={() => onFileOpen(filePath)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onFileOpen(filePath); }}
               className="font-mono text-[0.9em] px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:underline cursor-pointer transition-colors"
               title={`Open ${filePath}`}
             >
               {codeChildren}
-            </button>
+            </span>
           );
         }
 
