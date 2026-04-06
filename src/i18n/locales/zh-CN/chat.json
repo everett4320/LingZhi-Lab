@@ -367,6 +367,7 @@
       "research": "研究",
       "files": "文件"
     },
+    "showLess": "收起",
     "preview": {
       "titleFallback": "预览",
       "selectFile": "选择一个文件进行预览",

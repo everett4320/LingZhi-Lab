@@ -367,6 +367,7 @@
       "research": "Research",
       "files": "Files"
     },
+    "showLess": "Show less",
     "preview": {
       "titleFallback": "Preview",
       "selectFile": "Select a file to preview",

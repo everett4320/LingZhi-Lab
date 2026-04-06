@@ -68,6 +68,16 @@ import { open } from 'sqlite';
 import os from 'os';
 import { stripInternalContextPrefix } from './utils/sessionFormatting.js';
 import {
+  buildToolResultMessage,
+  buildToolUseMessage,
+  extractTextContent,
+  normalizeCodexCustomToolCall,
+  normalizeCodexFunctionCall,
+  normalizeExecCommandEvent,
+  normalizePatchApplyEvent,
+  normalizeWebSearchCall,
+} from './utils/codexSessionMessages.js';
+import {
   extractSessionModeFromMetadata,
   extractSessionModeFromText,
   inferSessionModeFromUserMessage,
@@ -3683,27 +3693,46 @@ async function getCodexSessionMessages(sessionId, limit = null, offset = 0) {
 
     const messages = [];
     let tokenUsage = null;
+    const toolUseIndexByCallId = new Map();
+    const toolResultIndexByCallId = new Map();
     const fileStream = fsSync.createReadStream(sessionFilePath);
     const rl = readline.createInterface({
       input: fileStream,
       crlfDelay: Infinity
     });
 
-    // Helper to extract text from Codex content array
-    const extractText = (content) => {
-      if (!Array.isArray(content)) return content;
-      return content
-        .map(item => {
-          if (item.type === 'input_text' || item.type === 'output_text') {
-            return item.text;
-          }
-          if (item.type === 'text') {
-            return item.text;
-          }
-          return '';
-        })
-        .filter(Boolean)
-        .join('\n');
+    const upsertToolUse = (nextMessage) => {
+      const callId = nextMessage?.toolCallId;
+      if (callId && toolUseIndexByCallId.has(callId)) {
+        const existingIndex = toolUseIndexByCallId.get(callId);
+        messages[existingIndex] = {
+          ...messages[existingIndex],
+          ...nextMessage,
+        };
+        return;
+      }
+
+      const nextIndex = messages.push(nextMessage) - 1;
+      if (callId) {
+        toolUseIndexByCallId.set(callId, nextIndex);
+      }
+    };
+
+    const upsertToolResult = (nextMessage) => {
+      const callId = nextMessage?.toolCallId;
+      if (callId && toolResultIndexByCallId.has(callId)) {
+        const existingIndex = toolResultIndexByCallId.get(callId);
+        messages[existingIndex] = {
+          ...messages[existingIndex],
+          ...nextMessage,
+        };
+        return;
+      }
+
+      const nextIndex = messages.push(nextMessage) - 1;
+      if (callId) {
+        toolResultIndexByCallId.set(callId, nextIndex);
+      }
     };
 
     for await (const line of rl) {
@@ -3726,7 +3755,7 @@ async function getCodexSessionMessages(sessionId, limit = null, offset = 0) {
           if (entry.type === 'response_item' && entry.payload?.type === 'message') {
             const content = entry.payload.content;
             const role = entry.payload.role || 'assistant';
-            const textContent = extractText(content);
+            const textContent = extractTextContent(content);
 
             // Skip system context messages (environment_context)
             if (textContent?.includes('<environment_context>')) {
@@ -3754,89 +3783,113 @@ async function getCodexSessionMessages(sessionId, limit = null, offset = 0) {
           // Skip Codex reasoning items - they are brief status notes, not useful to display
 
           if (entry.type === 'response_item' && entry.payload?.type === 'function_call') {
-            let toolName = entry.payload.name;
-            let toolInput = entry.payload.arguments;
-
-            // Map Codex tool names to Claude equivalents
-            if (toolName === 'shell_command') {
-              toolName = 'Bash';
-              try {
-                const args = JSON.parse(entry.payload.arguments);
-                toolInput = JSON.stringify({ command: args.command });
-              } catch (e) {
-                // Keep original if parsing fails
-              }
+            const normalized = normalizeCodexFunctionCall(entry.payload.name, entry.payload.arguments);
+            if (!normalized.skip) {
+              upsertToolUse(buildToolUseMessage(
+                entry.timestamp,
+                normalized.toolName,
+                normalized.toolInput,
+                entry.payload.call_id,
+              ));
             }
-
-            messages.push({
-              type: 'tool_use',
-              timestamp: entry.timestamp,
-              toolName: toolName,
-              toolInput: toolInput,
-              toolCallId: entry.payload.call_id
-            });
           }
 
           if (entry.type === 'response_item' && entry.payload?.type === 'function_call_output') {
-            messages.push({
-              type: 'tool_result',
-              timestamp: entry.timestamp,
-              toolCallId: entry.payload.call_id,
-              output: entry.payload.output
-            });
+            upsertToolResult(buildToolResultMessage(
+              entry.timestamp,
+              entry.payload.call_id,
+              entry.payload.output,
+            ));
           }
 
           if (entry.type === 'response_item' && entry.payload?.type === 'custom_tool_call') {
-            const toolName = entry.payload.name || 'custom_tool';
-            const input = entry.payload.input || '';
-
-            if (toolName === 'apply_patch') {
-              // Parse Codex patch format and convert to Claude Edit format
-              const fileMatch = input.match(/\*\*\* Update File: (.+)/);
-              const filePath = fileMatch ? fileMatch[1].trim() : 'unknown';
-
-              // Extract old and new content from patch
-              const lines = input.split('\n');
-              const oldLines = [];
-              const newLines = [];
-
-              for (const line of lines) {
-                if (line.startsWith('-') && !line.startsWith('---')) {
-                  oldLines.push(line.substring(1));
-                } else if (line.startsWith('+') && !line.startsWith('+++')) {
-                  newLines.push(line.substring(1));
-                }
-              }
-
-              messages.push({
-                type: 'tool_use',
-                timestamp: entry.timestamp,
-                toolName: 'Edit',
-                toolInput: JSON.stringify({
-                  file_path: filePath,
-                  old_string: oldLines.join('\n'),
-                  new_string: newLines.join('\n')
-                }),
-                toolCallId: entry.payload.call_id
-              });
-            } else {
-              messages.push({
-                type: 'tool_use',
-                timestamp: entry.timestamp,
-                toolName: toolName,
-                toolInput: input,
-                toolCallId: entry.payload.call_id
-              });
-            }
+            const normalized = normalizeCodexCustomToolCall(entry.payload.name, entry.payload.input);
+            upsertToolUse(buildToolUseMessage(
+              entry.timestamp,
+              normalized.toolName,
+              normalized.toolInput,
+              entry.payload.call_id,
+            ));
           }
 
           if (entry.type === 'response_item' && entry.payload?.type === 'custom_tool_call_output') {
+            upsertToolResult(buildToolResultMessage(
+              entry.timestamp,
+              entry.payload.call_id,
+              entry.payload.output || '',
+            ));
+          }
+
+          // web_search_call events are self-contained display items — no separate result
+          // event and no call_id in the payload. We push directly instead of upsertToolUse
+          // because there is no toolCallId to match against a future tool_result.
+          if (entry.type === 'response_item' && entry.payload?.type === 'web_search_call') {
+            const normalized = normalizeWebSearchCall(entry.payload);
             messages.push({
-              type: 'tool_result',
+              type: 'tool_use',
               timestamp: entry.timestamp,
-              toolCallId: entry.payload.call_id,
-              output: entry.payload.output || ''
+              toolName: normalized.toolName,
+              toolInput: normalized.toolInput,
             });
+          }
+
+          if (entry.type === 'event_msg' && entry.payload?.type === 'exec_command_end' && entry.payload?.call_id) {
+            const toolUseIndex = toolUseIndexByCallId.get(entry.payload.call_id);
+            const existingToolUse = toolUseIndex !== undefined ? messages[toolUseIndex] : null;
+            let fallbackInput = null;
+            if (existingToolUse?.toolInput) {
+              try {
+                fallbackInput = JSON.parse(existingToolUse.toolInput);
+              } catch {
+                fallbackInput = null;
+              }
+            }
+            const normalized = normalizeExecCommandEvent(entry.payload, fallbackInput);
+
+            upsertToolUse(buildToolUseMessage(
+              entry.timestamp,
+              normalized.toolName,
+              normalized.toolInput,
+              entry.payload.call_id,
+            ));
+            upsertToolResult(buildToolResultMessage(
+              entry.timestamp,
+              entry.payload.call_id,
+              normalized.toolResult?.content || '',
+              {
+                isError: normalized.toolResult?.isError === true,
+                toolUseResult: normalized.toolResult?.toolUseResult || null,
+              },
+            ));
+          }
+
+          if (entry.type === 'event_msg' && entry.payload?.type === 'patch_apply_end' && entry.payload?.call_id) {
+            const normalized = normalizePatchApplyEvent(entry.payload);
+            upsertToolResult(buildToolResultMessage(
+              entry.timestamp,
+              entry.payload.call_id,
+              normalized.toolResult.content,
+              {
+                isError: normalized.toolResult.isError === true,
+                toolUseResult: normalized.toolResult.toolUseResult,
+              },
+            ));
+
+            if (normalized.fileChangesToolInput) {
+              messages.push({
+                type: 'tool_use',
+                timestamp: entry.timestamp,
+                toolName: 'FileChanges',
+                toolInput: normalized.fileChangesToolInput,
+                toolCallId: `${entry.payload.call_id}:files`,
+              });
+              messages.push({
+                type: 'tool_result',
+                timestamp: entry.timestamp,
+                toolCallId: `${entry.payload.call_id}:files`,
+                output: entry.payload.status || 'completed',
+              });
+            }
           }
 
         } catch (parseError) {

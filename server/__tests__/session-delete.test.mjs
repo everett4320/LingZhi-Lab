@@ -163,4 +163,156 @@ describe('session deletion fallbacks', () => {
     expect(sessions[0].provider).toBe('codex');
     expect(sessions[0].summary).toContain('Inspect the project state');
   });
+
+
+  it('parses Codex history into session context inputs that survive reload', async () => {
+    const sessionId = 'codex-session-context';
+    const projectRoot = path.join(tempRoot, 'workspace', 'demo');
+    const sessionDir = path.join(tempRoot, '.codex', 'sessions', '2026', '03', '30');
+    const sessionFile = path.join(sessionDir, `rollout-2026-03-30T05-00-00-${sessionId}.jsonl`);
+
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(sessionFile, [
+      JSON.stringify({
+        timestamp: '2026-03-30T05:18:20.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          name: 'exec_command',
+          arguments: JSON.stringify({
+            cmd: "sed -n '1,200p' src/components/chat/utils/sessionContextSummary.ts",
+            workdir: projectRoot,
+          }),
+          call_id: 'call-read',
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-03-30T05:18:21.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call-read',
+          output: 'export const example = true;',
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-03-30T05:18:22.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'exec_command_end',
+          call_id: 'call-read',
+          cwd: projectRoot,
+          parsed_cmd: [
+            {
+              type: 'read',
+              cmd: "sed -n '1,200p' src/components/chat/utils/sessionContextSummary.ts",
+              path: 'src/components/chat/utils/sessionContextSummary.ts',
+            },
+          ],
+          aggregated_output: 'export const example = true;',
+          exit_code: 0,
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-03-30T05:19:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          name: 'update_plan',
+          arguments: JSON.stringify({
+            plan: [
+              { step: 'Normalize Codex history', status: 'in_progress' },
+              { step: 'Expand session summary', status: 'pending' },
+            ],
+          }),
+          call_id: 'call-plan',
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-03-30T05:20:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          input: [
+            '*** Begin Patch',
+            '*** Update File: src/components/chat/utils/sessionContextSummary.ts',
+            '*** Add File: docs/plan.md',
+            '*** End Patch',
+          ].join('\n'),
+          call_id: 'call-patch',
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-03-30T05:20:01.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'patch_apply_end',
+          call_id: 'call-patch',
+          stdout: 'Success. Updated the following files:\nM src/components/chat/utils/sessionContextSummary.ts\nA docs/plan.md\n',
+          stderr: '',
+          success: true,
+          status: 'completed',
+          changes: {
+            [path.join(projectRoot, 'src/components/chat/utils/sessionContextSummary.ts')]: { type: 'update' },
+            [path.join(projectRoot, 'docs/plan.md')]: { type: 'add' },
+          },
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-03-30T05:21:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'web_search_call',
+          status: 'completed',
+          action: {
+            type: 'search',
+            query: 'Codex session context panel',
+            queries: ['Codex session context panel'],
+          },
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-03-30T05:21:30.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'web_search_call',
+          status: 'completed',
+          action: {
+            type: 'open_page',
+            url: 'https://developers.openai.com/api/docs',
+          },
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-03-30T05:22:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'web_search_call',
+          status: 'completed',
+          action: {
+            type: 'find_in_page',
+            url: 'https://developers.openai.com/api/docs',
+            pattern: 'session',
+          },
+        },
+      }),
+    ].join('\n'));
+
+    const { projects } = await loadTestModules();
+    const { convertSessionMessages } = await import('../../src/components/chat/utils/messageTransforms.ts');
+    const { deriveSessionContextSummary } = await import('../../src/components/chat/utils/sessionContextSummary.ts');
+    const result = await projects.getCodexSessionMessages(sessionId, null, 0);
+    const summary = deriveSessionContextSummary(convertSessionMessages(result.messages), projectRoot);
+
+    expect(summary.contextFiles.some((item) => item.relativePath === 'src/components/chat/utils/sessionContextSummary.ts')).toBe(true);
+    expect(summary.outputFiles.map((item) => item.relativePath).sort()).toEqual([
+      'docs/plan.md',
+      'src/components/chat/utils/sessionContextSummary.ts',
+    ]);
+    expect(summary.tasks.some((item) => item.label === 'Normalize Codex history')).toBe(true);
+    expect(summary.tasks.some((item) => item.label === 'Codex session context panel')).toBe(true);
+    expect(summary.tasks.some((item) => item.label === 'https://developers.openai.com/api/docs')).toBe(true);
+    expect(summary.tasks.some((item) => item.label === 'session')).toBe(true);
+  });
 });

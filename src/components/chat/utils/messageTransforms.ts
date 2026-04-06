@@ -596,7 +596,8 @@ export const convertSessionMessages = (rawMessages: any[]): ChatMessage[] => {
         if (!message.toolCallId || convertedMessage.toolCallId === message.toolCallId) {
           convertedMessage.toolResult = {
             content: message.output || '',
-            isError: false,
+            isError: message.isError === true,
+            toolUseResult: message.toolUseResult || null,
           };
           if (convertedMessage.toolName === 'AskUserQuestion' && message.output) {
             const parsedAnswers = parseAskUserAnswers(String(message.output));

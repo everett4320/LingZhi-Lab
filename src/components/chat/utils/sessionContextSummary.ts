@@ -1,5 +1,4 @@
 import type { ChatMessage } from '../types/types';
-import { normalizePath, isAbsolutePath, toRelativePath } from '../../../utils/pathUtils';
 
 export type SessionReviewState = Record<string, {
   reviewedAt?: string | null;
@@ -60,6 +59,121 @@ type TaskAccumulator = {
   lastSeenAt: string;
 };
 
+const WINDOWS_ABS_PATTERN = /^[a-z]:\//i;
+const MARKDOWN_FILE_LINK_PATTERN = /\]\((\/[^)\s]+)\)/g;
+const ABSOLUTE_PATH_IN_TEXT_PATTERN = /(?:^|[\s("'`])((?:\/|[A-Za-z]:\/)[^)\s"'`]+)(?=$|[\s)"'`,:])/g;
+const RELATIVE_PATH_IN_TEXT_PATTERN = /(?:^|[\s("'`])((?:\.\.?\/)?(?:[A-Za-z0-9._-]+\/)+[A-Za-z0-9._-]+)(?=$|[\s)"'`,:])/g;
+const SHELL_TOKEN_PATTERN = /"[^"]*"|'[^']*'|`[^`]*`|\S+/g;
+const SHELL_COMMAND_BREAKS = new Set(['|', '||', '&&', ';']);
+const KNOWN_FILE_BASENAMES = new Set([
+  '.env',
+  '.env.example',
+  '.gitignore',
+  '.npmrc',
+  '.prettierrc',
+  '.prettierrc.js',
+  '.prettierrc.json',
+  '.eslintrc',
+  '.eslintrc.js',
+  '.eslintrc.json',
+  'Dockerfile',
+  'Makefile',
+  'README',
+  'README.md',
+  'README.zh-CN.md',
+  'CHANGELOG.md',
+  'package.json',
+  'package-lock.json',
+  'tsconfig.json',
+  'vitest.config.ts',
+  'vite.config.ts',
+  'vite.config.js',
+  'index.js',
+  'index.ts',
+  'index.tsx',
+  'index.jsx',
+  'AGENTS.md',
+  'SKILL.md',
+  'CLAUDE.md',
+]);
+const KNOWN_FILE_EXTENSIONS = new Set([
+  'c',
+  'cc',
+  'cpp',
+  'css',
+  'csv',
+  'gif',
+  'go',
+  'h',
+  'hpp',
+  'html',
+  'ini',
+  'ipynb',
+  'java',
+  'jpeg',
+  'jpg',
+  'js',
+  'json',
+  'jsonl',
+  'jsx',
+  'kt',
+  'less',
+  'lock',
+  'log',
+  'lua',
+  'md',
+  'mdx',
+  'mjs',
+  'pdf',
+  'php',
+  'png',
+  'py',
+  'rb',
+  'rs',
+  'scss',
+  'sh',
+  'sql',
+  'svg',
+  'swift',
+  'toml',
+  'ts',
+  'tsx',
+  'txt',
+  'tsv',
+  'xml',
+  'yaml',
+  'yml',
+]);
+
+const normalizePath = (value: string) => value.replace(/\\/g, '/').replace(/\/+/g, '/');
+
+const trimTrailingPathPunctuation = (value: string) => {
+  let normalized = normalizePath(value).replace(/[),:;]+$/, '');
+
+  while (normalized.endsWith('.')) {
+    const candidate = normalized.slice(0, -1);
+    if (!candidate || candidate === '.' || candidate === '..') {
+      break;
+    }
+
+    const basename = candidate.replace(/\/$/, '').split('/').pop() || candidate;
+    const extension = basename.includes('.') ? basename.split('.').pop()?.toLowerCase() || '' : '';
+    const looksLikeDirectory = candidate.includes('/') && !basename.includes('.');
+    const looksLikeKnownFile = KNOWN_FILE_BASENAMES.has(basename) || (Boolean(extension) && KNOWN_FILE_EXTENSIONS.has(extension));
+
+    if (!looksLikeDirectory && !looksLikeKnownFile) {
+      break;
+    }
+
+    normalized = candidate;
+  }
+
+  return normalized;
+};
+
+const isAbsolutePath = (value: string) => value.startsWith('/') || WINDOWS_ABS_PATTERN.test(value);
+
+
 const toIsoTimestamp = (value: string | number | Date | undefined): string => {
   const date = value ? new Date(value) : new Date();
   return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
@@ -90,8 +204,23 @@ const parseJsonValue = (value: unknown): any => {
   }
 };
 
+const toRelativePath = (filePath: string, projectRoot: string): string | null => {
+  const normalizedPath = trimTrailingPathPunctuation(String(filePath || '').trim());
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const normalizedRoot = normalizePath(String(projectRoot || '').trim()).replace(/\/$/, '');
+  if (normalizedRoot && normalizedPath.startsWith(`${normalizedRoot}/`)) {
+    return normalizedPath.slice(normalizedRoot.length + 1);
+  }
+
+  return normalizedPath.replace(/^\.\//, '');
+};
+
+
 const toAbsolutePath = (filePath: string, projectRoot: string): string | null => {
-  const normalizedPath = normalizePath(String(filePath || '').trim());
+  const normalizedPath = trimTrailingPathPunctuation(String(filePath || '').trim());
   if (!normalizedPath) {
     return null;
   }
@@ -133,6 +262,14 @@ const extractFilePathsFromResult = (toolResult: any): string[] => {
         const nextPath = item?.path || item?.filePath || item?.file_path;
         if (typeof nextPath === 'string' && nextPath.trim()) {
           candidates.push(nextPath.trim());
+        }
+      });
+    }
+
+    if (source.changes && typeof source.changes === 'object') {
+      Object.keys(source.changes).forEach((filePath) => {
+        if (typeof filePath === 'string' && filePath.trim()) {
+          candidates.push(filePath.trim());
         }
       });
     }
@@ -185,6 +322,322 @@ const extractSkillName = (message: ChatMessage): string | null => {
   }
 
   return null;
+};
+
+const extractToolInputPaths = (toolInput: any): string[] => {
+  const parsedInput = parseJsonValue(toolInput) || toolInput || {};
+  const candidates = new Set<string>();
+
+  [
+    parsedInput?.file_path,
+    parsedInput?.path,
+    parsedInput?.filePath,
+    parsedInput?.absolutePath,
+    parsedInput?.relativePath,
+  ].forEach((value) => {
+    if (typeof value === 'string' && value.trim()) {
+      candidates.add(value.trim());
+    }
+  });
+
+  [parsedInput?.file_paths, parsedInput?.paths].forEach((list) => {
+    if (Array.isArray(list)) {
+      list.forEach((value) => {
+        if (typeof value === 'string' && value.trim()) {
+          candidates.add(value.trim());
+        }
+      });
+    }
+  });
+
+  return Array.from(candidates);
+};
+
+const extractPlanItems = (toolInput: any): Array<{ label: string; detail?: string }> => {
+  const parsedInput = parseJsonValue(toolInput) || toolInput || {};
+  if (!Array.isArray(parsedInput?.plan)) {
+    return [];
+  }
+
+  return parsedInput.plan
+    .map((item: any) => ({
+      label: typeof item?.step === 'string' ? item.step.trim() : '',
+      detail: typeof item?.status === 'string' ? item.status.trim() : undefined,
+    }))
+    .filter((item: { label: string }) => item.label);
+};
+
+const stripShellToken = (token: string) => token.replace(/^['"`]|['"`]$/g, '');
+
+const isLikelyDirectoryPath = (value: string) => {
+  const normalized = normalizePath(value).replace(/\/$/, '');
+  const basename = normalized.split('/').pop() || normalized;
+  return !basename.includes('.') && !KNOWN_FILE_BASENAMES.has(basename);
+};
+
+const isExplicitPathReference = (value: string) =>
+  value.startsWith('/') || value.startsWith('./') || value.startsWith('../');
+
+const looksLikePathToken = (value: string) => {
+  const normalized = trimTrailingPathPunctuation(value);
+  if (!normalized || normalized.startsWith('-') || normalized.includes('://') || SHELL_COMMAND_BREAKS.has(normalized)) {
+    return false;
+  }
+
+  if (!/^[A-Za-z0-9._/-]+$/.test(normalized)) {
+    return false;
+  }
+
+  const basename = normalized.split('/').pop() || normalized;
+  if (KNOWN_FILE_BASENAMES.has(basename)) {
+    return true;
+  }
+
+  const extension = basename.includes('.') ? basename.split('.').pop()?.toLowerCase() || '' : '';
+  if (Boolean(extension) && KNOWN_FILE_EXTENSIONS.has(extension)) {
+    return true;
+  }
+
+  if (normalized.startsWith('/') || normalized.startsWith('./') || normalized.startsWith('../') || normalized.includes('/')) {
+    return !basename.includes('.');
+  }
+
+  return false;
+};
+
+const shouldTrackDirectoryCandidate = (value: string) => {
+  const normalized = trimTrailingPathPunctuation(value);
+  if (!normalized || !isLikelyDirectoryPath(normalized)) {
+    return false;
+  }
+
+  if (isExplicitPathReference(normalized)) {
+    return true;
+  }
+
+  return false;
+};
+
+const shouldTrackTextPathCandidate = (value: string) => {
+  const normalized = trimTrailingPathPunctuation(value);
+  if (!normalized || normalized.includes('://')) {
+    return false;
+  }
+
+  if (isExplicitPathReference(normalized)) {
+    return true;
+  }
+
+  const basename = normalized.split('/').pop() || normalized;
+  if (KNOWN_FILE_BASENAMES.has(basename)) {
+    return true;
+  }
+
+  const extension = basename.includes('.') ? basename.split('.').pop()?.toLowerCase() || '' : '';
+  return Boolean(extension) && KNOWN_FILE_EXTENSIONS.has(extension);
+};
+
+const extractPathsFromText = (value: string): string[] => {
+  if (!value) return [];
+
+  const candidates = new Set<string>();
+  const pushMatch = (matchValue: string) => {
+    const normalized = trimTrailingPathPunctuation(matchValue);
+    if (!shouldTrackTextPathCandidate(normalized)) return;
+    candidates.add(normalized);
+  };
+
+  Array.from(value.matchAll(MARKDOWN_FILE_LINK_PATTERN)).forEach((match) => {
+    if (match[1]) pushMatch(match[1]);
+  });
+
+  Array.from(value.matchAll(ABSOLUTE_PATH_IN_TEXT_PATTERN)).forEach((match) => {
+    if (match[1]) pushMatch(match[1]);
+  });
+
+  Array.from(value.matchAll(RELATIVE_PATH_IN_TEXT_PATTERN)).forEach((match) => {
+    if (match[1]) pushMatch(match[1]);
+  });
+
+  return Array.from(candidates);
+};
+
+const extractShellContext = (
+  toolInput: any,
+  toolResult: any,
+): { files: string[]; directories: string[] } => {
+  const parsedInput = parseJsonValue(toolInput) || toolInput || {};
+  const command = String(parsedInput?.command || parsedInput?.cmd || '').trim();
+  const parsedCommands = Array.isArray(parsedInput?.parsed_cmd) ? parsedInput.parsed_cmd : [];
+  const files = new Set<string>();
+  const directories = new Set<string>();
+
+  parsedCommands.forEach((entry: any) => {
+    const nextPath = typeof entry?.path === 'string' ? entry.path.trim() : '';
+    if (!nextPath) return;
+    if (entry?.type === 'read') {
+      files.add(nextPath);
+      return;
+    }
+    if (entry?.type === 'list_files') {
+      directories.add(nextPath);
+      return;
+    }
+    if (entry?.type === 'search') {
+      if (nextPath) directories.add(nextPath);
+    }
+  });
+
+  (command.match(SHELL_TOKEN_PATTERN) || [])
+    .map(stripShellToken)
+    .forEach((token) => {
+      if (!looksLikePathToken(token)) {
+        const colonPath = token.includes(':') ? token.slice(token.indexOf(':') + 1) : '';
+        if (colonPath && looksLikePathToken(colonPath)) {
+          const normalized = trimTrailingPathPunctuation(colonPath);
+          if (isLikelyDirectoryPath(normalized)) {
+            if (shouldTrackDirectoryCandidate(normalized)) {
+              directories.add(normalized);
+            }
+          } else {
+            files.add(normalized);
+          }
+        }
+        return;
+      }
+
+      const normalized = trimTrailingPathPunctuation(token);
+      if (isLikelyDirectoryPath(normalized)) {
+        if (shouldTrackDirectoryCandidate(normalized)) {
+          directories.add(normalized);
+        }
+      } else {
+        files.add(normalized);
+      }
+    });
+
+  extractPathsFromText(String(toolResult?.content || '')).forEach((nextPath) => {
+    if (shouldTrackDirectoryCandidate(nextPath)) {
+      directories.add(nextPath);
+    } else {
+      files.add(nextPath);
+    }
+  });
+
+  return {
+    files: Array.from(files),
+    directories: Array.from(directories),
+  };
+};
+
+const collectProjectRootCandidate = (target: string[], candidate: unknown) => {
+  if (typeof candidate !== 'string' || !candidate.trim()) {
+    return;
+  }
+
+  const normalized = trimTrailingPathPunctuation(candidate).replace(/\/$/, '');
+  if (!normalized || !isAbsolutePath(normalized)) {
+    return;
+  }
+
+  if (isLikelyDirectoryPath(normalized)) {
+    target.push(normalized);
+    return;
+  }
+
+  const lastSlashIndex = normalized.lastIndexOf('/');
+  if (lastSlashIndex > 0) {
+    target.push(normalized.slice(0, lastSlashIndex));
+  }
+};
+
+const longestCommonPathPrefix = (paths: string[]): string => {
+  if (paths.length === 0) {
+    return '';
+  }
+
+  const parts = paths
+    .map((value) => normalizePath(value).replace(/\/$/, ''))
+    .filter(Boolean)
+    .map((value) => value.split('/'));
+
+  if (parts.length === 0) {
+    return '';
+  }
+
+  let sharedLength = parts[0].length;
+  for (let index = 1; index < parts.length; index += 1) {
+    sharedLength = Math.min(sharedLength, parts[index].length);
+    for (let segmentIndex = 0; segmentIndex < sharedLength; segmentIndex += 1) {
+      if (parts[0][segmentIndex] !== parts[index][segmentIndex]) {
+        sharedLength = segmentIndex;
+        break;
+      }
+    }
+  }
+
+  if (sharedLength === 0) {
+    return '';
+  }
+
+  const prefix = parts[0].slice(0, sharedLength).join('/');
+  return prefix === '/' ? '' : prefix;
+};
+
+export const resolveSessionContextProjectRoot = (messages: ChatMessage[], preferredRoot = ''): string => {
+  const normalizedPreferredRoot = normalizePath(String(preferredRoot || '').trim()).replace(/\/$/, '');
+  const explicitRoots: string[] = [];
+  const absolutePathRoots: string[] = [];
+
+  messages.forEach((message) => {
+    collectProjectRootCandidate(explicitRoots, message.cwd);
+    collectProjectRootCandidate(explicitRoots, message.workdir);
+    collectProjectRootCandidate(explicitRoots, message.projectPath);
+
+    const parsedInput = parseJsonValue(message.toolInput) || message.toolInput || {};
+    collectProjectRootCandidate(explicitRoots, parsedInput?.cwd);
+    collectProjectRootCandidate(explicitRoots, parsedInput?.workdir);
+    collectProjectRootCandidate(explicitRoots, parsedInput?.projectPath);
+
+    extractToolInputPaths(parsedInput).forEach((filePath) => {
+      collectProjectRootCandidate(absolutePathRoots, filePath);
+    });
+    extractFilePathsFromResult(message.toolResult).forEach((filePath) => {
+      collectProjectRootCandidate(absolutePathRoots, filePath);
+    });
+
+    if (message.toolName === 'Bash' || message.toolName === 'exec_command') {
+      const shellContext = extractShellContext(parsedInput, message.toolResult);
+      shellContext.files.forEach((filePath) => {
+        collectProjectRootCandidate(absolutePathRoots, filePath);
+      });
+      shellContext.directories.forEach((directoryPath) => {
+        collectProjectRootCandidate(absolutePathRoots, directoryPath);
+      });
+    }
+  });
+
+  const uniqueExplicitRoots = Array.from(new Set(explicitRoots));
+  if (normalizedPreferredRoot && uniqueExplicitRoots.some((root) => root === normalizedPreferredRoot || root.startsWith(`${normalizedPreferredRoot}/`))) {
+    return normalizedPreferredRoot;
+  }
+
+  const explicitRootPrefix = longestCommonPathPrefix(uniqueExplicitRoots);
+  if (explicitRootPrefix) {
+    return explicitRootPrefix;
+  }
+
+  const uniqueAbsolutePathRoots = Array.from(new Set(absolutePathRoots));
+  if (normalizedPreferredRoot && uniqueAbsolutePathRoots.some((root) => root === normalizedPreferredRoot || root.startsWith(`${normalizedPreferredRoot}/`))) {
+    return normalizedPreferredRoot;
+  }
+
+  const absolutePathRootPrefix = longestCommonPathPrefix(uniqueAbsolutePathRoots);
+  if (absolutePathRootPrefix) {
+    return absolutePathRootPrefix;
+  }
+
+  return normalizedPreferredRoot;
 };
 
 const addFile = (
@@ -328,6 +781,7 @@ export function deriveSessionContextSummary(
   projectRoot: string,
   reviews: SessionReviewState = {},
 ): SessionContextSummary {
+  const effectiveProjectRoot = resolveSessionContextProjectRoot(messages, projectRoot);
   const contextFiles = new Map<string, FileAccumulator>();
   const outputFiles = new Map<string, FileAccumulator>();
   const tasks = new Map<string, TaskAccumulator>();
@@ -343,7 +797,7 @@ export function deriveSessionContextSummary(
     }
 
     if (message.isTaskNotification && typeof message.taskOutputFile === 'string' && message.taskOutputFile.trim()) {
-      addFile(outputFiles, message.taskOutputFile, projectRoot, 'Task output', timestamp);
+      addFile(outputFiles, message.taskOutputFile, effectiveProjectRoot, 'Task output', timestamp);
       if (message.taskId) {
         addTask(tasks, 'task', `Task ${message.taskId}`, message.content || undefined, timestamp);
       }
@@ -358,10 +812,9 @@ export function deriveSessionContextSummary(
 
     switch (message.toolName) {
       case 'Read': {
-        const filePath = parsedInput?.file_path || parsedInput?.path;
-        if (typeof filePath === 'string') {
-          addFile(contextFiles, filePath, projectRoot, 'Read', timestamp);
-        }
+        extractToolInputPaths(parsedInput).forEach((filePath) => {
+          addFile(contextFiles, filePath, effectiveProjectRoot, 'Read', timestamp);
+        });
         break;
       }
 
@@ -369,7 +822,19 @@ export function deriveSessionContextSummary(
       case 'Glob': {
         const searchReason = message.toolName || 'Search';
         extractFilePathsFromResult(message.toolResult).forEach((filePath) => {
-          addFile(contextFiles, filePath, projectRoot, searchReason, timestamp);
+          addFile(contextFiles, filePath, effectiveProjectRoot, searchReason, timestamp);
+        });
+        break;
+      }
+
+      case 'Bash':
+      case 'exec_command': {
+        const shellContext = extractShellContext(parsedInput, message.toolResult);
+        shellContext.files.forEach((filePath) => {
+          addFile(contextFiles, filePath, effectiveProjectRoot, 'Shell', timestamp);
+        });
+        shellContext.directories.forEach((directoryPath) => {
+          addTask(directories, 'directory', toRelativePath(directoryPath, effectiveProjectRoot) || directoryPath, 'Referenced in shell command', timestamp);
         });
         break;
       }
@@ -377,7 +842,7 @@ export function deriveSessionContextSummary(
       case 'LS': {
         const directoryPath = parsedInput?.dir_path || parsedInput?.path || '.';
         if (typeof directoryPath === 'string' && directoryPath.trim()) {
-          addTask(directories, 'directory', toRelativePath(directoryPath, projectRoot) || directoryPath, 'Listed by LS', timestamp);
+          addTask(directories, 'directory', toRelativePath(directoryPath, effectiveProjectRoot) || directoryPath, 'Listed by LS', timestamp);
         }
         break;
       }
@@ -410,26 +875,41 @@ export function deriveSessionContextSummary(
         break;
       }
 
-      case 'Write': {
-        const filePath = parsedInput?.file_path || parsedInput?.path;
-        if (typeof filePath === 'string') {
-          addFile(outputFiles, filePath, projectRoot, 'Write', timestamp);
+      case 'UpdatePlan':
+      case 'update_plan': {
+        const planItems = extractPlanItems(parsedInput);
+        if (planItems.length === 0) {
+          addTask(tasks, 'task', 'Plan updated', undefined, timestamp);
+        } else {
+          planItems.forEach((item) => {
+            addTask(tasks, 'todo', item.label, item.detail, timestamp);
+          });
         }
+        break;
+      }
+
+      case 'Write': {
+        extractToolInputPaths(parsedInput).forEach((filePath) => {
+          addFile(outputFiles, filePath, effectiveProjectRoot, 'Write', timestamp);
+        });
         break;
       }
 
       case 'Edit':
       case 'ApplyPatch': {
-        const filePath = parsedInput?.file_path || parsedInput?.path;
-        if (typeof filePath === 'string') {
-          addFile(outputFiles, filePath, projectRoot, message.toolName === 'Edit' ? 'Edit' : 'Patch', timestamp);
-        }
+        const outputPaths = new Set([
+          ...extractToolInputPaths(parsedInput),
+          ...extractFilePathsFromResult(message.toolResult),
+        ]);
+        outputPaths.forEach((filePath) => {
+          addFile(outputFiles, filePath, effectiveProjectRoot, message.toolName === 'Edit' ? 'Edit' : 'Patch', timestamp);
+        });
         break;
       }
 
       case 'FileChanges': {
         parseFileChanges(message.toolInput).forEach((filePath) => {
-          addFile(outputFiles, filePath, projectRoot, 'File change', timestamp);
+          addFile(outputFiles, filePath, effectiveProjectRoot, 'File change', timestamp);
         });
         break;
       }
@@ -438,6 +918,38 @@ export function deriveSessionContextSummary(
         const skillLabel = parsedInput?.name || parsedInput?.skill;
         if (typeof skillLabel === 'string' && skillLabel.trim()) {
           addTask(skills, 'skill', skillLabel.trim(), 'Activated in session', timestamp);
+        }
+        break;
+      }
+
+      case 'ViewImage': {
+        extractToolInputPaths(parsedInput).forEach((filePath) => {
+          addFile(contextFiles, filePath, effectiveProjectRoot, 'Image view', timestamp);
+        });
+        break;
+      }
+
+      case 'WebSearch': {
+        const query = parsedInput?.query || parsedInput?.command;
+        if (typeof query === 'string' && query.trim()) {
+          addTask(tasks, 'task', query.trim(), 'Web search', timestamp);
+        }
+        break;
+      }
+
+      case 'OpenPage': {
+        const url = parsedInput?.url;
+        if (typeof url === 'string' && url.trim()) {
+          addTask(tasks, 'task', url.trim(), 'Opened web page', timestamp);
+        }
+        break;
+      }
+
+      case 'FindInPage': {
+        const pattern = parsedInput?.pattern;
+        const url = parsedInput?.url;
+        if (typeof pattern === 'string' && pattern.trim()) {
+          addTask(tasks, 'task', pattern.trim(), typeof url === 'string' && url.trim() ? `Find in ${url.trim()}` : 'Find in page', timestamp);
         }
         break;
       }
