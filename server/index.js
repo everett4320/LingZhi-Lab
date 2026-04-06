@@ -296,6 +296,15 @@ const SHELL_EMBEDDED_ENV_KEYS_TO_REMOVE = [
     'WT_SESSION',
 ];
 
+function safePtyKill(session, sessionKey) {
+    if (!session?.pty?.kill) return;
+    try {
+        session.pty.kill();
+    } catch (err) {
+        console.warn(`⚠️ Failed to kill PTY process (${sessionKey}):`, err);
+    }
+}
+
 function stripAnsiSequences(value = '') {
     return value.replace(ANSI_ESCAPE_SEQUENCE_REGEX, '');
 }
@@ -1855,7 +1864,7 @@ function handleShellConnection(ws) {
                     if (oldSession) {
                         console.log('🧹 Cleaning up existing login session:', ptySessionKey);
                         if (oldSession.timeoutId) clearTimeout(oldSession.timeoutId);
-                        if (oldSession.pty && oldSession.pty.kill) oldSession.pty.kill();
+                        safePtyKill(oldSession, ptySessionKey);
                         ptySessionsMap.delete(ptySessionKey);
                     }
                 }
@@ -2187,9 +2196,7 @@ function handleShellConnection(ws) {
 
                 session.timeoutId = setTimeout(() => {
                     console.log('⏰ PTY session timeout, killing process:', ptySessionKey);
-                    if (session.pty && session.pty.kill) {
-                        session.pty.kill();
-                    }
+                    safePtyKill(session, ptySessionKey);
                     ptySessionsMap.delete(ptySessionKey);
                 }, PTY_SESSION_TIMEOUT);
             }
@@ -2405,9 +2412,7 @@ function handleComputeShellConnection(ws, urlNodeId) {
                 session.ws = null;
                 session.timeoutId = setTimeout(() => {
                     console.log('⏰ Compute PTY session timeout, killing:', ptySessionKey);
-                    if (session.pty && session.pty.kill) {
-                        session.pty.kill();
-                    }
+                    safePtyKill(session, ptySessionKey);
                     ptySessionsMap.delete(ptySessionKey);
                 }, PTY_SESSION_TIMEOUT);
             }
