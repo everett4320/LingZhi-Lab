@@ -15,6 +15,9 @@ async function withTempHome(t, fn) {
     MOCK_MISSING_CLIS: process.env.MOCK_MISSING_CLIS,
   };
 
+  // Use Node binary as Codex CLI stand-in — it passes the existence check
+  // in resolveAvailableCliCommand. If that function adds version verification,
+  // this will need a proper mock.
   process.env.CODEX_CLI_PATH = process.execPath;
   delete process.env.OPENAI_API_KEY;
   delete process.env.MOCK_MISSING_CLIS;

@@ -487,6 +487,10 @@ function checkCursorStatus() {
   });
 }
 
+// Auth precedence:
+// 1. JWT tokens (id_token / access_token) from ~/.codex/auth.json
+// 2. OPENAI_API_KEY from server environment variable
+// 3. OPENAI_API_KEY from ~/.codex/auth.json
 async function checkCodexCredentials() {
   let cliCommand = process.env.CODEX_CLI_PATH || 'codex';
   try {

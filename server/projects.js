@@ -277,7 +277,15 @@ function collectCodexProjectCandidates(sessionsByProject = new Map()) {
   return Array.from(candidatesByProject.values());
 }
 
+const CODEX_SYNC_COOLDOWN_MS = 30_000;
+let lastCodexSyncTimestamp = 0;
+
 async function syncDiscoveredProjectsFromCodexSessions(config, projectDb, userId = null, visibleWorkspaceRoots = []) {
+  const now = Date.now();
+  if (now - lastCodexSyncTimestamp < CODEX_SYNC_COOLDOWN_MS) {
+    return 0;
+  }
+
   const { sessionDb } = await import('./database/db.js');
   const discoveredSessions = await buildCodexSessionsIndex();
   const candidates = collectCodexProjectCandidates(discoveredSessions);
@@ -337,6 +345,7 @@ async function syncDiscoveredProjectsFromCodexSessions(config, projectDb, userId
     syncedProjects += 1;
   }
 
+  lastCodexSyncTimestamp = Date.now();
   return syncedProjects;
 }
 
