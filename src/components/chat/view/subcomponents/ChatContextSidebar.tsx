@@ -831,6 +831,7 @@ export default function ChatContextSidebar({
             selectedProject={selectedProject}
             onNavigateToChat={() => onSidebarTabChange?.('context')}
             compact
+            onFileOpen={onFileOpen}
           />
         </div>
       ) : activeSidebarTab === 'files' ? (

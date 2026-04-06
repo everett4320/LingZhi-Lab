@@ -1535,6 +1535,7 @@ function SessionStageBoard({
 /** Research artifacts grouped by pipeline stage */
 function ArtifactsCard({ artifacts, onSelect, selectedPath, compact = false }) {
   const [openStages, setOpenStages] = useState({});
+  const [cardCollapsed, setCardCollapsed] = useState(false);
 
   // Group by stage
   const groups = {};
@@ -1555,7 +1556,7 @@ function ArtifactsCard({ artifacts, onSelect, selectedPath, compact = false }) {
 
   return (
     <div className={`border border-border/60 bg-card/78 shadow-sm backdrop-blur ${compact ? 'rounded-xl p-3' : 'rounded-[30px] p-5'}`}>
-      <div className="flex items-center justify-between gap-2">
+      <button type="button" onClick={() => setCardCollapsed(v => !v)} className="flex w-full items-center justify-between gap-2 text-left">
         <div className="flex items-center gap-2.5">
           {!compact && (
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-200/70 bg-cyan-50/90 text-cyan-700 dark:border-cyan-900/70 dark:bg-cyan-950/30 dark:text-cyan-300">
@@ -1566,11 +1567,14 @@ function ArtifactsCard({ artifacts, onSelect, selectedPath, compact = false }) {
             Artifacts Explorer
           </h3>
         </div>
-        <span className="rounded-full border border-border/60 bg-background/75 px-2 py-0.5 text-xs text-muted-foreground shadow-sm">
-          {artifacts.length}
-        </span>
-      </div>
-      {artifacts.length === 0 ? (
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-border/60 bg-background/75 px-2 py-0.5 text-xs text-muted-foreground shadow-sm">
+            {artifacts.length}
+          </span>
+          {cardCollapsed ? <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+        </div>
+      </button>
+      {cardCollapsed ? null : artifacts.length === 0 ? (
         <div className={`rounded-2xl border border-dashed border-border/60 bg-background/65 text-xs text-muted-foreground ${compact ? 'mt-2 px-3 py-3' : 'px-4 py-5'}`}>
           No stage artifacts found yet.
         </div>
@@ -2393,7 +2397,7 @@ function UsageGuideNotice({
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
 
-function ResearchLab({ selectedProject, onNavigateToChat, compact = false }) {
+function ResearchLab({ selectedProject, onNavigateToChat, compact = false, onFileOpen }) {
   const { t } = useTranslation('common');
   const [loading, setLoading] = useState(false);
   const [instance, setInstance] = useState(null);
@@ -2662,16 +2666,25 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false }) {
       setSavingSessionId(null);
     }
   }, [projectName, sessionTagsById]);
+  const handleArtifactSelect = useCallback((file) => {
+    if (compact && onFileOpen) {
+      const filePath = file.absolutePath || file.path || file.relativePath;
+      onFileOpen(filePath);
+    } else {
+      setSelectedFile(file);
+    }
+  }, [compact, onFileOpen, setSelectedFile]);
+
   const sidebar = (
     <div className={compact ? 'space-y-3' : 'space-y-4'}>
       <ArtifactsCard
         artifacts={artifacts}
-        onSelect={setSelectedFile}
-        selectedPath={selectedFile?.relativePath}
+        onSelect={handleArtifactSelect}
+        selectedPath={compact ? null : selectedFile?.relativePath}
         compact={compact}
       />
 
-      {selectedFile ? (
+      {!compact && (selectedFile ? (
         <FileViewer
           projectName={projectName}
           file={selectedFile}
@@ -2679,7 +2692,7 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false }) {
         />
       ) : (
         <ArtifactPreviewEmptyState hasArtifacts={artifacts.length > 0} />
-      )}
+      ))}
     </div>
   );
 
