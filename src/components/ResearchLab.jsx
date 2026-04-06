@@ -571,8 +571,9 @@ function getArtifactPreviewKind(file) {
 /* ------------------------------------------------------------------ */
 
 /** Overview card: title, brief summary, and instance metadata */
-function OverviewCard({ instance, config, researchBrief }) {
+function OverviewCard({ instance, config, researchBrief, compact = false }) {
   const [showOverviewModal, setShowOverviewModal] = useState(false);
+  const [collapsed, setCollapsed] = useState(compact);
   const overviewSections = useMemo(
     () => buildOverviewSections(researchBrief, instance),
     [researchBrief, instance],
@@ -605,23 +606,24 @@ function OverviewCard({ instance, config, researchBrief }) {
 
   return (
     <>
-      <div className="flex h-full flex-col gap-4 rounded-[28px] border border-border/60 bg-card/78 p-5 shadow-sm backdrop-blur">
-        <div className="flex items-start gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-200/70 bg-blue-50/90 text-blue-700 dark:border-blue-900/70 dark:bg-blue-950/30 dark:text-blue-300">
-              <FlaskConical className="w-5 h-5" />
-            </div>
+      <div className={`flex h-full flex-col border border-border/60 bg-card/78 shadow-sm backdrop-blur ${compact ? 'gap-2 rounded-xl p-3' : 'gap-4 rounded-[28px] p-5'}`}>
+        <button type="button" onClick={() => setCollapsed(v => !v)} className="flex w-full items-center justify-between gap-2 text-left">
+          <div className="flex items-center gap-2.5">
+            {!compact && (
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-200/70 bg-blue-50/90 text-blue-700 dark:border-blue-900/70 dark:bg-blue-950/30 dark:text-blue-300">
+                <FlaskConical className="w-5 h-5" />
+              </div>
+            )}
             <div>
-              <h3 className="text-base font-semibold tracking-tight text-foreground">
+              <h3 className={`font-semibold tracking-tight text-foreground ${compact ? 'text-sm' : 'text-base'}`}>
                 Research Overview
               </h3>
-              <p className="text-xs text-muted-foreground">
-                Brief, scope, and instance metadata for this workspace
-              </p>
+              {!compact && <p className="text-xs text-muted-foreground">Brief, scope, and instance metadata for this workspace</p>}
             </div>
           </div>
-        </div>
-        {overviewTitle && (
+          {collapsed ? <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+        </button>
+        {!collapsed && overviewTitle && (
           <div className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
             <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Research Title</p>
             <p className="mt-2 text-sm font-medium text-foreground">{overviewTitle}</p>
@@ -633,36 +635,33 @@ function OverviewCard({ instance, config, researchBrief }) {
             ) : null}
           </div>
         )}
-        {showTargetPaper && (
-          <div className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
+        {!collapsed && showTargetPaper && (
+          <div className={`rounded-2xl border border-border/60 bg-background/70 shadow-sm ${compact ? 'p-2.5' : 'p-4'}`}>
             <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Target Paper</p>
-            <p className="mt-2 text-sm font-medium text-foreground">{targetPaper}</p>
+            <p className="mt-1 text-sm font-medium text-foreground">{targetPaper}</p>
             {instance?.url && (
               <a href={instance.url} target="_blank" rel="noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400">
+                className="mt-1 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400">
                 {instance.url} <ExternalLink className="w-3 h-3" />
               </a>
             )}
           </div>
         )}
-        {metadata.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {!collapsed && metadata.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
             {metadata.map((item) => (
-              <span key={item.label} className="rounded-full border border-border/60 bg-background/70 px-3 py-1 shadow-sm">
+              <span key={item.label} className="rounded-full border border-border/60 bg-background/70 px-2 py-0.5 shadow-sm">
                 {item.label}: <code className="bg-muted px-1 rounded">{item.value}</code>
               </span>
             ))}
           </div>
         )}
-        {hasDetailedContent && (
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
+        {!collapsed && hasDetailedContent && (
+          <div className={`flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/70 shadow-sm ${compact ? 'p-2.5' : 'p-4'}`}>
             <div className="min-w-0">
               <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Research Brief</p>
-              <p className="mt-2 text-sm text-foreground/80">
+              <p className="mt-1 text-sm text-foreground/80">
                 {overviewSummary}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Hidden from the card to keep the overview compact.
               </p>
             </div>
             <Button
@@ -675,8 +674,8 @@ function OverviewCard({ instance, config, researchBrief }) {
             </Button>
           </div>
         )}
-        {!hasOverviewContent && (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-background/60 px-4 py-5 text-sm text-muted-foreground">
+        {!collapsed && !hasOverviewContent && (
+          <div className={`rounded-2xl border border-dashed border-border/60 bg-background/60 text-sm text-muted-foreground ${compact ? 'px-3 py-3' : 'px-4 py-5'}`}>
             Start the pipeline in Chat to populate the research brief, target paper, and working plan here.
           </div>
         )}
@@ -764,29 +763,33 @@ function OverviewCard({ instance, config, researchBrief }) {
 }
 
 /** Source papers list */
-function PapersCard({ papers }) {
+function PapersCard({ papers, compact = false }) {
   const [expanded, setExpanded] = useState(false);
+  const [collapsed, setCollapsed] = useState(compact);
   if (!papers || papers.length === 0) return null;
-  const shown = expanded ? papers : papers.slice(0, 5);
+  const shown = expanded ? papers : papers.slice(0, compact ? 3 : 5);
 
   return (
-    <div className="flex h-full flex-col rounded-[28px] border border-border/60 bg-card/78 p-5 shadow-sm backdrop-blur">
-      <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-200/70 bg-emerald-50/90 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300">
-          <BookOpen className="w-5 h-5" />
+    <div className={`flex h-full flex-col border border-border/60 bg-card/78 shadow-sm backdrop-blur ${compact ? 'rounded-xl p-3' : 'rounded-[28px] p-5'}`}>
+      <button type="button" onClick={() => setCollapsed(v => !v)} className="flex w-full items-center justify-between gap-2 text-left">
+        <div className="flex items-center gap-2.5">
+          {!compact && (
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-200/70 bg-emerald-50/90 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <BookOpen className="w-5 h-5" />
+            </div>
+          )}
+          <div>
+            <h3 className={`font-semibold tracking-tight text-foreground ${compact ? 'text-sm' : 'text-base'}`}>
+              Source Papers ({papers.length})
+            </h3>
+            {!compact && <p className="text-xs text-muted-foreground">Related work and references supplied to the pipeline</p>}
+          </div>
         </div>
-        <div>
-          <h3 className="text-base font-semibold tracking-tight text-foreground">
-            Source Papers
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            Related work and references supplied to the pipeline ({papers.length})
-          </p>
-        </div>
-      </div>
-      <ul className="mt-4 flex-1 space-y-1.5">
+        {collapsed ? <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+      </button>
+      {!collapsed && <ul className={`flex-1 space-y-1.5 ${compact ? 'mt-2' : 'mt-4'}`}>
         {shown.map((p, i) => (
-          <li key={i} className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/70 px-4 py-3 text-sm shadow-sm">
+          <li key={i} className={`flex items-start gap-2 rounded-2xl border border-border/60 bg-background/70 text-sm shadow-sm ${compact ? 'px-3 py-2' : 'px-4 py-3'}`}>
             <span className="mt-0.5 w-6 flex-shrink-0 text-right text-xs text-muted-foreground">{p.rank || i + 1}.</span>
             <div className="min-w-0 flex-1">
               {p.url ? (
@@ -813,10 +816,10 @@ function PapersCard({ papers }) {
             </div>
           </li>
         ))}
-      </ul>
-      {papers.length > 5 && (
+      </ul>}
+      {!collapsed && papers.length > (compact ? 3 : 5) && (
         <button onClick={() => setExpanded(!expanded)}
-          className="mt-3 flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400">
+          className="mt-2 flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400">
           {expanded ? 'Show less' : `Show all ${papers.length} papers`}
           <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
         </button>
@@ -843,8 +846,9 @@ function StageSection({ title, icon: Icon, badgeClass, expanded, onToggle, child
   );
 }
 
-function TaskPipelineBoard({ tasks, isLoading, onNavigateToChat, projectName, onTaskUpdated }) {
+function TaskPipelineBoard({ tasks, isLoading, onNavigateToChat, projectName, onTaskUpdated, compact = false }) {
   const { t } = useTranslation('common');
+  const [boardCollapsed, setBoardCollapsed] = useState(compact);
   const [openStages, setOpenStages] = useState({});
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editForm, setEditForm] = useState({ title: '', description: '' });
@@ -978,26 +982,25 @@ function TaskPipelineBoard({ tasks, isLoading, onNavigateToChat, projectName, on
   }, []);
 
   return (
-    <div className="overflow-hidden rounded-[30px] border border-border/60 bg-card/78 shadow-sm backdrop-blur">
-      <div className="border-b border-border/60 bg-gradient-to-r from-sky-50 via-cyan-50 to-emerald-50 px-5 py-4 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+    <div className={`overflow-hidden border border-border/60 bg-card/78 shadow-sm backdrop-blur ${compact ? 'rounded-xl' : 'rounded-[30px]'}`}>
+      <button type="button" onClick={() => setBoardCollapsed(v => !v)} className={`flex w-full items-center justify-between border-b border-border/60 bg-gradient-to-r from-sky-50 via-cyan-50 to-emerald-50 text-left dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 ${compact ? 'px-3 py-2.5' : 'px-5 py-4'}`}>
+        <div className="flex items-center gap-2">
+          {!compact && (
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/70 bg-white/85 shadow-sm dark:border-white/10 dark:bg-slate-800/80">
               <ListChecks className="w-4 h-4 text-cyan-700 dark:text-cyan-300" />
             </div>
-            <div>
-              <h3 className="text-base font-semibold tracking-tight text-foreground">
-                Pipeline Task List
-              </h3>
-              <p className="text-xs text-muted-foreground sm:text-sm">
-                Stage-oriented task board for your research pipeline
-              </p>
-            </div>
+          )}
+          <div>
+            <h3 className={`font-semibold tracking-tight text-foreground ${compact ? 'text-sm' : 'text-base'}`}>
+              Pipeline Task List
+            </h3>
+            {!compact && <p className="text-xs text-muted-foreground sm:text-sm">Stage-oriented task board for your research pipeline</p>}
           </div>
         </div>
-      </div>
+        {boardCollapsed ? <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+      </button>
 
-      <div className="space-y-4 p-5">
+      {!boardCollapsed && <div className={`space-y-4 ${compact ? 'p-3' : 'p-5'}`}>
         {isLoading ? (
           <div className="text-sm text-muted-foreground">Loading pipeline tasks...</div>
         ) : summary.total === 0 ? (
@@ -1019,22 +1022,22 @@ function TaskPipelineBoard({ tasks, isLoading, onNavigateToChat, projectName, on
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-3 shadow-sm">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Total</p>
-                <p className="text-sm font-semibold text-foreground">{summary.total}</p>
+            <div className={`grid grid-cols-4 ${compact ? 'gap-1.5' : 'gap-3'}`}>
+              <div className={`rounded-xl border border-border/60 bg-background/80 shadow-sm ${compact ? 'px-2 py-1.5' : 'px-4 py-3'}`}>
+                <p className={`uppercase tracking-[0.18em] text-muted-foreground ${compact ? 'text-[9px]' : 'text-[11px]'}`}>Total</p>
+                <p className={`font-semibold text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>{summary.total}</p>
               </div>
-              <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-3 shadow-sm dark:border-emerald-900/70 dark:bg-emerald-950/20">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-emerald-700/80 dark:text-emerald-300/80">Done</p>
-                <p className="text-sm font-semibold text-green-600 dark:text-green-400">{summary.done}</p>
+              <div className={`rounded-xl border border-emerald-200/70 bg-emerald-50/70 shadow-sm dark:border-emerald-900/70 dark:bg-emerald-950/20 ${compact ? 'px-2 py-1.5' : 'px-4 py-3'}`}>
+                <p className={`uppercase tracking-[0.18em] text-emerald-700/80 dark:text-emerald-300/80 ${compact ? 'text-[9px]' : 'text-[11px]'}`}>Done</p>
+                <p className={`font-semibold text-green-600 dark:text-green-400 ${compact ? 'text-xs' : 'text-sm'}`}>{summary.done}</p>
               </div>
-              <div className="rounded-2xl border border-blue-200/70 bg-blue-50/70 px-4 py-3 shadow-sm dark:border-blue-900/70 dark:bg-blue-950/20">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-blue-700/80 dark:text-blue-300/80">In Progress</p>
-                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{summary.inProgress}</p>
+              <div className={`rounded-xl border border-blue-200/70 bg-blue-50/70 shadow-sm dark:border-blue-900/70 dark:bg-blue-950/20 ${compact ? 'px-2 py-1.5' : 'px-4 py-3'}`}>
+                <p className={`uppercase tracking-[0.18em] text-blue-700/80 dark:text-blue-300/80 ${compact ? 'text-[9px]' : 'text-[11px]'}`}>In Prog</p>
+                <p className={`font-semibold text-blue-600 dark:text-blue-400 ${compact ? 'text-xs' : 'text-sm'}`}>{summary.inProgress}</p>
               </div>
-              <div className="rounded-2xl border border-slate-200/70 bg-slate-50/70 px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Pending</p>
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{summary.pending}</p>
+              <div className={`rounded-xl border border-slate-200/70 bg-slate-50/70 shadow-sm dark:border-slate-800 dark:bg-slate-950/30 ${compact ? 'px-2 py-1.5' : 'px-4 py-3'}`}>
+                <p className={`uppercase tracking-[0.18em] text-muted-foreground ${compact ? 'text-[9px]' : 'text-[11px]'}`}>Pending</p>
+                <p className={`font-semibold text-slate-700 dark:text-slate-300 ${compact ? 'text-xs' : 'text-sm'}`}>{summary.pending}</p>
               </div>
             </div>
 
@@ -1294,7 +1297,7 @@ function TaskPipelineBoard({ tasks, isLoading, onNavigateToChat, projectName, on
             </div>
           </>
         )}
-      </div>
+      </div>}
 
       {deleteConfirmTask && ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1367,7 +1370,9 @@ function SessionStageBoard({
   sessionTagsById,
   savingSessionId,
   onToggleStageTag,
+  compact = false,
 }) {
+  const [sessionBoardCollapsed, setSessionBoardCollapsed] = useState(compact);
   const stageTags = useMemo(() => {
     const tags = (Array.isArray(projectTags) ? projectTags : []).filter(
       (tag) => tag?.tagType === 'stage'
@@ -1397,17 +1402,16 @@ function SessionStageBoard({
 
   if (sessions.length === 0) {
     return (
-      <div className="rounded-[30px] border border-border/60 bg-card/78 p-5 shadow-sm backdrop-blur">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-violet-200/70 bg-violet-50/90 text-violet-700 dark:border-violet-900/70 dark:bg-violet-950/30 dark:text-violet-300">
-            <MessageSquare className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-base font-semibold tracking-tight text-foreground">Session Stage Links</h3>
-            <p className="text-xs text-muted-foreground">Bind indexed sessions to one or more research stages.</p>
-          </div>
+      <div className={`border border-border/60 bg-card/78 shadow-sm backdrop-blur ${compact ? 'rounded-xl p-3' : 'rounded-[30px] p-5'}`}>
+        <div className="flex items-center gap-2.5">
+          {!compact && (
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-violet-200/70 bg-violet-50/90 text-violet-700 dark:border-violet-900/70 dark:bg-violet-950/30 dark:text-violet-300">
+              <MessageSquare className="w-5 h-5" />
+            </div>
+          )}
+          <h3 className={`font-semibold tracking-tight text-foreground ${compact ? 'text-sm' : 'text-base'}`}>Session Stage Links</h3>
         </div>
-        <div className="mt-4 rounded-2xl border border-dashed border-border/60 bg-background/60 px-4 py-5 text-sm text-muted-foreground">
+        <div className={`rounded-2xl border border-dashed border-border/60 bg-background/60 text-sm text-muted-foreground ${compact ? 'mt-2 px-3 py-3' : 'mt-4 px-4 py-5'}`}>
           No indexed sessions yet. Start a conversation in Chat, then come back to assign stages.
         </div>
       </div>
@@ -1415,20 +1419,20 @@ function SessionStageBoard({
   }
 
   return (
-    <div className="rounded-[30px] border border-border/60 bg-card/78 p-5 shadow-sm backdrop-blur">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-violet-200/70 bg-violet-50/90 text-violet-700 dark:border-violet-900/70 dark:bg-violet-950/30 dark:text-violet-300">
-          <MessageSquare className="w-5 h-5" />
+    <div className={`border border-border/60 bg-card/78 shadow-sm backdrop-blur ${compact ? 'rounded-xl p-3' : 'rounded-[30px] p-5'}`}>
+      <button type="button" onClick={() => setSessionBoardCollapsed(v => !v)} className="flex w-full items-center justify-between gap-2 text-left">
+        <div className="flex items-center gap-2.5">
+          {!compact && (
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-violet-200/70 bg-violet-50/90 text-violet-700 dark:border-violet-900/70 dark:bg-violet-950/30 dark:text-violet-300">
+              <MessageSquare className="w-5 h-5" />
+            </div>
+          )}
+          <h3 className={`font-semibold tracking-tight text-foreground ${compact ? 'text-sm' : 'text-base'}`}>Session Stage Links</h3>
         </div>
-        <div>
-          <h3 className="text-base font-semibold tracking-tight text-foreground">Session Stage Links</h3>
-          <p className="text-xs text-muted-foreground">
-            A session can belong to multiple stages, and each stage can contain multiple sessions.
-          </p>
-        </div>
-      </div>
+        {sessionBoardCollapsed ? <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+      </button>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      {!sessionBoardCollapsed && <div className={`mt-3 grid gap-2 ${compact ? 'grid-cols-3' : 'sm:grid-cols-2 xl:grid-cols-5'}`}>
         {stageTags.map((tag) => {
           const stageKey = tag.tagKey;
           const meta = TASK_STAGE_META[stageKey] || TASK_STAGE_META.unassigned;
@@ -1442,9 +1446,9 @@ function SessionStageBoard({
             </div>
           );
         })}
-      </div>
+      </div>}
 
-      <div className="mt-4 space-y-2">
+      {!sessionBoardCollapsed && <div className={`space-y-2 ${compact ? 'mt-2' : 'mt-4'}`}>
         {sessions.map((session) => {
           const currentTags = sessionTagsById[session.id] || session.tags || [];
           const selectedStageTagIds = new Set(getSessionStageTags(currentTags).map((tag) => tag.id));
@@ -1523,13 +1527,13 @@ function SessionStageBoard({
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }
 
 /** Research artifacts grouped by pipeline stage */
-function ArtifactsCard({ artifacts, onSelect, selectedPath }) {
+function ArtifactsCard({ artifacts, onSelect, selectedPath, compact = false }) {
   const [openStages, setOpenStages] = useState({});
 
   // Group by stage
@@ -1550,31 +1554,28 @@ function ArtifactsCard({ artifacts, onSelect, selectedPath }) {
   const toggle = (stage, defaultOpen) => setOpenStages(prev => ({ ...prev, [stage]: !(prev[stage] ?? defaultOpen) }));
 
   return (
-    <div className="rounded-[30px] border border-border/60 bg-card/78 p-5 shadow-sm backdrop-blur">
+    <div className={`border border-border/60 bg-card/78 shadow-sm backdrop-blur ${compact ? 'rounded-xl p-3' : 'rounded-[30px] p-5'}`}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-200/70 bg-cyan-50/90 text-cyan-700 dark:border-cyan-900/70 dark:bg-cyan-950/30 dark:text-cyan-300">
-            <Beaker className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-base font-semibold tracking-tight text-foreground">
-              Artifacts Explorer
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              Inspect outputs from survey, ideation, experiments, and publication
-            </p>
-          </div>
+        <div className="flex items-center gap-2.5">
+          {!compact && (
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-200/70 bg-cyan-50/90 text-cyan-700 dark:border-cyan-900/70 dark:bg-cyan-950/30 dark:text-cyan-300">
+              <Beaker className="w-5 h-5" />
+            </div>
+          )}
+          <h3 className={`font-semibold tracking-tight text-foreground ${compact ? 'text-sm' : 'text-base'}`}>
+            Artifacts Explorer
+          </h3>
         </div>
-        <span className="rounded-full border border-border/60 bg-background/75 px-3 py-1 text-xs text-muted-foreground shadow-sm">
-          {artifacts.length} files
+        <span className="rounded-full border border-border/60 bg-background/75 px-2 py-0.5 text-xs text-muted-foreground shadow-sm">
+          {artifacts.length}
         </span>
       </div>
       {artifacts.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border/60 bg-background/65 px-4 py-5 text-xs text-muted-foreground">
-          No stage artifacts found yet. Use the <code className="bg-muted px-1 rounded">inno-pipeline-planner</code> skill in Chat to start a pipeline, then refresh after tasks run.
+        <div className={`rounded-2xl border border-dashed border-border/60 bg-background/65 text-xs text-muted-foreground ${compact ? 'mt-2 px-3 py-3' : 'px-4 py-5'}`}>
+          No stage artifacts found yet.
         </div>
       ) : (
-        <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+        <div className={`space-y-2 overflow-y-auto pr-1 ${compact ? 'mt-2 max-h-[200px]' : 'max-h-[360px]'}`}>
           {sorted.map(g => {
             const Icon = g.icon;
             const isStageSelected = g.files.some((file) => file.relativePath === selectedPath);
@@ -1710,10 +1711,10 @@ function hasFile(fileSet, relativePath) {
 }
 
 /** Final Idea card — shows the selected idea rendered as markdown */
-function IdeaCard({ projectName, config, projectFileSet }) {
+function IdeaCard({ projectName, config, projectFileSet, compact = false }) {
   const [ideaText, setIdeaText] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(!compact);
   const [copied, setCopied] = useState(false);
 
   const remarkPlugins = useMemo(() => [remarkGfm, remarkMath], []);
@@ -1824,10 +1825,10 @@ function IdeaCard({ projectName, config, projectFileSet }) {
   if (!ideaText) return null;
 
   return (
-    <div className="overflow-hidden rounded-[30px] border border-border/60 bg-card/78 shadow-sm backdrop-blur">
+    <div className={`overflow-hidden border border-border/60 bg-card/78 shadow-sm backdrop-blur ${compact ? 'rounded-xl' : 'rounded-[30px]'}`}>
       {/* Header */}
       <div
-        className="flex cursor-pointer items-center justify-between border-b border-border/60 bg-gradient-to-r from-amber-50 via-orange-50 to-white px-5 py-4 transition-colors hover:bg-muted/30 dark:from-slate-950 dark:via-amber-950/20 dark:to-slate-950"
+        className={`flex cursor-pointer items-center justify-between border-b border-border/60 bg-gradient-to-r from-amber-50 via-orange-50 to-white transition-colors hover:bg-muted/30 dark:from-slate-950 dark:via-amber-950/20 dark:to-slate-950 ${compact ? 'px-3 py-2.5' : 'px-5 py-4'}`}
         onClick={() => setExpanded(!expanded)}
       >
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -1851,7 +1852,7 @@ function IdeaCard({ projectName, config, projectFileSet }) {
 
       {/* Body — markdown rendered */}
       {expanded && (
-        <div className="max-h-[600px] overflow-y-auto px-5 py-4">
+        <div className={`overflow-y-auto ${compact ? 'max-h-[300px] px-3 py-3' : 'max-h-[600px] px-5 py-4'}`}>
           <ReactMarkdown
             remarkPlugins={remarkPlugins}
             rehypePlugins={rehypePlugins}
@@ -1866,10 +1867,10 @@ function IdeaCard({ projectName, config, projectFileSet }) {
 }
 
 /** Paper (main.pdf) viewer — shows Publication/paper/main.pdf when present */
-function PaperCard({ projectName, projectRoot }) {
+function PaperCard({ projectName, projectRoot, compact = false }) {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [status, setStatus] = useState('loading'); // 'loading' | 'loaded' | 'not_found' | 'error'
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(!compact);
 
   useEffect(() => {
     if (!projectName || !projectRoot) {
@@ -1899,9 +1900,9 @@ function PaperCard({ projectName, projectRoot }) {
   }, [projectName, projectRoot]);
 
   return (
-    <div className="overflow-hidden rounded-[30px] border border-border/60 bg-card/78 shadow-sm backdrop-blur">
+    <div className={`overflow-hidden border border-border/60 bg-card/78 shadow-sm backdrop-blur ${compact ? 'rounded-xl' : 'rounded-[30px]'}`}>
       <div
-        className="flex cursor-pointer items-center justify-between border-b border-border/60 bg-gradient-to-r from-purple-50 via-fuchsia-50 to-white px-5 py-4 transition-colors hover:bg-muted/30 dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950"
+        className={`flex cursor-pointer items-center justify-between border-b border-border/60 bg-gradient-to-r from-purple-50 via-fuchsia-50 to-white transition-colors hover:bg-muted/30 dark:from-slate-950 dark:via-purple-950/20 dark:to-slate-950 ${compact ? 'px-3 py-2.5' : 'px-5 py-4'}`}
         onClick={() => setExpanded(!expanded)}
       >
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -2662,11 +2663,12 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false }) {
     }
   }, [projectName, sessionTagsById]);
   const sidebar = (
-    <div className="space-y-4">
+    <div className={compact ? 'space-y-3' : 'space-y-4'}>
       <ArtifactsCard
         artifacts={artifacts}
         onSelect={setSelectedFile}
         selectedPath={selectedFile?.relativePath}
+        compact={compact}
       />
 
       {selectedFile ? (
@@ -2808,24 +2810,24 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false }) {
                 </div>
               </div>
 
-              <div className="grid gap-4">
-                <div className="rounded-[28px] border border-border/60 bg-card/78 p-5 shadow-sm backdrop-blur">
+              <div className={`grid ${compact ? 'gap-2' : 'gap-4'}`}>
+                <div className={`border border-border/60 bg-card/78 shadow-sm backdrop-blur ${compact ? 'rounded-xl p-3' : 'rounded-[28px] p-5'}`}>
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                     <MessageSquare className="h-4 w-4 text-primary" />
                     Next Action
                   </div>
                   {nextTask ? (
-                    <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
+                    <div className={`border border-border/60 bg-background/70 shadow-sm ${compact ? 'mt-2 rounded-xl p-2.5' : 'mt-4 rounded-2xl p-4'}`}>
+                      <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${TASK_STAGE_META[nextTask.stage]?.className || TASK_STAGE_META.unassigned.className}`}>
                             {TASK_STAGE_META[nextTask.stage]?.label || TASK_STAGE_META.unassigned.label}
                           </span>
-                          <div className="mt-3 text-lg font-semibold tracking-tight text-foreground">
+                          <div className={`font-semibold tracking-tight text-foreground ${compact ? 'mt-1.5 text-sm' : 'mt-3 text-lg'}`}>
                             {nextTask.title || t('researchLabTaskBoard.untitledTask')}
                           </div>
                           {nextTask.description ? (
-                            <p className="mt-2 text-sm leading-6 text-muted-foreground line-clamp-3">
+                            <p className={`text-sm leading-6 text-muted-foreground ${compact ? 'mt-1 line-clamp-2' : 'mt-2 line-clamp-3'}`}>
                               {nextTask.description}
                             </p>
                           ) : null}
@@ -2834,7 +2836,7 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false }) {
                           {TASK_STATUS_META[nextTask.status]?.label || TASK_STATUS_META.pending.label}
                         </span>
                       </div>
-                      {onNavigateToChat && (
+                      {onNavigateToChat && !compact && (
                         <Button
                           className="mt-4 rounded-full text-white bg-gradient-to-r from-cyan-500 via-sky-500 to-emerald-500 hover:from-cyan-400 hover:via-sky-400 hover:to-emerald-400"
                           onClick={() => onNavigateToChat()}
@@ -2845,7 +2847,7 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false }) {
                       )}
                     </div>
                   ) : (
-                    <div className="mt-4 rounded-2xl border border-dashed border-border/60 bg-background/60 px-4 py-5 text-sm text-muted-foreground">
+                    <div className={`border border-dashed border-border/60 bg-background/60 text-sm text-muted-foreground ${compact ? 'mt-2 rounded-xl px-3 py-3' : 'mt-4 rounded-2xl px-4 py-5'}`}>
                       Generate or sync the task pipeline in Chat, then return here to continue execution.
                     </div>
                   )}
@@ -2855,10 +2857,10 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false }) {
           </section>
 
           <div className={`grid items-start ${compact ? 'mt-3 gap-3' : 'mt-6 gap-6'} ${compact ? '' : 'xl:grid-cols-[minmax(0,1.05fr)_420px]'}`}>
-            <div className="min-w-0 space-y-6">
-              <div className={`grid items-stretch gap-6 ${sourcePapers.length > 0 && !compact ? 'lg:grid-cols-2' : ''}`}>
-                <OverviewCard instance={instance} config={config} researchBrief={researchBrief} />
-                {sourcePapers.length > 0 ? <PapersCard papers={sourcePapers} /> : null}
+            <div className={`min-w-0 ${compact ? 'space-y-3' : 'space-y-6'}`}>
+              <div className={`grid items-stretch ${compact ? 'gap-3' : 'gap-6'} ${sourcePapers.length > 0 && !compact ? 'lg:grid-cols-2' : ''}`}>
+                <OverviewCard instance={instance} config={config} researchBrief={researchBrief} compact={compact} />
+                {sourcePapers.length > 0 ? <PapersCard papers={sourcePapers} compact={compact} /> : null}
               </div>
 
               <div className={compact ? '' : 'xl:hidden'}>
@@ -2871,6 +2873,7 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false }) {
                 onNavigateToChat={onNavigateToChat}
                 projectName={projectName}
                 onTaskUpdated={loadData}
+                compact={compact}
               />
 
               <SessionStageBoard
@@ -2879,18 +2882,21 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false }) {
                 sessionTagsById={sessionTagsById}
                 savingSessionId={savingSessionId}
                 onToggleStageTag={handleToggleSessionStageTag}
+                compact={compact}
               />
 
               <IdeaCard
                 projectName={projectName}
                 config={config}
                 projectFileSet={projectFileSet}
+                compact={compact}
               />
 
               {hasPaperPreview ? (
                 <PaperCard
                   projectName={projectName}
                   projectRoot={projectRoot}
+                  compact={compact}
                 />
               ) : null}
 
