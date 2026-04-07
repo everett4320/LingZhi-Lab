@@ -199,7 +199,7 @@ function MainContent({
     );
   }
 
-  if (activeTab === 'compute' && !selectedProject) {
+  if (activeTab === 'compute') {
     return (
       <div className="h-full flex flex-col">
         <MainContentHeader
