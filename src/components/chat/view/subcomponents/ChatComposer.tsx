@@ -275,15 +275,13 @@ export default function ChatComposer({
 
   // Provider/model handling for centered mode
   const sessionProvider = provider as SessionProvider;
-  const currentModel = centered
-    ? getModelValue(sessionProvider, claudeModelProp || '', cursorModelProp || '', codexModel, geminiModel, openrouterModelProp || '', localModelProp || '')
-    : '';
+  const currentModel = getModelValue(sessionProvider, claudeModelProp || '', cursorModelProp || '', codexModel, geminiModel, openrouterModelProp || '', localModelProp || '');
 
   const [ollamaModels, setOllamaModels] = useState<Array<{ value: string; label: string }>>([]);
   const [isLoadingOllamaModels, setIsLoadingOllamaModels] = useState(false);
 
   useEffect(() => {
-    if (!centered || sessionProvider !== 'local') return;
+    if (sessionProvider !== 'local') return;
     setIsLoadingOllamaModels(true);
     const serverUrl = localStorage.getItem('local-gpu-server-url') || 'http://localhost:11434';
     authenticatedFetch(`/api/cli/local/models?serverUrl=${encodeURIComponent(serverUrl)}`)
@@ -305,12 +303,12 @@ export default function ChatComposer({
       })
       .catch(() => {})
       .finally(() => setIsLoadingOllamaModels(false));
-  }, [centered, sessionProvider, localModelProp, setLocalModel]);
+  }, [sessionProvider, localModelProp, setLocalModel]);
 
-  const rawModelConfig = centered ? getModelConfig(sessionProvider) : null;
-  const modelConfig = centered && rawModelConfig
-    ? (sessionProvider === 'local' && ollamaModels.length > 0 ? { ...rawModelConfig, OPTIONS: ollamaModels } : rawModelConfig)
-    : null;
+  const rawModelConfig = getModelConfig(sessionProvider);
+  const modelConfig = sessionProvider === 'local' && ollamaModels.length > 0
+    ? { ...rawModelConfig, OPTIONS: ollamaModels }
+    : rawModelConfig;
 
   const selectProvider = (next: SessionProvider) => {
     if (providerAvailability?.[next]?.cliAvailable === false) return;
@@ -335,58 +333,35 @@ export default function ChatComposer({
 
   return (
     <div className={`p-2 sm:p-4 md:p-4 flex-shrink-0 ${centered ? 'pb-2 sm:pb-3' : 'pb-2 sm:pb-4 md:pb-6'} ${mobileFloatingClass}`}>
-      {/* Controls above the text box — only when NOT centered */}
-      {!centered && (
-        <div className="max-w-5xl mx-auto mb-3">
-          <PermissionRequestsBanner
-            provider={provider}
-            pendingPermissionRequests={pendingPermissionRequests}
-            handlePermissionDecision={handlePermissionDecision}
-            handleGrantToolPermission={handleGrantToolPermission}
-          />
+      <div className={`${centered ? 'max-w-3xl' : 'max-w-5xl'} mx-auto mb-3`}>
+        <PermissionRequestsBanner
+          provider={provider}
+          pendingPermissionRequests={pendingPermissionRequests}
+          handlePermissionDecision={handlePermissionDecision}
+          handleGrantToolPermission={handleGrantToolPermission}
+        />
 
-          {!hasQuestionPanel && <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
+        {!centered && !hasQuestionPanel && (
+          <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
             <ClaudeStatus
               status={claudeStatus}
               isLoading={isLoading}
               onAbort={onAbortSession}
               provider={provider}
             />
-            <ChatInputControls
-              permissionMode={permissionMode}
-              onModeSwitch={onModeSwitch}
-              provider={provider}
-              codexModel={codexModel}
-              geminiModel={geminiModel}
-              thinkingMode={thinkingMode}
-              setThinkingMode={setThinkingMode}
-              codexReasoningEffort={codexReasoningEffort}
-              setCodexReasoningEffort={setCodexReasoningEffort}
-              geminiThinkingMode={geminiThinkingMode}
-              setGeminiThinkingMode={setGeminiThinkingMode}
-              tokenBudget={tokenBudget}
-              slashCommandsCount={slashCommandsCount}
-              onToggleCommandMenu={onToggleCommandMenu}
-              hasInput={hasInput}
-              onClearInput={onClearInput}
-              isUserScrolledUp={isUserScrolledUp}
-              hasMessages={hasMessages}
-              onScrollToBottom={onScrollToBottom}
-            />
-          </div>}
-        </div>
-      )}
-
-      {centered && (
-        <div className="max-w-5xl mx-auto mb-3">
-          <PermissionRequestsBanner
-            provider={provider}
-            pendingPermissionRequests={pendingPermissionRequests}
-            handlePermissionDecision={handlePermissionDecision}
-            handleGrantToolPermission={handleGrantToolPermission}
-          />
-        </div>
-      )}
+            {isUserScrolledUp && hasMessages && (
+              <button
+                onClick={onScrollToBottom}
+                className="w-7 h-7 sm:w-8 sm:h-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg shadow-sm flex items-center justify-center transition-all duration-200 hover:scale-105"
+              >
+                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {!hasQuestionPanel && <form onSubmit={onSubmit as (event: FormEvent<HTMLFormElement>) => void} className={`relative mx-auto ${centered ? 'max-w-3xl' : 'max-w-5xl'}`}>
         {isDragActive && (
@@ -479,9 +454,7 @@ export default function ChatComposer({
 
         <div
           {...getRootProps()}
-          className={`relative bg-card/80 backdrop-blur-sm rounded-3xl shadow-sm border border-border/50 focus-within:shadow-md focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/15 transition-all duration-200 ${
-            centered ? '' : 'overflow-hidden'
-          } ${isTextareaExpanded ? 'chat-input-expanded' : ''}`}
+          className={`relative bg-card/80 backdrop-blur-sm rounded-3xl shadow-sm border border-border/50 focus-within:shadow-md focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/15 transition-all duration-200 ${isTextareaExpanded ? 'chat-input-expanded' : ''}`}
         >
           <input {...getInputProps()} />
           {attachedPrompt && (
@@ -578,20 +551,22 @@ export default function ChatComposer({
             )}
           </div>
 
-          {/* Bottom toolbar inside text box — only when centered (empty state) */}
-          {centered && providerAvailability && (
+          {/* Bottom toolbar inside text box */}
+          {!hasQuestionPanel && (
             <div className="relative z-10 border-t border-border/30 px-4 py-2.5">
-              {/* Row 1: Agents list + model selector on left, modes on right */}
               <div className="flex items-center gap-2">
-                {/* Left side: agent selector as a list dropdown + model */}
+                {/* Left side */}
                 <div className="flex items-center gap-1.5">
-                  <AgentSelector
-                    providers={PROVIDERS}
-                    activeProvider={sessionProvider}
-                    providerAvailability={providerAvailability}
-                    onSelect={selectProvider}
-                    t={t}
-                  />
+                  {/* Agent selector — only in empty state */}
+                  {centered && providerAvailability && (
+                    <AgentSelector
+                      providers={PROVIDERS}
+                      activeProvider={sessionProvider}
+                      providerAvailability={providerAvailability}
+                      onSelect={selectProvider}
+                      t={t}
+                    />
+                  )}
 
                   {/* Model selector */}
                   {modelConfig && (
@@ -616,9 +591,10 @@ export default function ChatComposer({
                 {/* Spacer */}
                 <div className="flex-1" />
 
-                {/* Right side: session modes | permission mode + thinking */}
+                {/* Right side */}
                 <div className="flex items-center gap-2.5">
-                  {onNewSessionModeChange && sessionModeChoices.map((choice) => {
+                  {/* Session modes — only in empty state */}
+                  {centered && onNewSessionModeChange && sessionModeChoices.map((choice) => {
                     const active = newSessionMode === choice.id;
                     const dotColor = choice.id === 'research' ? 'bg-sky-500' : 'bg-emerald-500';
                     return (
@@ -640,7 +616,7 @@ export default function ChatComposer({
                     );
                   })}
 
-                  <div className="h-4 border-l border-border/40" />
+                  {centered && <div className="h-4 border-l border-border/40" />}
 
                   <ChatInputControls
                     permissionMode={permissionMode}
@@ -662,7 +638,7 @@ export default function ChatComposer({
                     isUserScrolledUp={isUserScrolledUp}
                     hasMessages={hasMessages}
                     onScrollToBottom={onScrollToBottom}
-                    hideCommandMenu
+                    hideCommandMenu={centered}
                     compact
                   />
                 </div>
