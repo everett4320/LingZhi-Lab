@@ -752,25 +752,27 @@ export default function ProjectDashboard({
                         style={{ width: `${progress ?? 6}%` }}
                       />
                     </div>
-                    <div className="mt-1.5 space-y-0.5 text-[10px] text-muted-foreground">
-                      {recentActivities.length > 0 ? (
-                        recentActivities.map((activity, i) => (
-                          <div key={i} className="flex items-center gap-1.5 truncate">
-                            <span className="shrink-0 text-muted-foreground/50">{formatTimeAgo(activity.date, now, t)}</span>
-                            <span className="truncate">{activity.title}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <span>{t('projectDashboard.noRecentActivity')}</span>
-                      )}
-                      {metadata?.lastModified ? (
-                        <div className="text-muted-foreground/60">
-                          {t('projectDashboard.pipelineUpdated', {
-                            time: formatTimeAgo(metadata.lastModified, now, t),
-                          })}
+                  </div>
+
+                  {/* Recent activities */}
+                  <div className="space-y-0.5 text-[10px] text-muted-foreground">
+                    {recentActivities.length > 0 ? (
+                      recentActivities.map((activity, i) => (
+                        <div key={i} className="flex items-center gap-1.5 truncate">
+                          <span className="shrink-0 text-muted-foreground/50">{formatTimeAgo(activity.date, now, t)}</span>
+                          <span className="truncate">{activity.title}</span>
                         </div>
-                      ) : null}
-                    </div>
+                      ))
+                    ) : (
+                      <span>{t('projectDashboard.noRecentActivity')}</span>
+                    )}
+                    {metadata?.lastModified ? (
+                      <div className="text-muted-foreground/60">
+                        {t('projectDashboard.pipelineUpdated', {
+                          time: formatTimeAgo(metadata.lastModified, now, t),
+                        })}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="rounded-lg border border-border/50 bg-background/70 px-2.5 py-2 shadow-sm">
