@@ -6,12 +6,54 @@ type UseDeviceSettingsOptions = {
   trackPWA?: boolean;
 };
 
+type NavigatorWithUserAgentData = Navigator & {
+  userAgentData?: {
+    mobile?: boolean;
+  };
+};
+
+const MOBILE_USER_AGENT_PATTERN = /Android.+Mobile|iPhone|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i;
+
+const getShortestScreenSide = (): number => {
+  if (typeof window === 'undefined') {
+    return 0;
+  }
+
+  const screenWidth = window.screen?.width || window.innerWidth;
+  const screenHeight = window.screen?.height || window.innerHeight;
+  return Math.min(screenWidth, screenHeight);
+};
+
+const hasCoarsePointer = (): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return (
+    window.matchMedia('(pointer: coarse)').matches ||
+    window.matchMedia('(any-pointer: coarse)').matches
+  );
+};
+
+const isMobileUserAgent = (): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const navigatorWithUserAgentData = window.navigator as NavigatorWithUserAgentData;
+  if (typeof navigatorWithUserAgentData.userAgentData?.mobile === 'boolean') {
+    return navigatorWithUserAgentData.userAgentData.mobile;
+  }
+
+  return MOBILE_USER_AGENT_PATTERN.test(window.navigator.userAgent);
+};
+
 const getIsMobile = (mobileBreakpoint: number): boolean => {
   if (typeof window === 'undefined') {
     return false;
   }
 
-  return window.innerWidth < mobileBreakpoint;
+  return getShortestScreenSide() < mobileBreakpoint && (isMobileUserAgent() || hasCoarsePointer());
 };
 
 const getIsPWA = (): boolean => {
