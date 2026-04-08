@@ -24,6 +24,7 @@ import ResearchLab from '../../../ResearchLab';
 import FileTree from '../../../FileTree';
 
 import { cn } from '../../../../lib/utils';
+import { useDeviceSettings } from '../../../../hooks/useDeviceSettings';
 import { authenticatedFetch, api } from '../../../../utils/api';
 import type { Project, ProjectSession, SessionMode, SessionProvider } from '../../../../types/app';
 import type { ChatMessage } from '../../types/types';
@@ -281,6 +282,7 @@ export default function ChatContextSidebar({
   onStartTask,
 }: ChatContextSidebarProps) {
   const { t, i18n } = useTranslation('chat');
+  const { isMobile } = useDeviceSettings({ trackPWA: false });
   const [fetchedMessages, setFetchedMessages] = useState<ChatMessage[]>([]);
   const [isLoadingTrace, setIsLoadingTrace] = useState(false);
   const [traceError, setTraceError] = useState<string | null>(null);
@@ -604,15 +606,17 @@ export default function ChatContextSidebar({
       {!isCollapsed && (
         <div
           onMouseDown={handleResizeStart}
-          className="hidden xl:block xl:w-1 xl:flex-shrink-0 xl:cursor-col-resize xl:bg-border/40 xl:transition-colors xl:hover:bg-primary/25"
+          className={isMobile ? 'hidden' : 'block w-1 flex-shrink-0 cursor-col-resize bg-border/40 transition-colors hover:bg-primary/25'}
           title={t('sessionContext.actions.resize')}
         />
       )}
 
       <aside
         ref={asideRef}
-        className={`flex min-h-0 w-full flex-col border-t border-border/60 bg-gradient-to-b from-card via-card to-muted/20 backdrop-blur xl:flex-shrink-0 xl:border-l xl:border-t-0 ${
-          isCollapsed ? 'xl:w-[56px]' : ''
+        className={`flex min-h-0 flex-col bg-gradient-to-b from-card via-card to-muted/20 backdrop-blur ${
+          isMobile
+            ? 'w-full border-t border-border/60'
+            : `flex-shrink-0 border-l border-border/60 ${isCollapsed ? 'w-[56px]' : ''}`
         }`}
         style={!isCollapsed ? { width: `${sidebarWidth}px` } : undefined}
       >
@@ -684,7 +688,7 @@ export default function ChatContextSidebar({
       </div>
 
       {isCollapsed ? (
-        <div className="flex flex-1 flex-col items-center gap-2 p-3 xl:pt-4">
+        <div className={`flex flex-1 flex-col items-center gap-2 p-3 ${isMobile ? '' : 'pt-4'}`}>
           {([
             { id: 'context' as SidebarTab, icon: FolderSearch, labelKey: 'sessionContext.sidebarTabs.context' },
             { id: 'research' as SidebarTab, icon: FlaskConical, labelKey: 'sessionContext.sidebarTabs.research' },

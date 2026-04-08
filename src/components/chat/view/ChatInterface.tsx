@@ -25,6 +25,7 @@ import { getProviderDisplayName } from '../utils/chatFormatting';
 import CodeEditor from '../../CodeEditor';
 import type { EditingFile } from '../../main-content/types/types';
 import { normalizePath, toRelativePath, isSafePath, fileNameFromPath } from '../../../utils/pathUtils';
+import { useDeviceSettings } from '../../../hooks/useDeviceSettings';
 
 
 const DEFAULT_PROVIDER_AVAILABILITY: Record<Provider, ProviderAvailability> = {
@@ -107,6 +108,7 @@ function ChatInterface({
   const { tasksEnabled, isTaskMasterInstalled } = useTasksSettings();
   const { refreshTasks } = useTaskMaster();
   const { t } = useTranslation('chat');
+  const { isMobile } = useDeviceSettings({ trackPWA: false });
   const [isShellEditPromptOpen, setIsShellEditPromptOpen] = useState(false);
   const [previewFile, setPreviewFile] = useState<EditingFile | null>(null);
 
@@ -699,7 +701,7 @@ function ChatInterface({
 
   return (
     <>
-      <div className="h-full flex min-h-0 flex-col xl:flex-row">
+      <div className={`h-full flex min-h-0 ${isMobile ? 'flex-col' : 'flex-row'}`}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {previewFile && (
             <div className="flex-1 min-h-0 overflow-hidden">
