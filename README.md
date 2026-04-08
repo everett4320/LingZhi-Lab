@@ -62,7 +62,7 @@ Dr. Claw is a general-purpose AI research assistant designed to help researchers
 ## Product Screenshot
 
 <p align="center">
-  <img src="public/screenshots/new_claw.png" alt="Dr. Claw chat interface" width="1000">
+  <img src="public/screenshots/screenshot_v1_2.png" alt="Dr. Claw chat interface" width="1000">
 </p>
 
 <details>
@@ -78,6 +78,7 @@ Dr. Claw is a general-purpose AI research assistant designed to help researchers
 
 ## What's New
 
+- 🧪 **Auto Research Hub** `2026-04-08` — One click to launch fully autonomous research! Pick a tool pack (ARIS, Autoresearch, DeepScientist), hit configure, choose a workflow in Chat — and watch the agent run your entire research pipeline from idea to paper while you sleep.
 - 🖥️ **Desktop App & npx** `2026-04-06` — Dr. Claw now runs as a native desktop app! Grab the `.dmg` / `.exe` from [GitHub Releases](https://github.com/OpenLAIR/dr-claw/releases), or run `npx dr-claw` for zero-setup instant start.
 - 🗂️ **Multi-Tab Sidebar** `2026-04-06` — Research Lab and Files now live side-by-side as switchable tabs in the right sidebar — everything you need, one glance away.
 - 📂 **File Preview Overlay** `2026-04-06` — Preview any project file inline with a sleek pill toggle and sidebar browser — no more context-switching!
@@ -699,6 +700,29 @@ If you want Dr. Claw to execute the generated task list end-to-end for you, use 
 
 </details>
 
+<details>
+<summary><strong>Optional — Configure Auto Research Hub</strong></summary>
+
+Auto Research Hub (sidebar → **Auto Research**) lets you browse and configure third-party research tool packs. Three packs are available:
+
+| Pack | Description | Dependencies |
+|------|-------------|-------------|
+| **ARIS** | End-to-end autonomous pipeline with cross-model adversarial review | MCP Reviewer required |
+| **Autoresearch** | Goal-directed iteration engine with 9 subcommands | Zero dependencies |
+| **DeepScientist** | 13-stage research OS (ICLR 2026) with 50+ templates | Zero dependencies |
+
+**How to use:**
+
+1. Open **Auto Research** from the sidebar.
+2. Pick a pack and expand **Included Workflows** to see available slash commands.
+3. If the pack requires configuration (e.g. ARIS), expand **Configuration**, select an MCP Reviewer, enter your API key, and click **Auto Configure**.
+4. Go to **Chat**, click the **Auto Research** dropdown above the input box, select the pack and workflow.
+5. Enter your research topic — the agent executes the workflow end-to-end and writes results to your project.
+
+> Zero-dependency packs (Autoresearch, DeepScientist) work out of the box — no configuration step needed.
+
+</details>
+
 <a id="troubleshooting-web-search"></a>
 <details>
 <summary><strong>Step 4 — Troubleshooting Web Search</strong></summary>
@@ -942,6 +966,9 @@ If you find Dr. Claw useful in your research, please cite:
 - **[AI Researcher](https://github.com/HKUDS/AI-Researcher/)** (HKUDS) — Inspiration for research workflow and agentic research.
 - **[Vibe-Scholar](https://github.com/Mr-Tieguigui/Vibe-Scholar)** — Inspiration for the AI-native research workspace direction.
 - **[autoresearch](https://github.com/karpathy/autoresearch)** — Inspiration for autonomous research orchestration and end-to-end execution.
+- **[Autoresearch (uditgoenka)](https://github.com/uditgoenka/autoresearch)** — Autonomous goal-directed iteration engine, integrated as a tool pack in Auto Research Hub.
+- **[ARIS](https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep)** — End-to-end autonomous research pipeline with cross-model adversarial review, integrated as a tool pack in Auto Research Hub.
+- **[DeepScientist](https://github.com/ResearAI/DeepScientist)** — 13-stage autonomous research OS from ICLR 2026, integrated as a tool pack in Auto Research Hub.
 
 ## Support & Community
 

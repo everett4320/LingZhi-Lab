@@ -4,6 +4,10 @@ export interface GuidedPromptScenario {
   titleKey: string;
   descriptionKey: string;
   skills: string[];
+  /** If set, clicking this scenario injects a slash command instead of a skill template */
+  slashCommand?: string;
+  /** Visual grouping — scenarios with the same group render under a dropdown */
+  group?: string;
 }
 
 export const GUIDED_PROMPT_SCENARIOS: GuidedPromptScenario[] = [
@@ -76,5 +80,53 @@ export const GUIDED_PROMPT_SCENARIOS: GuidedPromptScenario[] = [
     titleKey: 'guidedStarter.scenarios.grantProposal.title',
     descriptionKey: 'guidedStarter.scenarios.grantProposal.description',
     skills: ['inno-grant-proposal'],
+  },
+];
+
+export const AUTO_RESEARCH_SCENARIOS: GuidedPromptScenario[] = [
+  {
+    id: 'aris-full-pipeline',
+    icon: '🔬',
+    titleKey: 'guidedStarter.scenarios.arisFullPipeline.title',
+    descriptionKey: 'guidedStarter.scenarios.arisFullPipeline.description',
+    skills: ['aris-research-pipeline'],
+    slashCommand: '/aris-research-pipeline',
+    group: 'auto-research',
+  },
+  {
+    id: 'aris-idea-discovery',
+    icon: '💡',
+    titleKey: 'guidedStarter.scenarios.arisIdeaDiscovery.title',
+    descriptionKey: 'guidedStarter.scenarios.arisIdeaDiscovery.description',
+    skills: ['aris-idea-discovery'],
+    slashCommand: '/aris-idea-discovery',
+    group: 'auto-research',
+  },
+  {
+    id: 'aris-auto-review',
+    icon: '🔄',
+    titleKey: 'guidedStarter.scenarios.arisAutoReview.title',
+    descriptionKey: 'guidedStarter.scenarios.arisAutoReview.description',
+    skills: ['aris-auto-review-loop'],
+    slashCommand: '/aris-auto-review-loop',
+    group: 'auto-research',
+  },
+  {
+    id: 'aris-paper-writing',
+    icon: '📑',
+    titleKey: 'guidedStarter.scenarios.arisPaperWriting.title',
+    descriptionKey: 'guidedStarter.scenarios.arisPaperWriting.description',
+    skills: ['aris-paper-writing'],
+    slashCommand: '/aris-paper-writing',
+    group: 'auto-research',
+  },
+  {
+    id: 'autoresearch-loop',
+    icon: '🔁',
+    titleKey: 'guidedStarter.scenarios.autoresearchLoop.title',
+    descriptionKey: 'guidedStarter.scenarios.autoresearchLoop.description',
+    skills: ['autoresearch'],
+    slashCommand: '/autoresearch',
+    group: 'auto-research',
   },
 ];

@@ -14,6 +14,18 @@ import {
   Sparkles,
   Trash2,
   X,
+  Copy,
+  Package,
+  Play,
+  ChevronDown,
+  ChevronUp,
+  Settings,
+  AlertCircle,
+  Terminal,
+  Server,
+  Cpu,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../utils/api';
@@ -270,6 +282,93 @@ const NON_SKILL_DIRECTORY_NAMES = new Set([
   'test',
 ]);
 
+type PackConfigOption = {
+  key: string;
+  label: string;
+  install?: string;
+  register: string;
+  envVars: Array<{ name: string; example: string }>;
+};
+
+type PackGpuOption = {
+  key: string;
+  label: string;
+  template: string;
+  note?: string;
+};
+
+type PackConfig = {
+  mcp: PackConfigOption[];
+  gpu: PackGpuOption[];
+  setupScript: string;
+};
+
+const COMMUNITY_PACK_CONFIGS: Record<string, PackConfig> = {
+  ARIS: {
+    mcp: [
+      {
+        key: 'codex',
+        label: 'Codex (GPT-5.4)',
+        install: 'npm install -g @openai/codex',
+        register: 'claude mcp add codex -s user -- codex mcp-server',
+        envVars: [{ name: 'OPENAI_API_KEY', example: 'sk-proj-...' }],
+      },
+      {
+        key: 'llm-chat',
+        label: 'Generic LLM',
+        register: 'claude mcp add llm-chat -s user -- python3 skills/aris-infra/mcp-servers/llm-chat/server.py',
+        envVars: [
+          { name: 'LLM_API_KEY', example: 'your-api-key' },
+          { name: 'LLM_BASE_URL', example: 'https://api.openai.com/v1' },
+          { name: 'LLM_MODEL', example: 'gpt-4o' },
+        ],
+      },
+      {
+        key: 'gemini',
+        label: 'Gemini',
+        register: 'claude mcp add gemini-review -s user -- python3 skills/aris-infra/mcp-servers/gemini-review/server.py',
+        envVars: [{ name: 'GEMINI_API_KEY', example: 'your-gemini-key' }],
+      },
+    ],
+    gpu: [
+      {
+        key: 'local',
+        label: 'Local GPU',
+        template: '## Local Environment\n- gpu: local\n- Mac MPS / Linux CUDA',
+      },
+      {
+        key: 'remote',
+        label: 'Remote SSH',
+        template: '## Remote Server\n- gpu: remote\n- SSH: `ssh my-gpu-server`\n- GPU: 4x A100 (80GB each)\n- Conda: `conda activate research`\n- Code dir: `/home/user/experiments/`\n- code_sync: rsync',
+        note: 'Edit SSH alias, GPU count, conda env, and code dir to match your server.',
+      },
+      {
+        key: 'vast',
+        label: 'Vast.ai',
+        template: '## Vast.ai\n- gpu: vast\n- auto_destroy: true\n- max_budget: 5.00',
+        note: 'Run: pip install vastai && vastai set api-key YOUR_KEY',
+      },
+      {
+        key: 'modal',
+        label: 'Modal',
+        template: '## Modal\n- gpu: modal\n- modal_timeout: 21600',
+        note: 'Run: pip install modal && modal setup',
+      },
+    ],
+    setupScript: 'bash skills/aris-infra/setup.sh',
+  },
+  Autoresearch: {
+    mcp: [],
+    gpu: [],
+    setupScript: '',
+  },
+  DeepScientist: {
+    mcp: [],
+    gpu: [],
+    setupScript: '',
+  },
+};
+
 const FACET_PREFIX_PATTERN = /^(Domain|Stage|Category|Source|领域|阶段|类别|来源|영역|단계|카테고리):\s*/i;
 const SOURCE_PLATFORM_PATTERN = /^(来源: 平台自研|Source: Dr\. Claw)$/i;
 
@@ -337,6 +436,32 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     standaloneGroup: '独立技能',
     noSkillFile: '根目录未检测到 SKILL.md',
     discardChanges: '放弃未保存的修改？',
+    tabPlatform: '平台技能',
+    tabCommunity: '社区工具',
+    communityTitle: '社区工具包',
+    communitySubtitle: '来自开源社区的完整研究工作流，一键配置即可使用。',
+    packSetup: '配置环境',
+    packWorkflows: '一键工作流',
+    packSubSkills: '子技能 & 工具',
+    packAllSkills: '全部 {{count}} 个技能',
+    packAuthor: '作者',
+    packVerified: '{{count}} 个已验证',
+    copyCommand: '复制',
+    copied: '已复制!',
+    noCommunityPacks: '暂无社区工具包。可通过"导入本地技能"添加社区技能。',
+    packConfig: '必要配置',
+    configMcp: '① MCP 审稿服务',
+    configMcpDesc: '选择外部 LLM 进行跨模型审稿（必填）',
+    configGpu: '② GPU 环境',
+    configGpuDesc: '将以下模板添加到项目 CLAUDE.md（跑实验需要）',
+    configSetupScript: '③ 一键安装脚本',
+    configInstall: '安装',
+    configRegister: '注册 MCP',
+    configEnvVar: '环境变量',
+    configClaudeMd: '添加到 CLAUDE.md',
+    configApply: '一键配置',
+    configApplying: '配置中...',
+    configSuccess: '配置完成！重启 Claude Code 会话后生效。',
     importLocal: '导入本地技能',
     importModalTitle: '从本地目录导入技能',
     scan: '扫描',
@@ -417,6 +542,32 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     standaloneGroup: 'Standalone',
     noSkillFile: 'No root SKILL.md found',
     discardChanges: 'Discard unsaved changes?',
+    tabPlatform: 'Platform Skills',
+    tabCommunity: 'Community Tools',
+    communityTitle: 'Community Tool Packs',
+    communitySubtitle: 'Complete research workflows from the open-source community. One-click setup, ready to use.',
+    packSetup: 'Setup',
+    packWorkflows: 'One-Click Workflows',
+    packSubSkills: 'Sub-skills & Utilities',
+    packAllSkills: 'All {{count}} skills',
+    packAuthor: 'Author',
+    packVerified: '{{count}} verified',
+    copyCommand: 'Copy',
+    copied: 'Copied!',
+    noCommunityPacks: 'No community tool packs found. Import community skills via "Import Local Skills".',
+    packConfig: 'Configuration',
+    configMcp: '① MCP Reviewer',
+    configMcpDesc: 'Choose an external LLM for cross-model review (required)',
+    configGpu: '② GPU Environment',
+    configGpuDesc: 'Add the template below to your project CLAUDE.md (for experiments)',
+    configSetupScript: '③ Setup Script',
+    configInstall: 'Install',
+    configRegister: 'Register MCP',
+    configEnvVar: 'Env Variable',
+    configClaudeMd: 'Add to CLAUDE.md',
+    configApply: 'Auto Configure',
+    configApplying: 'Configuring...',
+    configSuccess: 'Configured! Restart Claude Code session to activate.',
     importLocal: 'Import Local Skills',
     importModalTitle: 'Import skills from local directory',
     scan: 'Scan',
@@ -497,6 +648,32 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     standaloneGroup: 'Standalone',
     noSkillFile: 'No root SKILL.md found',
     discardChanges: 'Discard unsaved changes?',
+    tabPlatform: 'Platform Skills',
+    tabCommunity: 'Community Tools',
+    communityTitle: 'Community Tool Packs',
+    communitySubtitle: 'Complete research workflows from the open-source community. One-click setup, ready to use.',
+    packSetup: 'Setup',
+    packWorkflows: 'One-Click Workflows',
+    packSubSkills: 'Sub-skills & Utilities',
+    packAllSkills: 'All {{count}} skills',
+    packAuthor: 'Author',
+    packVerified: '{{count}} verified',
+    copyCommand: 'Copy',
+    copied: 'Copied!',
+    noCommunityPacks: 'No community tool packs found.',
+    packConfig: 'Configuration',
+    configMcp: '① MCP Reviewer',
+    configMcpDesc: 'Choose an external LLM for cross-model review (required)',
+    configGpu: '② GPU Environment',
+    configGpuDesc: 'Add the template below to your project CLAUDE.md (for experiments)',
+    configSetupScript: '③ Setup Script',
+    configInstall: 'Install',
+    configRegister: 'Register MCP',
+    configEnvVar: 'Env Variable',
+    configClaudeMd: 'Add to CLAUDE.md',
+    configApply: 'Auto Configure',
+    configApplying: 'Configuring...',
+    configSuccess: 'Configured! Restart Claude Code session to activate.',
     importLocal: 'Import Local Skills',
     importModalTitle: 'Import skills from local directory',
     scan: 'Scan',
@@ -1296,7 +1473,11 @@ function buildSkillCardTagSummary(skill: SkillExplorerItem): { tags: Array<{ lab
   return { tags, hiddenCount };
 }
 
-export default function SkillsDashboard() {
+type SkillsDashboardProps = {
+  onSendToChat?: (command: string) => void;
+};
+
+export default function SkillsDashboard({ onSendToChat }: SkillsDashboardProps = {}) {
   const { i18n } = useTranslation();
   const localeKey = useMemo(() => resolveLocaleKey(i18n.language || 'en'), [i18n.language]);
   const text = UI_TEXT[localeKey];
@@ -1311,6 +1492,20 @@ export default function SkillsDashboard() {
   const [activeDomain, setActiveDomain] = useState('all');
   const [activeSource, setActiveSource] = useState<'all' | 'dr-claw' | 'imported'>('all');
   const [activeStatus, setActiveStatus] = useState('all');
+  const [viewMode, setViewMode] = useState<'platform' | 'community'>('platform');
+  const [expandedPacks, setExpandedPacks] = useState<Set<string>>(new Set());
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+  const [configExpanded, setConfigExpanded] = useState<Set<string>>(new Set());
+  const [selectedMcp, setSelectedMcp] = useState<Record<string, string>>({});
+  const [selectedGpu, setSelectedGpu] = useState<Record<string, string>>({});
+  const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
+  const [apiKeyVisible, setApiKeyVisible] = useState<Record<string, boolean>>({});
+  const [configuring, setConfiguring] = useState(false);
+  const [configResult, setConfigResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [computeNodes, setComputeNodes] = useState<Array<{ id: string; name: string; host: string; user: string; port: number; workDir: string; type: string }>>([]);
+  const [detectingGpu, setDetectingGpu] = useState(false);
+  const [detectedGpuTemplate, setDetectedGpuTemplate] = useState<Record<string, string>>({});
+  const [detectedGpuInfo, setDetectedGpuInfo] = useState<Record<string, string>>({});
   const [focusedSkill, setFocusedSkill] = useState<SkillExplorerItem | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importPath, setImportPath] = useState('~/.claude/skills');
@@ -1736,6 +1931,126 @@ export default function SkillsDashboard() {
     [explorerSkills]
   );
 
+  type CommunityPack = {
+    name: string;
+    skills: SkillExplorerSeed[];
+    verified: SkillExplorerSeed[];
+    workflows: SkillExplorerSeed[];
+    setupSkill: SkillExplorerSeed | undefined;
+    owner: string;
+  };
+
+  const communityPacks = useMemo<CommunityPack[]>(() => {
+    const imported = explorerSkills.filter((s) => s.sourceKey === 'imported');
+    const groups: Record<string, SkillExplorerSeed[]> = {};
+    for (const s of imported) {
+      const group = s.legacyGroupLabel || 'Standalone';
+      (groups[group] ??= []).push(s);
+    }
+    return Object.entries(groups)
+      .filter(([name]) => name !== 'Standalone')
+      .map(([name, skills]) => ({
+        name,
+        skills,
+        verified: skills.filter((s) => s.statusKey === 'verified'),
+        workflows: skills.filter((s) => s.taxonomy?.capabilities.some((c) => c.key === 'agent-workflow')),
+        setupSkill: skills.find((s) => s.name.endsWith('-infra') || s.name.endsWith('-setup')),
+        owner: skills[0]?.owner || '',
+      }))
+      .sort((a, b) => b.skills.length - a.skills.length);
+  }, [explorerSkills]);
+
+  const copyToClipboard = useCallback((command: string) => {
+    navigator.clipboard.writeText(command).then(() => {
+      setCopiedCommand(command);
+      setTimeout(() => setCopiedCommand(null), 2000);
+    });
+  }, []);
+
+  const togglePackExpanded = useCallback((packName: string) => {
+    setExpandedPacks((prev) => {
+      const next = new Set(prev);
+      if (next.has(packName)) next.delete(packName);
+      else next.add(packName);
+      return next;
+    });
+  }, []);
+
+  const handleConfigure = useCallback(async (packName: string) => {
+    const cfg = COMMUNITY_PACK_CONFIGS[packName];
+    if (!cfg) return;
+
+    const mcpKey = selectedMcp[packName] || cfg.mcp[0].key;
+    const gpuKey = selectedGpu[packName] || cfg.gpu[0].key;
+    const gpuOpt = cfg.gpu.find((g) => g.key === gpuKey) || cfg.gpu[0];
+
+    // Use detected GPU template if compute-node selected
+    const gpuTemplate = gpuKey === 'compute-node' && detectedGpuTemplate[packName]
+      ? detectedGpuTemplate[packName]
+      : gpuOpt?.template || '';
+
+    // Collect API keys from inputs
+    const mcpOpt = cfg.mcp.find((m) => m.key === mcpKey) || cfg.mcp[0];
+    const apiKeys: Record<string, string> = {};
+    for (const ev of mcpOpt.envVars) {
+      const val = apiKeyInputs[ev.name];
+      if (val) apiKeys[ev.name] = val;
+    }
+
+    setConfiguring(true);
+    setConfigResult(null);
+
+    try {
+      // Use current working directory as project path
+      const projectPath = window.location.pathname === '/' ? process.env.REACT_APP_PROJECT_PATH || '.' : '.';
+      const resp = await (await import('../utils/api')).api.communityTools.configure(
+        projectPath,
+        mcpKey,
+        apiKeys,
+        gpuTemplate
+      );
+      const data = await resp.json();
+      if (data.success) {
+        const okSteps = (data.steps || []).filter((s: { status: string }) => s.status === 'ok').length;
+        setConfigResult({ success: true, message: `Done! ${okSteps} step(s) configured.` });
+      } else {
+        const errMsgs = (data.errors || []).map((e: { error: string }) => e.error).join('; ');
+        setConfigResult({ success: false, message: errMsgs || 'Configuration failed' });
+      }
+    } catch (err) {
+      setConfigResult({ success: false, message: String(err) });
+    } finally {
+      setConfiguring(false);
+    }
+  }, [selectedMcp, selectedGpu, apiKeyInputs]);
+
+  const loadComputeNodes = useCallback(async () => {
+    try {
+      const resp = await (await import('../utils/api')).api.communityTools.getComputeNodes();
+      const data = await resp.json();
+      setComputeNodes(data.nodes || []);
+    } catch {
+      // no compute nodes available
+    }
+  }, []);
+
+  const handleDetectGpu = useCallback(async (nodeId: string, packName: string) => {
+    setDetectingGpu(true);
+    try {
+      const resp = await (await import('../utils/api')).api.communityTools.detectGpu(nodeId);
+      const data = await resp.json();
+      if (data.success) {
+        setDetectedGpuTemplate((prev) => ({ ...prev, [packName]: data.template }));
+        setDetectedGpuInfo((prev) => ({ ...prev, [packName]: `${data.nodeName}: ${data.gpuLine}` }));
+        setSelectedGpu((prev) => ({ ...prev, [packName]: 'compute-node' }));
+      }
+    } catch {
+      // detection failed
+    } finally {
+      setDetectingGpu(false);
+    }
+  }, []);
+
   const hasActiveFilters = Boolean(searchQuery.trim())
     || activeSource !== 'all'
     || activeIntent !== 'all'
@@ -1908,25 +2223,433 @@ export default function SkillsDashboard() {
           </div>
         </div>
 
-        {error && (
+        {/* ── Tab Bar: Platform vs Community ── */}
+        <div className="mb-5 flex items-center gap-1 rounded-2xl border border-border/80 bg-card/95 p-1.5 shadow-sm w-fit">
+          <button
+            type="button"
+            onClick={() => setViewMode('platform')}
+            className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all ${
+              viewMode === 'platform'
+                ? 'bg-sky-100 text-sky-700 shadow-sm dark:bg-sky-900/40 dark:text-sky-200'
+                : 'text-muted-foreground hover:bg-muted/60'
+            }`}
+          >
+            <Sparkles className="h-4 w-4" />
+            {text.tabPlatform}
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('community')}
+            className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all ${
+              viewMode === 'community'
+                ? 'bg-amber-100 text-amber-700 shadow-sm dark:bg-amber-900/40 dark:text-amber-200'
+                : 'text-muted-foreground hover:bg-muted/60'
+            }`}
+          >
+            <Package className="h-4 w-4" />
+            {text.tabCommunity}
+            {communityPacks.length > 0 && (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                viewMode === 'community'
+                  ? 'bg-amber-200/70 text-amber-800 dark:bg-amber-800/50 dark:text-amber-100'
+                  : 'bg-muted text-muted-foreground'
+              }`}>
+                {communityPacks.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* ── Community Tools View ── */}
+        {viewMode === 'community' && (
+          <div className="space-y-6">
+            {communityPacks.length === 0 ? (
+              <div className="rounded-2xl border border-border/80 bg-card/95 p-8 text-center text-sm text-muted-foreground">
+                <Package className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
+                {text.noCommunityPacks}
+              </div>
+            ) : (
+              communityPacks.map((pack) => (
+                <div key={pack.name} className="rounded-2xl border border-amber-200/60 bg-gradient-to-br from-amber-50/60 via-card to-card shadow-sm dark:border-amber-800/30 dark:from-amber-950/20">
+                  {/* Pack Header */}
+                  <div className="p-6 pb-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                            <Package className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h2 className="text-xl font-semibold text-foreground">{pack.name}</h2>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {text.packAuthor}: {pack.owner || 'Community'} · {text.packVerified.replace('{{count}}', String(pack.verified.length))} · {pack.skills.length} skills
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      {pack.setupSkill && (
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(`/${pack.setupSkill!.name}`)}
+                          className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-amber-300/60 bg-amber-100/80 px-4 py-2 text-sm font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-200/80 dark:border-amber-700/40 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-800/40"
+                        >
+                          <Settings className="h-4 w-4" />
+                          {copiedCommand === `/${pack.setupSkill.name}` ? text.copied : text.packSetup}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Configuration Section */}
+                  {COMMUNITY_PACK_CONFIGS[pack.name] && (
+                    <div className="border-t border-amber-200/40 dark:border-amber-800/20">
+                      <button
+                        type="button"
+                        onClick={() => { loadComputeNodes(); setConfigExpanded((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(pack.name)) next.delete(pack.name);
+                          else next.add(pack.name);
+                          return next;
+                        }); }}
+                        className="flex w-full items-center justify-between px-6 py-3 transition-colors hover:bg-amber-50/40 dark:hover:bg-amber-950/10"
+                      >
+                        <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          <AlertCircle className="h-4 w-4 text-sky-500" />
+                          {text.packConfig}
+                        </span>
+                        {configExpanded.has(pack.name) ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                      </button>
+
+                      {configExpanded.has(pack.name) && (() => {
+                        const cfg = COMMUNITY_PACK_CONFIGS[pack.name];
+                        const mcpKey = selectedMcp[pack.name] || cfg.mcp[0].key;
+                        const gpuKey = selectedGpu[pack.name] || cfg.gpu[0].key;
+                        const mcpOpt = cfg.mcp.find((m) => m.key === mcpKey) || cfg.mcp[0];
+                        const gpuOpt = cfg.gpu.find((g) => g.key === gpuKey) || cfg.gpu[0];
+
+                        return (
+                          <div className="space-y-5 px-6 pb-5">
+                            {/* MCP Reviewer */}
+                            <div>
+                              <h4 className="mb-1 text-sm font-semibold text-foreground">{text.configMcp}</h4>
+                              <p className="mb-3 text-xs text-muted-foreground">{text.configMcpDesc}</p>
+                              <div className="mb-3 flex flex-wrap gap-1.5">
+                                {cfg.mcp.map((opt) => (
+                                  <button
+                                    key={opt.key}
+                                    type="button"
+                                    onClick={() => setSelectedMcp((prev) => ({ ...prev, [pack.name]: opt.key }))}
+                                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                                      mcpKey === opt.key
+                                        ? 'border-sky-400 bg-sky-100 text-sky-700 shadow-sm dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-200'
+                                        : 'border-border/60 bg-background text-muted-foreground hover:bg-muted/60'
+                                    }`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="space-y-2 rounded-xl border border-sky-200/50 bg-sky-50/30 p-3 dark:border-sky-800/30 dark:bg-sky-950/10">
+                                {mcpOpt.install && (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="mb-0.5 text-xs font-medium text-muted-foreground">{text.configInstall}</p>
+                                      <code className="block truncate rounded bg-slate-100 px-2 py-1 text-xs text-foreground dark:bg-slate-800">{mcpOpt.install}</code>
+                                    </div>
+                                    <button type="button" onClick={() => copyToClipboard(mcpOpt.install!)} className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-sky-100 hover:text-sky-700 dark:hover:bg-sky-900/30">
+                                      {copiedCommand === mcpOpt.install ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                                    </button>
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="mb-0.5 text-xs font-medium text-muted-foreground">{text.configRegister}</p>
+                                    <code className="block truncate rounded bg-slate-100 px-2 py-1 text-xs text-foreground dark:bg-slate-800">{mcpOpt.register}</code>
+                                  </div>
+                                  <button type="button" onClick={() => copyToClipboard(mcpOpt.register)} className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-sky-100 hover:text-sky-700 dark:hover:bg-sky-900/30">
+                                    {copiedCommand === mcpOpt.register ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                                  </button>
+                                </div>
+                                {mcpOpt.envVars.map((ev) => (
+                                  <div key={ev.name}>
+                                    <p className="mb-1 text-xs font-medium text-muted-foreground">{ev.name}</p>
+                                    <div className="relative">
+                                      <input
+                                        type={apiKeyVisible[ev.name] ? 'text' : 'password'}
+                                        placeholder={ev.example}
+                                        value={apiKeyInputs[ev.name] || ''}
+                                        onChange={(e) => setApiKeyInputs((prev) => ({ ...prev, [ev.name]: e.target.value }))}
+                                        className="w-full rounded-lg border border-border bg-background px-3 py-1.5 pr-9 text-xs font-mono text-foreground outline-none transition focus:border-sky-400 focus:ring-1 focus:ring-sky-300/50 dark:focus:border-sky-600"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setApiKeyVisible((prev) => ({ ...prev, [ev.name]: !prev[ev.name] }))}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                                      >
+                                        {apiKeyVisible[ev.name] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* GPU Environment */}
+                            <div>
+                              <h4 className="mb-1 text-sm font-semibold text-foreground">{text.configGpu}</h4>
+                              <p className="mb-3 text-xs text-muted-foreground">{text.configGpuDesc}</p>
+                              <div className="mb-3 flex flex-wrap gap-1.5">
+                                {/* Existing compute nodes button */}
+                                {computeNodes.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedGpu((prev) => ({ ...prev, [pack.name]: 'compute-node' }))}
+                                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                                      gpuKey === 'compute-node'
+                                        ? 'border-green-400 bg-green-100 text-green-700 shadow-sm dark:border-green-600 dark:bg-green-900/40 dark:text-green-200'
+                                        : 'border-border/60 bg-background text-muted-foreground hover:bg-muted/60'
+                                    }`}
+                                  >
+                                    <Server className="h-3 w-3" />
+                                    {localeKey === 'zh' ? '已有服务器' : 'Existing Server'}
+                                  </button>
+                                )}
+                                {cfg.gpu.map((opt) => (
+                                  <button
+                                    key={opt.key}
+                                    type="button"
+                                    onClick={() => setSelectedGpu((prev) => ({ ...prev, [pack.name]: opt.key }))}
+                                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                                      gpuKey === opt.key
+                                        ? 'border-sky-400 bg-sky-100 text-sky-700 shadow-sm dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-200'
+                                        : 'border-border/60 bg-background text-muted-foreground hover:bg-muted/60'
+                                    }`}
+                                  >
+                                    <Cpu className="h-3 w-3" />
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+
+                              {/* Compute node selector */}
+                              {gpuKey === 'compute-node' && computeNodes.length > 0 && (
+                                <div className="mb-3 rounded-xl border border-green-200/50 bg-green-50/30 p-3 dark:border-green-800/30 dark:bg-green-950/10">
+                                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                                    {localeKey === 'zh' ? '选择服务器并自动检测 GPU' : 'Select server to auto-detect GPU'}
+                                  </p>
+                                  <div className="space-y-1.5">
+                                    {computeNodes.map((node) => (
+                                      <button
+                                        key={node.id}
+                                        type="button"
+                                        disabled={detectingGpu}
+                                        onClick={() => handleDetectGpu(node.id, pack.name)}
+                                        className="group flex w-full items-center justify-between gap-2 rounded-lg border border-border/40 bg-background/60 px-3 py-2 text-left transition-all hover:border-green-300/60 hover:bg-green-50/40 active:scale-[0.99] disabled:opacity-50 dark:hover:border-green-700/40"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <Server className="h-3.5 w-3.5 text-green-600" />
+                                          <span className="text-xs font-medium text-foreground">{node.name}</span>
+                                          <span className="text-xs text-muted-foreground">{node.user}@{node.host}</span>
+                                        </div>
+                                        <span className="text-xs text-muted-foreground group-hover:text-green-600">
+                                          {detectingGpu ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : (localeKey === 'zh' ? '检测 GPU' : 'Detect GPU')}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                  {detectedGpuInfo[pack.name] && (
+                                    <p className="mt-2 text-xs font-medium text-green-700 dark:text-green-300">
+                                      ✓ {detectedGpuInfo[pack.name]}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Template display */}
+                              <div className="rounded-xl border border-sky-200/50 bg-sky-50/30 p-3 dark:border-sky-800/30 dark:bg-sky-950/10">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="mb-1 text-xs font-medium text-muted-foreground">{text.configClaudeMd}</p>
+                                    <pre className="whitespace-pre-wrap rounded bg-slate-100 px-2 py-1.5 text-xs text-foreground dark:bg-slate-800">
+                                      {gpuKey === 'compute-node' && detectedGpuTemplate[pack.name]
+                                        ? detectedGpuTemplate[pack.name]
+                                        : gpuOpt.template}
+                                    </pre>
+                                    {gpuKey !== 'compute-node' && gpuOpt.note && <p className="mt-1.5 text-xs text-muted-foreground">💡 {gpuOpt.note}</p>}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(
+                                      gpuKey === 'compute-node' && detectedGpuTemplate[pack.name]
+                                        ? detectedGpuTemplate[pack.name]
+                                        : gpuOpt.template
+                                    )}
+                                    className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-sky-100 hover:text-sky-700 dark:hover:bg-sky-900/30"
+                                  >
+                                    {copiedCommand === (gpuKey === 'compute-node' && detectedGpuTemplate[pack.name] ? detectedGpuTemplate[pack.name] : gpuOpt.template)
+                                      ? <Check className="h-3.5 w-3.5 text-green-600" />
+                                      : <Copy className="h-3.5 w-3.5" />}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Setup Script */}
+                            <div>
+                              <h4 className="mb-2 text-sm font-semibold text-foreground">{text.configSetupScript}</h4>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(cfg.setupScript)}
+                                className="group flex w-full items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/80 px-4 py-2.5 text-left transition-all hover:border-sky-300/80 hover:bg-sky-50/40 active:scale-[0.99] dark:hover:border-sky-700/50 dark:hover:bg-sky-950/20"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Terminal className="h-4 w-4 text-sky-500" />
+                                  <code className="text-sm font-mono text-foreground">{cfg.setupScript}</code>
+                                </div>
+                                <span className="shrink-0 text-muted-foreground transition-colors group-hover:text-sky-600">
+                                  {copiedCommand === cfg.setupScript ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                                </span>
+                              </button>
+                            </div>
+
+                            {/* Auto Configure Button */}
+                            <div className="mt-1 rounded-xl border border-sky-300/50 bg-sky-50/50 p-4 dark:border-sky-800/30 dark:bg-sky-950/20">
+                              <button
+                                type="button"
+                                disabled={configuring}
+                                onClick={() => handleConfigure(pack.name)}
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-sky-700 active:scale-[0.98] disabled:opacity-60 dark:bg-sky-500 dark:hover:bg-sky-600"
+                              >
+                                {configuring ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    {text.configApplying}
+                                  </>
+                                ) : (
+                                  <>
+                                    <Settings className="h-4 w-4" />
+                                    {text.configApply}
+                                  </>
+                                )}
+                              </button>
+                              {configResult && (
+                                <p className={`mt-2 text-center text-xs font-medium ${configResult.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                  {configResult.success ? text.configSuccess : configResult.message}
+                                </p>
+                              )}
+                              <p className="mt-2 text-center text-xs text-muted-foreground">
+                                {localeKey === 'zh' ? '填写 API Key → 选择 MCP 和 GPU → 点击配置' : 'Fill API Key → Select MCP & GPU → Click to configure'}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Workflow Skills */}
+                  {pack.workflows.length > 0 && (
+                    <div className="border-t border-amber-200/40 px-6 py-4 dark:border-amber-800/20">
+                      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <Play className="h-4 w-4 text-amber-600" />
+                        {text.packWorkflows}
+                      </h3>
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {pack.workflows.map((skill) => (
+                          <div
+                            key={skill.name}
+                            className="group flex flex-col items-start gap-1.5 rounded-xl border border-border/60 bg-background/80 px-4 py-3 transition-all hover:border-amber-300/80 hover:bg-amber-50/60 hover:shadow-sm dark:hover:border-amber-700/50 dark:hover:bg-amber-950/20"
+                          >
+                            <div className="flex w-full items-center justify-between gap-2">
+                              <p className="truncate text-sm font-semibold text-foreground">{skill.name}</p>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); copyToClipboard(`/${skill.name}`); }}
+                                className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-all hover:text-amber-600 group-hover:opacity-100"
+                                title={localeKey === 'zh' ? '复制命令' : 'Copy command'}
+                              >
+                                {copiedCommand === `/${skill.name}` ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                            <p className="line-clamp-2 text-xs text-muted-foreground">{skill.summary.slice(0, 80)}</p>
+                            <div className="mt-1 flex w-full items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => onSendToChat ? onSendToChat(`/${skill.name}`) : copyToClipboard(`/${skill.name}`)}
+                                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-amber-700 active:scale-[0.97] dark:bg-amber-500 dark:hover:bg-amber-600"
+                              >
+                                <Play className="h-3 w-3" />
+                                {localeKey === 'zh' ? '在Chat中使用' : 'Use in Chat'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* All Skills (expandable) */}
+                  <div className="border-t border-amber-200/40 dark:border-amber-800/20">
+                    <button
+                      type="button"
+                      onClick={() => togglePackExpanded(pack.name)}
+                      className="flex w-full items-center justify-between px-6 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <span>{text.packAllSkills.replace('{{count}}', String(pack.skills.length))}</span>
+                      {expandedPacks.has(pack.name) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
+
+                    {expandedPacks.has(pack.name) && (
+                      <div className="px-6 pb-4">
+                        <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                          {pack.skills
+                            .filter((s) => !pack.workflows.includes(s) && s !== pack.setupSkill)
+                            .map((skill) => (
+                              <button
+                                key={skill.name}
+                                type="button"
+                                onClick={() => copyToClipboard(`/${skill.name}`)}
+                                className="group flex items-center justify-between gap-2 rounded-lg border border-border/40 bg-background/60 px-3 py-2 text-left transition-all hover:border-amber-200/60 hover:bg-amber-50/30 active:scale-[0.98] dark:hover:border-amber-800/40 dark:hover:bg-amber-950/10"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-xs font-medium text-foreground">{skill.name}</p>
+                                  <p className="truncate text-xs text-muted-foreground">{skill.primaryIntentLabel}</p>
+                                </div>
+                                <span className="shrink-0 text-muted-foreground transition-colors group-hover:text-amber-600">
+                                  {copiedCommand === `/${skill.name}` ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                                </span>
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ── Platform Skills View (existing) ── */}
+        {viewMode === 'platform' && error && (
           <div className="mb-4 rounded-md border border-red-300/60 bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
             {error}
           </div>
         )}
 
-        {!hasSkillRoots && !error && (
+        {viewMode === 'platform' && !hasSkillRoots && !error && (
           <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
             {text.notFoundRoots}
           </div>
         )}
 
-        {hasSkillRoots && skills.length === 0 && !error && (
+        {viewMode === 'platform' && hasSkillRoots && skills.length === 0 && !error && (
           <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
             {text.noSkills}
           </div>
         )}
 
-        {skills.length > 0 && (
+        {viewMode === 'platform' && skills.length > 0 && (
           <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_420px]">
             <aside className="space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto xl:pr-1">
               <div className="rounded-2xl border border-border/80 bg-card/95 p-4 shadow-sm">

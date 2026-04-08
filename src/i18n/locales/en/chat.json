@@ -288,6 +288,13 @@
       "default": "Select a provider above to begin"
     }
   },
+  "localModels": {
+    "loading": "Loading models...",
+    "notRunning": "Ollama offline",
+    "loadFailed": "Model load failed",
+    "networkError": "Model server unreachable",
+    "empty": "No models"
+  },
   "session": {
     "mode": {
       "title": "Choose Session Type",
@@ -301,7 +308,8 @@
       "workspaceQaTitle": "Workspace Q&A",
       "workspaceQaDescription": "Ask about files, modules, and implementation details without triggering the research workflow.",
       "workspaceQaGreeting": "Ask about any file, module, or implementation detail in this workspace. I will stay focused on code and project structure unless you explicitly ask to start research planning.",
-      "workspaceQaHint": "This session stays focused on repository questions unless you explicitly ask to start research planning."
+      "workspaceQaHint": "This session stays focused on repository questions unless you explicitly ask to start research planning.",
+      "workspaceQaPlaceholder": "Ask about any file, module, or implementation detail..."
     },
     "continue": {
       "title": "Continue your conversation",
@@ -366,7 +374,9 @@
     "sidebarTabs": {
       "context": "Context",
       "research": "Research",
-      "files": "Files"
+      "files": "Files",
+      "shell": "Shell",
+      "git": "Code History"
     },
     "showLess": "Show less",
     "preview": {
@@ -517,8 +527,29 @@
       "presentationPromotion": {
         "title": "Presentation materials",
         "description": "Turn the paper into slides, narration scripts, TTS audio, and a demo video."
+      },
+      "arisFullPipeline": {
+        "title": "Full Auto Research",
+        "description": "End-to-end: idea discovery → experiments → cross-model review → paper writing."
+      },
+      "arisIdeaDiscovery": {
+        "title": "Auto Idea Discovery",
+        "description": "Literature survey → idea generation → novelty check → cross-model review."
+      },
+      "arisAutoReview": {
+        "title": "Auto Review Loop",
+        "description": "Multi-round cross-model adversarial review with GPT/Gemini."
+      },
+      "arisPaperWriting": {
+        "title": "Auto Paper Writing",
+        "description": "Plan → figures → LaTeX → compile → cross-model improvement loop."
+      },
+      "autoresearchLoop": {
+        "title": "Autoresearch Loop",
+        "description": "Autonomous iteration: modify → verify → keep/discard → repeat."
       }
-    }
+    },
+    "autoResearchTitle": "Auto Research"
   },
   "attachedPrompt": {
     "showPrompt": "Show prompt",

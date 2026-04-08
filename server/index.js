@@ -70,6 +70,7 @@ import newsRoutes from './routes/news.js';
 import autoResearchRoutes from './routes/auto-research.js';
 import referencesRoutes from './routes/references.js';
 import memoryRoutes from './routes/memory.js';
+import communityToolsRoutes from './routes/community-tools.js';
 import { initializeDatabase, sessionDb, tagDb } from './database/db.js';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
 import { IS_PLATFORM } from './constants/config.js';
@@ -512,6 +513,9 @@ app.use('/api/references', authenticateToken, referencesRoutes);
 
 // Memory API Routes (protected)
 app.use('/api/memory', authenticateToken, memoryRoutes);
+
+// Community Tools API Routes (protected)
+app.use('/api/community-tools', authenticateToken, communityToolsRoutes);
 
 // Agent API Routes (uses API key authentication)
 app.use('/api/agent', agentRoutes);

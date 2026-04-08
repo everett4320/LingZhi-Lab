@@ -1,4 +1,4 @@
-import { Blocks, FolderPlus, LayoutDashboard, Newspaper, PanelLeftClose, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { Blocks, FlaskConical, FolderPlus, LayoutDashboard, Monitor, Newspaper, PanelLeftClose, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
 import type { AppTab } from '../../../../types/app';
 import { Button } from '../../../ui/button';
@@ -19,7 +19,9 @@ type SidebarHeaderProps = {
   onOpenDashboard: () => void;
   onOpenTrash: () => void;
   onOpenSkills: () => void;
+  onOpenAutoResearch: () => void;
   onOpenNews: () => void;
+  onOpenCompute: () => void;
   onCreateProject: () => void;
   onCollapseSidebar: () => void;
   t: TFunction;
@@ -39,7 +41,9 @@ export default function SidebarHeader({
   onOpenDashboard,
   onOpenTrash,
   onOpenSkills,
+  onOpenAutoResearch,
   onOpenNews,
+  onOpenCompute,
   onCreateProject,
   onCollapseSidebar,
   t,
@@ -156,6 +160,17 @@ export default function SidebarHeader({
 
             <Button
               type="button"
+              variant={activeTab === 'autoresearch' ? 'secondary' : 'outline'}
+              size="sm"
+              className="h-9 w-full justify-start rounded-xl"
+              onClick={onOpenAutoResearch}
+            >
+              <FlaskConical className="h-4 w-4" />
+              {t('common:tabs.autoResearch', { defaultValue: 'Auto Research' })}
+            </Button>
+
+            <Button
+              type="button"
               variant={activeTab === 'skills' ? 'secondary' : 'outline'}
               size="sm"
               className="h-9 w-full justify-start rounded-xl"
@@ -163,6 +178,17 @@ export default function SidebarHeader({
             >
               <Blocks className="h-4 w-4" />
               {t('common:projectDashboard.skillsTitle')}
+            </Button>
+
+            <Button
+              type="button"
+              variant={activeTab === 'compute' ? 'secondary' : 'outline'}
+              size="sm"
+              className="h-9 w-full justify-start rounded-xl"
+              onClick={onOpenCompute}
+            >
+              <Monitor className="h-4 w-4" />
+              {t('common:tabs.compute')}
             </Button>
 
             <Button
@@ -266,12 +292,32 @@ export default function SidebarHeader({
 
             <Button
               type="button"
+              variant={activeTab === 'autoresearch' ? 'secondary' : 'outline'}
+              className="h-10 w-full justify-start rounded-xl"
+              onClick={onOpenAutoResearch}
+            >
+              <FlaskConical className="h-4 w-4" />
+              {t('common:tabs.autoResearch', { defaultValue: 'Auto Research' })}
+            </Button>
+
+            <Button
+              type="button"
               variant={activeTab === 'skills' ? 'secondary' : 'outline'}
               className="h-10 w-full justify-start rounded-xl"
               onClick={onOpenSkills}
             >
               <Blocks className="h-4 w-4" />
               {t('common:projectDashboard.skillsTitle')}
+            </Button>
+
+            <Button
+              type="button"
+              variant={activeTab === 'compute' ? 'secondary' : 'outline'}
+              className="h-10 w-full justify-start rounded-xl"
+              onClick={onOpenCompute}
+            >
+              <Monitor className="h-4 w-4" />
+              {t('common:tabs.compute')}
             </Button>
           </div>
         )}

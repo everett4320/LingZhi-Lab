@@ -522,6 +522,37 @@ async function queryClaudeSDK(command, options = {}, ws) {
       sdkOptions.mcpServers = mcpServers;
     }
 
+    // Inject compute-tools MCP server if an active compute node is configured
+    try {
+      const { getActiveNode } = await import('./compute-node.js');
+      const activeNode = await getActiveNode();
+      if (activeNode) {
+        const computeMcpPath = new URL('./mcp-compute.js', import.meta.url).pathname;
+        sdkOptions.mcpServers = {
+          ...(sdkOptions.mcpServers || {}),
+          'compute-tools': {
+            command: 'node',
+            args: [computeMcpPath],
+          },
+        };
+        // Append compute node context to system prompt
+        sdkOptions.appendSystemPrompt = [
+          sdkOptions.appendSystemPrompt || '',
+          '\n\n# Active Compute Node',
+          `A remote compute node "${activeNode.name}" (${activeNode.user}@${activeNode.host}) is configured and available.`,
+          `Type: ${activeNode.type === 'slurm' ? 'Slurm HPC cluster' : 'Direct GPU server'}.`,
+          `Work directory: ${activeNode.workDir || '~'}.`,
+          'When the user asks to run training, GPU tasks, or heavy computation, use the compute_* tools (compute_run, compute_sync, compute_slurm_submit, etc.) instead of local Bash.',
+          'Use compute_sync direction="up" to upload project code before running, and compute_run to execute commands remotely.',
+          'Use compute_info first if you need to check what GPU resources are available.',
+        ].join('\n');
+        console.log(`[claude-sdk] Compute MCP server injected for node "${activeNode.name}" (${activeNode.host})`);
+      }
+    } catch (err) {
+      // Compute node not configured or error loading — skip silently
+      console.log('[claude-sdk] No active compute node:', err.message);
+    }
+
     // Handle images - save to temp files and modify prompt
     const imageResult = await handleImages(command, options.images, options.cwd);
     const finalCommand = imageResult.modifiedCommand;

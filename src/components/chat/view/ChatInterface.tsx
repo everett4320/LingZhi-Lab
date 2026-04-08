@@ -25,6 +25,7 @@ import { getProviderDisplayName } from '../utils/chatFormatting';
 import CodeEditor from '../../CodeEditor';
 import type { EditingFile } from '../../main-content/types/types';
 import { normalizePath, toRelativePath, isSafePath, fileNameFromPath } from '../../../utils/pathUtils';
+import { useDeviceSettings } from '../../../hooks/useDeviceSettings';
 
 
 const DEFAULT_PROVIDER_AVAILABILITY: Record<Provider, ProviderAvailability> = {
@@ -73,6 +74,8 @@ type PendingViewSession = {
   startedAt: number;
 };
 
+type SidebarTab = 'context' | 'research' | 'files' | 'shell' | 'git';
+
 function ChatInterface({
   selectedProject,
   selectedSession,
@@ -100,13 +103,13 @@ function ChatInterface({
   clearPendingAutoIntake,
   importedProjectAnalysisPrompt,
   clearImportedProjectAnalysisPrompt,
-  onOpenShellForSession,
   newSessionMode = 'research',
   onNewSessionModeChange,
 }: ChatInterfaceProps) {
   const { tasksEnabled, isTaskMasterInstalled } = useTasksSettings();
   const { refreshTasks } = useTaskMaster();
   const { t } = useTranslation('chat');
+  const { isMobile } = useDeviceSettings({ trackPWA: false });
   const [isShellEditPromptOpen, setIsShellEditPromptOpen] = useState(false);
   const [previewFile, setPreviewFile] = useState<EditingFile | null>(null);
 
@@ -122,10 +125,15 @@ function ChatInterface({
     setPreviewFile(null);
   }, []);
 
-  const [sidebarTab, setSidebarTab] = useState<'context' | 'research' | 'files'>(() => {
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => {
     if (typeof window === 'undefined') return 'context';
     const stored = window.localStorage.getItem('chat-sidebar-active-tab');
-    return (stored === 'research' || stored === 'files') ? stored : 'context';
+    if (stored === 'research' || stored === 'files' || stored === 'shell' || stored === 'git') return stored;
+    return 'context';
+  });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('chat-session-context-collapsed') === '1';
   });
 
   useEffect(() => {
@@ -655,11 +663,11 @@ function ChatInterface({
   ]);
 
   const handleOpenShellEditPrompt = useCallback(() => {
-    if (!selectedSession || !onOpenShellForSession) {
+    if (!selectedSession) {
       return;
     }
     setIsShellEditPromptOpen(true);
-  }, [onOpenShellForSession, selectedSession]);
+  }, [selectedSession]);
 
   const handleCloseShellEditPrompt = useCallback(() => {
     setIsShellEditPromptOpen(false);
@@ -667,8 +675,9 @@ function ChatInterface({
 
   const handleConfirmOpenShell = useCallback(() => {
     setIsShellEditPromptOpen(false);
-    onOpenShellForSession?.();
-  }, [onOpenShellForSession]);
+    setSidebarTab('shell');
+    setIsSidebarCollapsed(false);
+  }, []);
 
   const isEmpty = chatMessages.length === 0 && !isLoadingSessionMessages && !selectedSession && !currentSessionId;
 
@@ -699,7 +708,7 @@ function ChatInterface({
 
   return (
     <>
-      <div className="h-full flex min-h-0 flex-col xl:flex-row">
+      <div className={`h-full flex min-h-0 ${isMobile ? 'flex-col' : 'flex-row'}`}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {previewFile && (
             <div className="flex-1 min-h-0 overflow-hidden">
@@ -931,6 +940,8 @@ function ChatInterface({
           onFileOpen={handleFilePreview}
           activeSidebarTab={sidebarTab}
           onSidebarTabChange={setSidebarTab}
+          isCollapsed={isSidebarCollapsed}
+          onCollapsedChange={setIsSidebarCollapsed}
           onStartWorkspaceQa={onStartWorkspaceQa}
           onStartTask={handleStartTaskInChat}
         />

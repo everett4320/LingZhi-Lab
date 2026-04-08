@@ -702,7 +702,7 @@ export function useProjectsState({
       setSelectedProject(project);
       setSelectedSession(null);
       setActiveTab((currentTab) =>
-        currentTab === 'dashboard' || currentTab === 'trash' || currentTab === 'news' || currentTab === 'skills'
+        currentTab === 'dashboard' || currentTab === 'trash' || currentTab === 'news' || currentTab === 'skills' || currentTab === 'compute'
           ? 'chat'
           : currentTab,
       );
@@ -851,10 +851,32 @@ export function useProjectsState({
     }
   }, [isMobile, navigate]);
 
+  const handleOpenAutoResearch = useCallback(() => {
+    setSelectedProject(null);
+    setSelectedSession(null);
+    setActiveTab('autoresearch');
+    navigate('/');
+
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
+  }, [isMobile, navigate]);
+
   const handleOpenNews = useCallback(() => {
     setSelectedProject(null);
     setSelectedSession(null);
     setActiveTab('news');
+    navigate('/');
+
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
+  }, [isMobile, navigate]);
+
+  const handleOpenCompute = useCallback(() => {
+    setSelectedProject(null);
+    setSelectedSession(null);
+    setActiveTab('compute');
     navigate('/');
 
     if (isMobile) {
@@ -978,7 +1000,9 @@ export function useProjectsState({
       onOpenDashboard: handleOpenDashboard,
       onOpenTrash: handleOpenTrash,
       onOpenSkills: handleOpenSkills,
+      onOpenAutoResearch: handleOpenAutoResearch,
       onOpenNews: handleOpenNews,
+      onOpenCompute: handleOpenCompute,
       onImportedProjectCreated: handleProjectCreatedWithIntake,
       importedProjectAnalysisPrompt,
       onDismissImportedProjectAnalysisPrompt: clearImportedProjectAnalysisPrompt,
@@ -988,7 +1012,9 @@ export function useProjectsState({
       activeTab,
       clearImportedProjectAnalysisPrompt,
       handleNewSession,
+      handleOpenCompute,
       handleOpenDashboard,
+      handleOpenAutoResearch,
       handleOpenNews,
       handleOpenSkills,
       handleOpenTrash,
@@ -1043,7 +1069,9 @@ export function useProjectsState({
     handleOpenDashboard,
     handleOpenTrash,
     handleOpenSkills,
+    handleOpenAutoResearch,
     handleOpenNews,
+    handleOpenCompute,
     handleNewSession,
     handleStartWorkspaceQa,
     handleChatFromReference,

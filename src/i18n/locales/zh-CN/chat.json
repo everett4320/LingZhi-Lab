@@ -288,6 +288,13 @@
       "default": "请在上方选择一个供应商以开始"
     }
   },
+  "localModels": {
+    "loading": "正在加载模型...",
+    "notRunning": "Ollama 未运行",
+    "loadFailed": "加载模型失败",
+    "networkError": "模型服务不可达",
+    "empty": "没有模型"
+  },
   "session": {
     "mode": {
       "title": "选择会话类型",
@@ -301,7 +308,8 @@
       "workspaceQaTitle": "工作区问答",
       "workspaceQaDescription": "只询问文件、模块和实现细节，不触发研究流程。",
       "workspaceQaGreeting": "你可以询问这个工作区中的任意文件、模块或实现细节。除非你明确要求开始研究规划，否则我会始终聚焦于代码和项目结构。",
-      "workspaceQaHint": "这个会话会聚焦仓库问题，除非你明确要求开始研究规划。"
+      "workspaceQaHint": "这个会话会聚焦仓库问题，除非你明确要求开始研究规划。",
+      "workspaceQaPlaceholder": "询问任意文件、模块或实现细节..."
     },
     "continue": {
       "title": "继续您的对话",
@@ -366,7 +374,9 @@
     "sidebarTabs": {
       "context": "上下文",
       "research": "研究",
-      "files": "文件"
+      "files": "文件",
+      "shell": "终端",
+      "git": "代码历史"
     },
     "showLess": "收起",
     "preview": {
@@ -517,8 +527,29 @@
       "presentationPromotion": {
         "title": "汇报材料",
         "description": "基于论文内容生成演示文稿、旁白脚本、音频与演示视频。"
+      },
+      "arisFullPipeline": {
+        "title": "全自动研究",
+        "description": "端到端：找 Idea → 跑实验 → 跨模型审稿 → 写论文"
+      },
+      "arisIdeaDiscovery": {
+        "title": "自动找 Idea",
+        "description": "文献调研 → 想法生成 → 新颖性验证 → 跨模型审稿"
+      },
+      "arisAutoReview": {
+        "title": "自动审稿循环",
+        "description": "多轮跨模型对抗审稿（GPT/Gemini 审稿）"
+      },
+      "arisPaperWriting": {
+        "title": "自动写论文",
+        "description": "提纲 → 图表 → LaTeX → 编译 → 跨模型改进循环"
+      },
+      "autoresearchLoop": {
+        "title": "自治迭代循环",
+        "description": "自动循环：修改 → 验证 → 保留/丢弃 → 重复"
       }
-    }
+    },
+    "autoResearchTitle": "Auto Research"
   },
   "attachedPrompt": {
     "showPrompt": "显示提示词",

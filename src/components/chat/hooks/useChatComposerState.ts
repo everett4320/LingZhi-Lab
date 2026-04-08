@@ -25,6 +25,7 @@ import { grantToolPermission } from '../utils/chatPermissions';
 import { clearSessionTimerStart, getProviderSettingsKey, persistSessionTimerStart, safeLocalStorage } from '../utils/chatStorage';
 import { consumeWorkspaceQaDraft, WORKSPACE_QA_DRAFT_EVENT } from '../../../utils/workspaceQa';
 import { consumeReferenceChatDraft, REFERENCE_CHAT_DRAFT_EVENT } from '../../../utils/referenceChatDraft';
+import { consumeSkillCommandDraft, SKILL_COMMAND_DRAFT_EVENT } from '../../../utils/skillCommandDraft';
 import type {
   AttachedPrompt,
   ChatAttachment,
@@ -1275,6 +1276,11 @@ export function useChatComposerState({
     };
 
     const applyQueuedDraft = () => {
+      const skillDraft = consumeSkillCommandDraft();
+      if (skillDraft) {
+        applyDraft(skillDraft);
+        return;
+      }
       const wqDraft = consumeWorkspaceQaDraft(selectedProject.name);
       if (wqDraft) {
         applyDraft(wqDraft);
@@ -1313,9 +1319,11 @@ export function useChatComposerState({
 
     window.addEventListener(WORKSPACE_QA_DRAFT_EVENT, handleQueuedDraft);
     window.addEventListener(REFERENCE_CHAT_DRAFT_EVENT, handleQueuedDraft);
+    window.addEventListener(SKILL_COMMAND_DRAFT_EVENT, handleQueuedDraft);
     return () => {
       window.removeEventListener(WORKSPACE_QA_DRAFT_EVENT, handleQueuedDraft);
       window.removeEventListener(REFERENCE_CHAT_DRAFT_EVENT, handleQueuedDraft);
+      window.removeEventListener(SKILL_COMMAND_DRAFT_EVENT, handleQueuedDraft);
     };
   }, [selectedProject?.name, setInput]);
 

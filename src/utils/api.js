@@ -418,6 +418,8 @@ export const api = {
     slurmSalloc: (id, opts) => authenticatedFetch(`/api/compute/nodes/${id}/slurm/salloc`, { method: 'POST', body: JSON.stringify(opts) }),
     slurmSbatch: (id, opts) => authenticatedFetch(`/api/compute/nodes/${id}/slurm/sbatch`, { method: 'POST', body: JSON.stringify(opts) }),
     slurmCancel: (id, jobId) => authenticatedFetch(`/api/compute/nodes/${id}/slurm/cancel/${jobId}`, { method: 'POST' }),
+    monitorNode: (id) => authenticatedFetch(`/api/compute/nodes/${id}/monitor`),
+    monitorLocal: () => authenticatedFetch('/api/compute/local/monitor'),
     // Backward-compatible
     getConfig: () => authenticatedFetch('/api/compute/config'),
     configure: (config) => authenticatedFetch('/api/compute/configure', { method: 'POST', body: JSON.stringify(config) }),
@@ -425,5 +427,23 @@ export const api = {
     sync: (direction, cwd) => authenticatedFetch('/api/compute/sync', { method: 'POST', body: JSON.stringify({ direction, cwd }) }),
     run: (command, cwd, skipSync) => authenticatedFetch('/api/compute/run', { method: 'POST', body: JSON.stringify({ command, cwd, skipSync }) }),
     status: () => authenticatedFetch('/api/compute/status'),
+  },
+
+  // Community tools configuration
+  communityTools: {
+    configure: (projectPath, mcpBackend, apiKeys, gpuConfig) =>
+      authenticatedFetch('/api/community-tools/configure', {
+        method: 'POST',
+        body: JSON.stringify({ projectPath, mcpBackend, apiKeys, gpuConfig }),
+      }),
+    getStatus: (projectPath) =>
+      authenticatedFetch(`/api/community-tools/status?path=${encodeURIComponent(projectPath)}`),
+    getComputeNodes: () =>
+      authenticatedFetch('/api/community-tools/compute-nodes'),
+    detectGpu: (nodeId) =>
+      authenticatedFetch('/api/community-tools/detect-gpu', {
+        method: 'POST',
+        body: JSON.stringify({ nodeId }),
+      }),
   },
 };

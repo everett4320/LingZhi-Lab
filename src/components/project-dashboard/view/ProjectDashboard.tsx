@@ -1,10 +1,7 @@
 import {
   Activity,
   ArrowRight,
-  ChevronDown,
   FolderOpen,
-  FlaskConical,
-  MessageSquare,
   Sparkles,
   Terminal,
 } from 'lucide-react';
@@ -15,9 +12,6 @@ import { api } from '../../../utils/api';
 import { Button } from '../../ui/button';
 import { formatTimeAgo } from '../../../utils/dateUtils';
 import type { AppTab, Project, ProjectSession } from '../../../types/app';
-import { CLAUDE_MODELS, CODEX_MODELS, GEMINI_MODELS, OPENROUTER_MODELS } from '../../../../shared/modelConstants';
-
-type AutoResearchProvider = 'claude' | 'codex' | 'gemini' | 'openrouter';
 
 type ProjectDashboardProps = {
   projects: Project[];
@@ -25,7 +19,6 @@ type ProjectDashboardProps = {
     project: Project,
     tab: AppTab,
     sessionId?: string | null,
-    sessionProvider?: AutoResearchProvider,
   ) => void;
 };
 
@@ -45,119 +38,6 @@ type ProjectTokenUsageSummary = {
   generatedAt?: string;
   workspace: TokenUsageTotals;
   projects: Record<string, TokenUsageTotals>;
-};
-
-type AutoResearchRun = {
-  id: string;
-  status: string;
-  provider?: AutoResearchProvider;
-  sessionId?: string | null;
-  currentTaskId?: string | null;
-  completedTasks?: number;
-  totalTasks?: number;
-  error?: string | null;
-  metadata?: {
-    autoResearchModel?: string | null;
-  } | null;
-};
-
-type AutoResearchStatus = {
-  provider?: AutoResearchProvider;
-  eligibility?: {
-    eligible: boolean;
-    reasons: string[];
-  };
-  profile?: {
-    notificationEmail?: string | null;
-  };
-  mail?: {
-    senderEmail?: string | null;
-  };
-  pipeline?: {
-    hasResearchBrief?: boolean;
-    hasTasksFile?: boolean;
-    actionableTaskCount?: number;
-    completedTaskCount?: number;
-    totalTaskCount?: number;
-    nextTask?: {
-      id?: string | number;
-      title?: string;
-    } | null;
-  };
-  activeRun?: AutoResearchRun | null;
-  latestRun?: AutoResearchRun | null;
-};
-
-type AutoResearchConfig = {
-  provider: AutoResearchProvider;
-  model: string;
-};
-
-function getDefaultModelForProvider(provider: AutoResearchProvider): string {
-  if (provider === 'codex') {
-    return CODEX_MODELS.DEFAULT || 'gpt-5.4';
-  }
-  if (provider === 'gemini') {
-    return GEMINI_MODELS.DEFAULT || 'gemini-3-flash-preview';
-  }
-  if (provider === 'openrouter') {
-    return OPENROUTER_MODELS.DEFAULT || 'anthropic/claude-sonnet-4';
-  }
-  return CLAUDE_MODELS.DEFAULT || 'sonnet';
-}
-
-function getDefaultConfig(provider: AutoResearchProvider = 'claude'): AutoResearchConfig {
-  return {
-    provider,
-    model: getDefaultModelForProvider(provider),
-  };
-}
-
-function getModelOptions(provider: AutoResearchProvider) {
-  return AUTO_RESEARCH_MODELS_BY_PROVIDER[provider] ?? [];
-}
-
-function isModelValidForProvider(provider: AutoResearchProvider, model?: string | null) {
-  if (!model) {
-    return false;
-  }
-  if (provider === 'openrouter' && model.includes('/')) return true;
-  return getModelOptions(provider).some((option) => option.value === model);
-}
-
-function getModelFromStatus(status?: AutoResearchStatus, provider: AutoResearchProvider = 'claude') {
-  const candidateModel =
-    status?.activeRun?.metadata?.autoResearchModel || status?.latestRun?.metadata?.autoResearchModel || '';
-  return isModelValidForProvider(provider, candidateModel)
-    ? candidateModel
-    : getDefaultModelForProvider(provider);
-}
-
-function resolveAutoResearchConfig(currentConfig: AutoResearchConfig | undefined, status?: AutoResearchStatus): AutoResearchConfig {
-  const provider = currentConfig?.provider ?? status?.provider ?? 'claude';
-  const statusModel = getModelFromStatus(status, provider);
-  const model = isModelValidForProvider(provider, currentConfig?.model)
-    ? currentConfig?.model ?? statusModel
-    : statusModel;
-
-  return {
-    provider,
-    model,
-  };
-}
-
-const AUTO_RESEARCH_PROVIDER_OPTIONS: Array<{ value: AutoResearchProvider; label: string }> = [
-  { value: 'claude', label: 'Claude' },
-  { value: 'codex', label: 'Codex' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'openrouter', label: 'OpenRouter' },
-];
-
-const AUTO_RESEARCH_MODELS_BY_PROVIDER: Record<AutoResearchProvider, { value: string; label: string }[]> = {
-  claude: CLAUDE_MODELS.OPTIONS,
-  codex: CODEX_MODELS.OPTIONS,
-  gemini: GEMINI_MODELS.OPTIONS,
-  openrouter: OPENROUTER_MODELS.OPTIONS,
 };
 
 const PROJECT_TONES = [
@@ -294,11 +174,6 @@ export default function ProjectDashboard({
   const { t } = useTranslation('common');
   const now = new Date();
   const [tokenUsageSummary, setTokenUsageSummary] = useState<ProjectTokenUsageSummary | null>(null);
-  const [autoResearchStatuses, setAutoResearchStatuses] = useState<Record<string, AutoResearchStatus>>({});
-  const [autoResearchLoading, setAutoResearchLoading] = useState<Record<string, boolean>>({});
-  const [expandedAutoResearch, setExpandedAutoResearch] = useState<Record<string, boolean>>({});
-  const [autoResearchConfigByProject, setAutoResearchConfigByProject] = useState<Record<string, AutoResearchConfig>>({});
-
   const totals = useMemo(() => {
     const projectCount = projects.length;
     const projectsWithProgress = projects.filter((project) => getProgress(project) !== null);
@@ -370,174 +245,6 @@ export default function ProjectDashboard({
       cancelled = true;
     };
   }, [projectUsageRefreshKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchStatuses = async () => {
-      if (projects.length === 0) {
-        if (!cancelled) {
-          setAutoResearchStatuses({});
-          setAutoResearchConfigByProject({});
-        }
-        return;
-      }
-
-      const entries = await Promise.all(
-        projects.map(async (project) => {
-          try {
-            const response = await api.autoResearch.status(project.name);
-            if (!response.ok) {
-              return [project.name, null] as const;
-            }
-            const data = await response.json() as AutoResearchStatus;
-            return [project.name, data] as const;
-          } catch (error) {
-            console.error('Failed to fetch Auto Research status:', error);
-            return [project.name, null] as const;
-          }
-        }),
-      );
-
-      if (!cancelled) {
-        const statusEntries = entries.filter((entry): entry is readonly [string, AutoResearchStatus] => Boolean(entry[1]));
-        setAutoResearchConfigByProject((current) => {
-          const next = { ...current };
-          for (const [projectName, status] of statusEntries) {
-            next[projectName] = resolveAutoResearchConfig(next[projectName], status);
-          }
-          return next;
-        });
-        setAutoResearchStatuses(
-          Object.fromEntries(statusEntries),
-        );
-      }
-    };
-
-    void fetchStatuses();
-    const intervalId = window.setInterval(() => {
-      void fetchStatuses();
-    }, 15000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [projectUsageRefreshKey, projects]);
-
-  const refreshAutoResearchStatus = async (projectName: string) => {
-    try {
-      const response = await api.autoResearch.status(projectName);
-      if (!response.ok) {
-        return;
-      }
-      const data = await response.json() as AutoResearchStatus;
-      setAutoResearchConfigByProject((current) => ({
-        ...current,
-        [projectName]: resolveAutoResearchConfig(current[projectName], data),
-      }));
-      setAutoResearchStatuses((current) => ({
-        ...current,
-        [projectName]: data,
-      }));
-    } catch (error) {
-      console.error('Failed to refresh Auto Research status:', error);
-    }
-  };
-
-  const handleAutoResearchStart = async (projectName: string) => {
-    setAutoResearchLoading((current) => ({ ...current, [projectName]: true }));
-    try {
-      const config = autoResearchConfigByProject[projectName] ?? getDefaultConfig();
-      const response = await api.autoResearch.start(projectName, {
-        provider: config.provider,
-        model: config.model,
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error?.error || 'Failed to start Auto Research');
-      }
-      await refreshAutoResearchStatus(projectName);
-    } catch (error) {
-      console.error('Failed to start Auto Research:', error);
-      window.alert(error instanceof Error ? error.message : 'Failed to start Auto Research');
-    } finally {
-      setAutoResearchLoading((current) => ({ ...current, [projectName]: false }));
-    }
-  };
-
-  const handleAutoResearchCancel = async (projectName: string) => {
-    setAutoResearchLoading((current) => ({ ...current, [projectName]: true }));
-    try {
-      const response = await api.autoResearch.cancel(projectName);
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error?.error || 'Failed to cancel Auto Research');
-      }
-      await refreshAutoResearchStatus(projectName);
-    } catch (error) {
-      console.error('Failed to cancel Auto Research:', error);
-      window.alert(error instanceof Error ? error.message : 'Failed to cancel Auto Research');
-    } finally {
-      setAutoResearchLoading((current) => ({ ...current, [projectName]: false }));
-    }
-  };
-
-  const getAutoResearchReasonLabel = (reason?: string) => {
-    switch (reason) {
-      case 'notification_email_missing':
-        return 'Add a notification email in Settings';
-      case 'research_brief_missing':
-        return 'Research Brief is missing. Open Research Lab to generate one before starting Auto Research.';
-      case 'tasks_file_missing':
-        return 'Task list is missing. Open Research Lab and generate tasks before starting Auto Research.';
-      case 'no_actionable_tasks':
-        return 'No pending tasks found. Add pending tasks in Research Lab and then start again.';
-      case 'run_in_progress':
-        return 'Run already in progress';
-      default:
-        return 'Unavailable';
-    }
-  };
-
-  const getAutoResearchHint = (status?: AutoResearchStatus) => {
-    if (!status?.profile?.notificationEmail) {
-      return 'Set your notification email in Settings before running Auto Research.';
-    }
-    if (!status?.mail?.senderEmail) {
-      return 'Set the AutoResearch sender email in Settings before expecting email delivery.';
-    }
-    return 'Completion emails will use the saved sender and notification email settings.';
-  };
-
-  const handleAutoResearchProviderChange = (projectName: string, provider: AutoResearchProvider) => {
-    setAutoResearchConfigByProject((current) => {
-      const currentConfig = current[projectName] ?? getDefaultConfig(provider);
-      const model = isModelValidForProvider(provider, currentConfig.model)
-        ? currentConfig.model
-        : getDefaultModelForProvider(provider);
-      return {
-        ...current,
-        [projectName]: {
-          provider,
-          model,
-        },
-      };
-    });
-  };
-
-  const handleAutoResearchModelChange = (projectName: string, model: string, provider: AutoResearchProvider) => {
-    setAutoResearchConfigByProject((current) => {
-      const nextModel = isModelValidForProvider(provider, model) ? model : getDefaultModelForProvider(provider);
-      return {
-        ...current,
-        [projectName]: {
-          provider,
-          model: nextModel,
-        },
-      };
-    });
-  };
 
   if (projects.length === 0) {
     return (
@@ -657,18 +364,7 @@ export default function ProjectDashboard({
             const progress = getProgress(project);
             const lastActivity = getLastActivity(project);
             const projectTokenUsage = tokenUsageSummary?.projects?.[project.name];
-            const autoResearch = autoResearchStatuses[project.name];
-            const activeRun = autoResearch?.activeRun;
-            const latestRun = autoResearch?.latestRun;
-            const autoResearchDisabledReason = autoResearch?.eligibility?.reasons?.[0];
-            const autoResearchBusy = Boolean(autoResearchLoading[project.name]);
             const tone = PROJECT_TONES[index % PROJECT_TONES.length];
-            const autoResearchConfig = autoResearchConfigByProject[project.name] ?? getDefaultConfig(autoResearch?.provider || 'claude');
-            const autoResearchConfigWithDefaults = isModelValidForProvider(autoResearchConfig.provider, autoResearchConfig.model)
-              ? autoResearchConfig
-              : getDefaultConfig(autoResearchConfig.provider);
-            const openableSessionId = activeRun?.sessionId || latestRun?.sessionId;
-            const hasAutoResearchRun = Boolean(activeRun || latestRun);
 
             return (
               <article
@@ -701,9 +397,9 @@ export default function ProjectDashboard({
                     </div>
 
                     <Button
-                      variant="outline"
+                      variant="default"
                       size="sm"
-                      className="self-start rounded-full bg-white/70 backdrop-blur dark:bg-slate-950/45"
+                      className="self-start rounded-full"
                       onClick={() => onProjectAction(project, 'chat')}
                     >
                       <FolderOpen className="h-4 w-4" />
@@ -745,124 +441,6 @@ export default function ProjectDashboard({
                     </div>
                   </div>
 
-
-                  <div className="rounded-lg border border-border/50 bg-background/70 shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedAutoResearch((prev) => ({ ...prev, [project.name]: !prev[project.name] }))}
-                      className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 hover:bg-muted/30 transition-colors rounded-lg"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[11px] font-medium text-foreground">Auto Research</span>
-                        <span className="text-[10px] text-muted-foreground truncate">
-                          {activeRun
-                            ? `Running ${activeRun.completedTasks ?? 0}/${activeRun.totalTasks ?? 0}`
-                            : autoResearch?.eligibility?.eligible
-                              ? `Ready via ${autoResearch.provider || 'claude'}`
-                              : getAutoResearchReasonLabel(autoResearchDisabledReason)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {activeRun ? (
-                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-px text-[9px] font-medium text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
-                            {activeRun.status}
-                          </span>
-                        ) : latestRun ? (
-                          <span className="inline-flex items-center rounded-full border border-border/60 bg-background/75 px-1.5 py-px text-[9px] font-medium text-muted-foreground">
-                            {latestRun.status}
-                          </span>
-                        ) : null}
-                        <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform duration-150 ${expandedAutoResearch[project.name] ? 'rotate-180' : ''}`} />
-                      </div>
-                    </button>
-
-                    {expandedAutoResearch[project.name] && (
-                      <div className="px-2.5 pb-2 space-y-1.5">
-                        {latestRun?.error ? (
-                          <div className="text-[10px] text-red-600 dark:text-red-400">{latestRun.error}</div>
-                        ) : null}
-                        {autoResearch?.pipeline?.nextTask?.title && !activeRun ? (
-                          <div className="text-[10px] text-muted-foreground">Next: {autoResearch.pipeline.nextTask.title}</div>
-                        ) : null}
-                        {!activeRun ? (
-                          <div className="text-[10px] text-muted-foreground">{getAutoResearchHint(autoResearch)}</div>
-                        ) : null}
-                        <div className="flex flex-wrap gap-2">
-                          <label className="min-w-[130px] flex-1">
-                            <span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">Provider</span>
-                            <select
-                              value={autoResearchConfigWithDefaults.provider}
-                              onChange={(event) => handleAutoResearchProviderChange(project.name, event.target.value as AutoResearchProvider)}
-                              className="w-full rounded-full border border-border/60 bg-white px-2.5 py-1 text-[11px] dark:bg-slate-950"
-                              disabled={autoResearchBusy || Boolean(activeRun)}
-                            >
-                              {AUTO_RESEARCH_PROVIDER_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="min-w-[150px] flex-1">
-                            <span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">Model</span>
-                            <select
-                              value={autoResearchConfigWithDefaults.model}
-                              onChange={(event) => handleAutoResearchModelChange(project.name, event.target.value, autoResearchConfigWithDefaults.provider)}
-                              className="w-full rounded-full border border-border/60 bg-white px-2.5 py-1 text-[11px] dark:bg-slate-950"
-                              disabled={autoResearchBusy || Boolean(activeRun)}
-                            >
-                              {AUTO_RESEARCH_MODELS_BY_PROVIDER[autoResearchConfigWithDefaults.provider].map((modelOption) => (
-                                <option key={modelOption.value} value={modelOption.value}>{modelOption.label}</option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                        {hasAutoResearchRun ? (() => {
-                          const openableSessionProvider = activeRun?.provider || latestRun?.provider || autoResearch?.provider || 'claude';
-                          const sessionButtonLabel = openableSessionId ? 'Open Session' : activeRun ? 'Preparing...' : 'Unavailable';
-                          return (
-                            <Button
-                              key="openable-session-action"
-                              variant="outline"
-                              size="sm"
-                              className="rounded-full bg-white/60 backdrop-blur dark:bg-slate-950/35"
-                              disabled={!openableSessionId}
-                              onClick={() => { if (openableSessionId) onProjectAction(project, 'chat', openableSessionId, openableSessionProvider); }}
-                            >
-                              <MessageSquare className="h-3.5 w-3.5" />
-                              {sessionButtonLabel}
-                            </Button>
-                          );
-                        })() : null}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant={activeRun ? 'outline' : 'default'}
-                      size="sm"
-                      className="rounded-full"
-                      disabled={autoResearchBusy || (!activeRun && !autoResearch?.eligibility?.eligible)}
-                      onClick={() => {
-                        if (activeRun) {
-                          void handleAutoResearchCancel(project.name);
-                          return;
-                        }
-                        void handleAutoResearchStart(project.name);
-                      }}
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      {autoResearchBusy ? 'Working...' : activeRun ? 'Cancel Auto Research' : 'Auto Research'}
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="rounded-full"
-                      onClick={() => onProjectAction(project, 'chat')}
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                      {t('projectDashboard.actions.chat')}
-                    </Button>
-                  </div>
                 </div>
               </article>
             );
