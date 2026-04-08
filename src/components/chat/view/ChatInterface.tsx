@@ -74,6 +74,8 @@ type PendingViewSession = {
   startedAt: number;
 };
 
+type SidebarTab = 'context' | 'research' | 'files' | 'shell' | 'git';
+
 function ChatInterface({
   selectedProject,
   selectedSession,
@@ -101,7 +103,6 @@ function ChatInterface({
   clearPendingAutoIntake,
   importedProjectAnalysisPrompt,
   clearImportedProjectAnalysisPrompt,
-  onOpenShellForSession,
   newSessionMode = 'research',
   onNewSessionModeChange,
 }: ChatInterfaceProps) {
@@ -124,10 +125,15 @@ function ChatInterface({
     setPreviewFile(null);
   }, []);
 
-  const [sidebarTab, setSidebarTab] = useState<'context' | 'research' | 'files'>(() => {
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => {
     if (typeof window === 'undefined') return 'context';
     const stored = window.localStorage.getItem('chat-sidebar-active-tab');
-    return (stored === 'research' || stored === 'files') ? stored : 'context';
+    if (stored === 'research' || stored === 'files' || stored === 'shell' || stored === 'git') return stored;
+    return 'context';
+  });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('chat-session-context-collapsed') === '1';
   });
 
   useEffect(() => {
@@ -657,11 +663,11 @@ function ChatInterface({
   ]);
 
   const handleOpenShellEditPrompt = useCallback(() => {
-    if (!selectedSession || !onOpenShellForSession) {
+    if (!selectedSession) {
       return;
     }
     setIsShellEditPromptOpen(true);
-  }, [onOpenShellForSession, selectedSession]);
+  }, [selectedSession]);
 
   const handleCloseShellEditPrompt = useCallback(() => {
     setIsShellEditPromptOpen(false);
@@ -669,8 +675,9 @@ function ChatInterface({
 
   const handleConfirmOpenShell = useCallback(() => {
     setIsShellEditPromptOpen(false);
-    onOpenShellForSession?.();
-  }, [onOpenShellForSession]);
+    setSidebarTab('shell');
+    setIsSidebarCollapsed(false);
+  }, []);
 
   const isEmpty = chatMessages.length === 0 && !isLoadingSessionMessages && !selectedSession && !currentSessionId;
 
@@ -933,6 +940,8 @@ function ChatInterface({
           onFileOpen={handleFilePreview}
           activeSidebarTab={sidebarTab}
           onSidebarTabChange={setSidebarTab}
+          isCollapsed={isSidebarCollapsed}
+          onCollapsedChange={setIsSidebarCollapsed}
           onStartWorkspaceQa={onStartWorkspaceQa}
           onStartTask={handleStartTaskInChat}
         />

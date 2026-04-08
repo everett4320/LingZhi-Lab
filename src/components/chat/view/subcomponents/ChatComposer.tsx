@@ -280,31 +280,52 @@ export default function ChatComposer({
 
   const [ollamaModels, setOllamaModels] = useState<Array<{ value: string; label: string }>>([]);
   const [isLoadingOllamaModels, setIsLoadingOllamaModels] = useState(false);
+  const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (sessionProvider !== 'local') return;
+    let cancelled = false;
     setIsLoadingOllamaModels(true);
+    setOllamaModelsError(null);
     const serverUrl = localStorage.getItem('local-gpu-server-url') || 'http://localhost:11434';
     authenticatedFetch(`/api/cli/local/models?serverUrl=${encodeURIComponent(serverUrl)}`)
-      .then((res) => res.json())
+      .then(async (res) => ({ ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) }))
       .then((data) => {
-        if (data.models?.length) {
-          const opts = data.models.map((m: any) => ({
+        if (cancelled) return;
+        if (data.ok && data.data.models?.length) {
+          const opts = data.data.models.map((m: any) => ({
             value: m.name,
             label: `${m.displayName || m.name}${m.size ? ` (${m.size})` : ''}`,
           }));
           setOllamaModels(opts);
+          setOllamaModelsError(null);
           if (!localModelProp && opts.length > 0) {
-            const small = data.models.find((m: any) => m.sizeB && m.sizeB <= 14);
+            const small = data.data.models.find((m: any) => m.sizeB && m.sizeB <= 14);
             const pick = small ? small.name : opts[0].value;
             setLocalModel?.(pick);
             localStorage.setItem('local-model', pick);
           }
+          return;
         }
+        setOllamaModels([]);
+        if (data.status === 503) {
+          setOllamaModelsError(t('localModels.notRunning'));
+          return;
+        }
+        setOllamaModelsError(data.data?.error || t('localModels.loadFailed'));
       })
-      .catch(() => {})
-      .finally(() => setIsLoadingOllamaModels(false));
-  }, [sessionProvider, localModelProp, setLocalModel]);
+      .catch(() => {
+        if (cancelled) return;
+        setOllamaModels([]);
+        setOllamaModelsError(t('localModels.networkError'));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingOllamaModels(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionProvider, localModelProp, setLocalModel, t]);
 
   const rawModelConfig = getModelConfig(sessionProvider);
   const modelConfig = sessionProvider === 'local' && ollamaModels.length > 0
@@ -583,8 +604,13 @@ export default function ChatComposer({
                       {(modelConfig as any).ALLOWS_CUSTOM ? (
                         <OpenRouterModelInput value={currentModel} options={modelConfig.OPTIONS} onChange={handleModelChange} />
                       ) : (modelConfig as any).IS_LOCAL && modelConfig.OPTIONS.length === 0 ? (
-                        <span className="text-[10px] text-muted-foreground/60 px-2 py-0.5 border border-border/50 rounded-lg">
-                          {isLoadingOllamaModels ? 'Loading...' : 'No models'}
+                        <span
+                          className="text-[10px] text-muted-foreground/70 px-2 py-0.5 border border-border/50 rounded-lg"
+                          title={ollamaModelsError || undefined}
+                        >
+                          {isLoadingOllamaModels
+                            ? t('localModels.loading')
+                            : ollamaModelsError || t('localModels.empty')}
                         </span>
                       ) : (
                         <ModelSelector

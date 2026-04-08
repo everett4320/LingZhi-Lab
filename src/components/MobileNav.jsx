@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, Folder, Terminal, GitBranch, FlaskConical, BookOpen, Trash2 } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, BookOpen, Wrench, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 function MobileNav({ activeTab, setActiveTab, isInputFocused }) {
@@ -7,16 +7,16 @@ function MobileNav({ activeTab, setActiveTab, isInputFocused }) {
 
   const navItems = [
     {
+      id: 'dashboard',
+      icon: LayoutDashboard,
+      label: t('tabs.dashboard'),
+      onClick: () => setActiveTab('dashboard')
+    },
+    {
       id: 'survey',
       icon: BookOpen,
       label: t('mobileNav.survey'),
       onClick: () => setActiveTab('survey')
-    },
-    {
-      id: 'researchlab',
-      icon: FlaskConical,
-      label: t('mobileNav.researchLab'),
-      onClick: () => setActiveTab('researchlab')
     },
     {
       id: 'chat',
@@ -25,22 +25,10 @@ function MobileNav({ activeTab, setActiveTab, isInputFocused }) {
       onClick: () => setActiveTab('chat')
     },
     {
-      id: 'shell',
-      icon: Terminal,
-      label: t('tabs.shell'),
-      onClick: () => setActiveTab('shell')
-    },
-    {
-      id: 'files',
-      icon: Folder,
-      label: t('tabs.files'),
-      onClick: () => setActiveTab('files')
-    },
-    {
-      id: 'git',
-      icon: GitBranch,
-      label: t('mobileNav.git'),
-      onClick: () => setActiveTab('git')
+      id: 'skills',
+      icon: Wrench,
+      label: t('tabs.skills'),
+      onClick: () => setActiveTab('skills')
     },
     {
       id: 'trash',

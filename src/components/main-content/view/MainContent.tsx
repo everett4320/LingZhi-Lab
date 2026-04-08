@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 
 import ChatInterface from '../../chat/view/ChatInterface';
-import GitPanel from '../../GitPanel';
 import SkillsDashboard from '../../SkillsDashboard';
 import ComputeResourcesDashboard from '../../compute-dashboard/ComputeResourcesDashboard';
 import ErrorBoundary from '../../ErrorBoundary';
@@ -13,7 +12,6 @@ import NewsDashboard from '../../news-dashboard/view/NewsDashboard';
 import MainContentHeader from './subcomponents/MainContentHeader';
 import MainContentStateView from './subcomponents/MainContentStateView';
 import EditorSidebar from './subcomponents/EditorSidebar';
-import ShellWorkspace from './subcomponents/ShellWorkspace';
 import type { MainContentProps } from '../types/types';
 
 import { useTaskMaster } from '../../../contexts/TaskMasterContext';
@@ -21,8 +19,6 @@ import { useUiPreferences } from '../../../hooks/useUiPreferences';
 import { useEditorSidebar } from '../hooks/useEditorSidebar';
 import type { Project } from '../../../types/app';
 import type { Reference } from '../../references/types';
-
-const AnyGitPanel = GitPanel as any;
 
 type TaskMasterContextValue = {
   currentProject?: Project | null;
@@ -92,7 +88,7 @@ function MainContent({
   // Migration shim: redirect legacy tab values from before PR #130 merged
   // Research Lab and Files into the sidebar. Safe to remove after 2026-07-01.
   useEffect(() => {
-    if (activeTab === 'tasks' || activeTab === 'researchlab' || activeTab === 'files') {
+    if (activeTab === 'tasks' || activeTab === 'researchlab' || activeTab === 'files' || activeTab === 'shell' || activeTab === 'git') {
       setActiveTab('chat');
     }
   }, [activeTab, setActiveTab]);
@@ -266,24 +262,11 @@ function MainContent({
                 clearPendingAutoIntake={clearPendingAutoIntake}
                 importedProjectAnalysisPrompt={importedProjectAnalysisPrompt}
                 clearImportedProjectAnalysisPrompt={clearImportedProjectAnalysisPrompt}
-                onOpenShellForSession={() => setActiveTab('shell')}
                 newSessionMode={newSessionMode}
                 onNewSessionModeChange={onNewSessionModeChange}
               />
             </ErrorBoundary>
           </div>
-
-          {activeTab === 'shell' && (
-            <div className="h-full w-full overflow-hidden">
-              <ShellWorkspace project={selectedProject} session={selectedSession} />
-            </div>
-          )}
-
-          {activeTab === 'git' && (
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <AnyGitPanel selectedProject={selectedProject} isMobile={isMobile} onFileOpen={handleFileOpen} />
-            </div>
-          )}
 
           {activeTab === 'survey' && (
             <div className="h-full overflow-hidden">

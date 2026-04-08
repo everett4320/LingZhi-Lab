@@ -14,7 +14,9 @@ import {
   FlaskConical,
   Folder,
   FolderSearch,
+  GitBranch,
   Loader2,
+  Terminal,
   X,
   Zap,
   type LucideIcon,
@@ -22,6 +24,10 @@ import {
 
 import ResearchLab from '../../../ResearchLab';
 import FileTree from '../../../FileTree';
+import ShellWorkspace from '../../../main-content/view/subcomponents/ShellWorkspace';
+import GitPanel from '../../../GitPanel';
+
+const AnyGitPanel = GitPanel as any;
 
 import { cn } from '../../../../lib/utils';
 import { useDeviceSettings } from '../../../../hooks/useDeviceSettings';
@@ -77,7 +83,7 @@ const SECTION_STYLES: Record<SectionTone, {
   },
 };
 
-type SidebarTab = 'context' | 'research' | 'files';
+type SidebarTab = 'context' | 'research' | 'files' | 'shell' | 'git';
 
 interface ChatContextSidebarProps {
   selectedProject: Project | null;
@@ -89,6 +95,8 @@ interface ChatContextSidebarProps {
   onFileOpen?: (filePath: string, diffInfo?: unknown) => void;
   activeSidebarTab?: SidebarTab;
   onSidebarTabChange?: (tab: SidebarTab) => void;
+  isCollapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
   onStartWorkspaceQa?: (project: Project, prompt: string) => void;
   onStartTask?: (prompt?: string, task?: { stage?: string } | null) => void;
 }
@@ -216,10 +224,12 @@ const ItemButton = ({
 }) => {
   if (compact) {
     return (
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onClick}
-        className="group w-full rounded-xl border border-border/60 bg-gradient-to-r from-background via-background to-muted/20 px-2.5 py-2 text-left shadow-sm transition-all hover:border-border hover:from-accent/20 hover:to-accent/10"
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
+        className="group w-full rounded-xl border border-border/60 bg-gradient-to-r from-background via-background to-muted/20 px-2.5 py-2 text-left shadow-sm transition-all hover:border-border hover:from-accent/20 hover:to-accent/10 cursor-pointer"
       >
         <div className="flex items-center gap-2.5">
           {thumbnail || <span className={cn('h-2 w-2 flex-shrink-0 rounded-full shadow-sm', unread ? 'bg-amber-500' : 'bg-emerald-500/80')} />}
@@ -230,15 +240,17 @@ const ItemButton = ({
           {meta ? <div className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap pl-1">{meta}</div> : null}
           {action ? <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>{action}</div> : null}
         </div>
-      </button>
+      </div>
     );
   }
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="group w-full rounded-xl border border-border/60 bg-gradient-to-r from-background via-background to-muted/20 px-3 py-2 text-left shadow-sm transition-all hover:border-border hover:from-accent/20 hover:to-accent/10"
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
+      className="group w-full rounded-xl border border-border/60 bg-gradient-to-r from-background via-background to-muted/20 px-3 py-2 text-left shadow-sm transition-all hover:border-border hover:from-accent/20 hover:to-accent/10 cursor-pointer"
     >
       <div className="flex items-start gap-2">
         {thumbnail || <span className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${unread ? 'bg-amber-500' : 'bg-emerald-500/70'}`} />}
@@ -264,7 +276,7 @@ const ItemButton = ({
           )}
         </div>
       </div>
-    </button>
+    </div>
   );
 };
 
@@ -278,6 +290,8 @@ export default function ChatContextSidebar({
   onFileOpen,
   activeSidebarTab = 'context',
   onSidebarTabChange,
+  isCollapsed: controlledCollapsed,
+  onCollapsedChange,
   onStartWorkspaceQa,
   onStartTask,
 }: ChatContextSidebarProps) {
@@ -296,7 +310,7 @@ export default function ChatContextSidebar({
     const parsed = rawValue ? Number.parseInt(rawValue, 10) : NaN;
     return Number.isFinite(parsed) ? Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, parsed)) : DEFAULT_SIDEBAR_WIDTH;
   });
-  const [isCollapsed, setIsCollapsed] = useState(() => {
+  const [uncontrolledCollapsed, setUncontrolledCollapsed] = useState(() => {
     if (typeof window === 'undefined') {
       return false;
     }
@@ -323,6 +337,7 @@ export default function ChatContextSidebar({
   const [previewFile, setPreviewFile] = useState<SessionContextFileItem | SessionContextOutputItem | null>(null);
   const [previewTask, setPreviewTask] = useState<SessionContextTaskItem | null>(null);
   const asideRef = useRef<HTMLElement | null>(null);
+  const isCollapsed = controlledCollapsed ?? uncontrolledCollapsed;
   const isSidebarCollapsed = !isMobile && isCollapsed;
 
   const toggleListExpansion = useCallback((key: string) => {
@@ -469,18 +484,24 @@ export default function ChatContextSidebar({
     if (kind === 'directory') return t('sessionContext.kinds.directory');
     return t('sessionContext.kinds.task');
   }, [t]);
+  const setCollapsedState = useCallback((nextValue: boolean | ((current: boolean) => boolean)) => {
+    const resolvedValue = typeof nextValue === 'function'
+      ? nextValue(isCollapsed)
+      : nextValue;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, resolvedValue ? '1' : '0');
+    }
+    if (controlledCollapsed === undefined) {
+      setUncontrolledCollapsed(resolvedValue);
+    }
+    onCollapsedChange?.(resolvedValue);
+  }, [controlledCollapsed, isCollapsed, onCollapsedChange]);
   const toggleCollapsed = useCallback(() => {
     if (isMobile) {
       return;
     }
-    setIsCollapsed((current) => {
-      const nextValue = !current;
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, nextValue ? '1' : '0');
-      }
-      return nextValue;
-    });
-  }, [isMobile]);
+    setCollapsedState((current) => !current);
+  }, [isMobile, setCollapsedState]);
   const handleResizeStart = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (isMobile) {
       return;
@@ -641,6 +662,8 @@ export default function ChatContextSidebar({
                 { id: 'context' as SidebarTab, icon: FolderSearch, labelKey: 'sessionContext.sidebarTabs.context' },
                 { id: 'research' as SidebarTab, icon: FlaskConical, labelKey: 'sessionContext.sidebarTabs.research' },
                 { id: 'files' as SidebarTab, icon: Folder, labelKey: 'sessionContext.sidebarTabs.files' },
+                { id: 'shell' as SidebarTab, icon: Terminal, labelKey: 'sessionContext.sidebarTabs.shell' },
+                { id: 'git' as SidebarTab, icon: GitBranch, labelKey: 'sessionContext.sidebarTabs.git' },
               ]).map((tab) => {
                 const TabIcon = tab.icon;
                 const isActive = tab.id === activeSidebarTab;
@@ -708,6 +731,8 @@ export default function ChatContextSidebar({
             { id: 'context' as SidebarTab, icon: FolderSearch, labelKey: 'sessionContext.sidebarTabs.context' },
             { id: 'research' as SidebarTab, icon: FlaskConical, labelKey: 'sessionContext.sidebarTabs.research' },
             { id: 'files' as SidebarTab, icon: Folder, labelKey: 'sessionContext.sidebarTabs.files' },
+            { id: 'shell' as SidebarTab, icon: Terminal, labelKey: 'sessionContext.sidebarTabs.shell' },
+            { id: 'git' as SidebarTab, icon: GitBranch, labelKey: 'sessionContext.sidebarTabs.git' },
           ]).map((tab) => {
             const TabIcon = tab.icon;
             const isActive = tab.id === activeSidebarTab;
@@ -715,17 +740,17 @@ export default function ChatContextSidebar({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => {
-                  onSidebarTabChange?.(tab.id);
-                  // Use the same state setter pattern as toggleCollapsed — the
-                  // setter persists to localStorage so we avoid split writes.
-                  setIsCollapsed((current) => {
-                    if (current && typeof window !== 'undefined') {
-                      window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, '0');
-                    }
-                    return false;
-                  });
-                }}
+                  onClick={() => {
+                    onSidebarTabChange?.(tab.id);
+                    // Use the same state setter pattern as toggleCollapsed — the
+                    // setter persists to localStorage so we avoid split writes.
+                  setCollapsedState((current) => {
+                      if (current && typeof window !== 'undefined') {
+                        window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, '0');
+                      }
+                      return false;
+                    });
+                  }}
                 className={cn(
                   'inline-flex h-10 w-10 items-center justify-center rounded-xl border shadow-sm transition-colors',
                   isActive
@@ -964,6 +989,14 @@ export default function ChatContextSidebar({
             onFileOpen={onFileOpen}
             onStartWorkspaceQa={onStartWorkspaceQa}
           />
+        </div>
+      ) : activeSidebarTab === 'shell' ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <ShellWorkspace project={selectedProject!} session={selectedSession} />
+        </div>
+      ) : activeSidebarTab === 'git' ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <AnyGitPanel selectedProject={selectedProject} isMobile={isMobile} onFileOpen={onFileOpen} />
         </div>
       ) : null}
     </aside>

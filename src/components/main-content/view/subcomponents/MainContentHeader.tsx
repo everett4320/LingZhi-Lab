@@ -14,7 +14,7 @@ export default function MainContentHeader({
 }: MainContentHeaderProps) {
   return (
     <div className="bg-background border-b border-border/60 px-3 sm:px-4 pwa-header-safe flex-shrink-0">
-      <div className="flex items-center justify-between gap-3 py-1.5 sm:py-2">
+      <div className="flex items-center gap-3 py-1.5 sm:py-2">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {isMobile && <MobileMenuButton onMenuClick={onMenuClick} />}
           <MainContentTitle
@@ -25,7 +25,7 @@ export default function MainContentHeader({
           />
         </div>
 
-        <div className="flex-shrink-0 hidden sm:block">
+        <div className="hidden sm:flex justify-center flex-1">
           {selectedProject && activeTab !== 'dashboard' && activeTab !== 'trash' && (
             <MainContentTabSwitcher
               activeTab={activeTab}
@@ -34,6 +34,8 @@ export default function MainContentHeader({
             />
           )}
         </div>
+
+        <div className="flex-1 hidden sm:block" />
       </div>
     </div>
   );
