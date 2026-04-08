@@ -362,6 +362,11 @@ const COMMUNITY_PACK_CONFIGS: Record<string, PackConfig> = {
     gpu: [],
     setupScript: '',
   },
+  DeepScientist: {
+    mcp: [],
+    gpu: [],
+    setupScript: '',
+  },
 };
 
 const FACET_PREFIX_PATTERN = /^(Domain|Stage|Category|Source|领域|阶段|类别|来源|영역|단계|카테고리):\s*/i;

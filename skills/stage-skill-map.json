@@ -7,7 +7,8 @@
       "dataset-discovery",
       "biorxiv-database",
       "aris-idea-discovery",
-      "aris-research-lit"
+      "aris-research-lit",
+      "ds-scout"
     ],
     "byTaskType": {
       "analysis": [
@@ -25,7 +26,8 @@
         "aris-research-lit",
         "aris-comm-lit-review",
         "aris-arxiv",
-        "aris-semantic-scholar"
+        "aris-semantic-scholar",
+        "ds-scout"
       ]
     }
   },
@@ -40,7 +42,8 @@
       "biorxiv-database",
       "academic-researcher",
       "aris-idea-discovery",
-      "aris-idea-creator"
+      "aris-idea-creator",
+      "ds-idea"
     ],
     "byTaskType": {
       "analysis": [
@@ -49,7 +52,8 @@
         "inno-deep-research",
         "academic-researcher",
         "aris-novelty-check",
-        "aris-research-review"
+        "aris-research-review",
+        "ds-idea"
       ],
       "exploration": [
         "inno-idea-generation",
@@ -75,7 +79,9 @@
       "bioinformatics-init-analysis",
       "aris-experiment-bridge",
       "aris-run-experiment",
-      "autoresearch"
+      "autoresearch",
+      "ds-experiment",
+      "ds-baseline"
     ],
     "byTaskType": {
       "implementation": [
@@ -83,13 +89,17 @@
         "bioinformatics-init-analysis",
         "aris-experiment-bridge",
         "aris-experiment-plan",
-        "autoresearch"
+        "autoresearch",
+        "ds-experiment",
+        "ds-baseline"
       ],
       "analysis": [
         "inno-experiment-analysis",
         "bioinformatics-init-analysis",
         "aris-analyze-results",
-        "aris-result-to-claim"
+        "aris-result-to-claim",
+        "ds-analysis-campaign",
+        "ds-optimize"
       ],
       "exploration": [
         "inno-code-survey",
@@ -113,7 +123,10 @@
       "inno-grant-proposal",
       "aris-paper-writing",
       "aris-auto-review-loop",
-      "aris-rebuttal"
+      "aris-rebuttal",
+      "ds-write",
+      "ds-review",
+      "ds-rebuttal"
     ],
     "byTaskType": {
       "writing": [
@@ -127,7 +140,10 @@
         "aris-paper-writing",
         "aris-paper-write",
         "aris-paper-figure",
-        "aris-paper-compile"
+        "aris-paper-compile",
+        "ds-write",
+        "ds-figure-polish",
+        "ds-finalize"
       ],
       "analysis": [
         "inno-paper-reviewer",
@@ -135,7 +151,9 @@
         "inno-reference-audit",
         "inno-deep-research",
         "aris-auto-review-loop",
-        "aris-rebuttal"
+        "aris-rebuttal",
+        "ds-review",
+        "ds-rebuttal"
       ],
       "delivery": [
         "inno-rclone-to-overleaf"

@@ -81,4 +81,24 @@ export const AUTO_RESEARCH_PACKS: PackDef[] = [
     gpu: [],
     setupScript: '',
   },
+  {
+    name: 'DeepScientist',
+    description: {
+      zh: 'ICLR 2026 发布的自主研究操作系统。13 个阶段技能覆盖完整研究生命周期，含 50+ 参考模板。每个研究项目是一个 Git 仓库。',
+      en: 'Autonomous research OS from ICLR 2026. 13 stage skills covering the full research lifecycle with 50+ reference templates. Each project is a Git repo.',
+      ko: 'Autonomous research OS. 13 stage skills, 50+ reference templates.',
+    },
+    skills: ['ds-scout', 'ds-baseline', 'ds-idea', 'ds-experiment', 'ds-analysis-campaign', 'ds-optimize', 'ds-write', 'ds-review', 'ds-rebuttal', 'ds-figure-polish', 'ds-finalize', 'ds-decision', 'ds-intake-audit'],
+    workflows: [
+      { name: 'Scout', command: '/ds-scout', description: { zh: '文献调研 + 问题定义 + Baseline 发现', en: 'Literature + problem framing + baseline discovery', ko: 'Literature + problem framing' } },
+      { name: 'Idea', command: '/ds-idea', description: { zh: '假设生成 + 方向选择', en: 'Hypothesis generation + direction selection', ko: 'Hypothesis generation' } },
+      { name: 'Experiment', command: '/ds-experiment', description: { zh: '主实验实现 + 运行', en: 'Main experiment implementation + run', ko: 'Main experiment' } },
+      { name: 'Analysis', command: '/ds-analysis-campaign', description: { zh: '消融实验 + 鲁棒性检查 + 错误分析', en: 'Ablation + robustness + error analysis', ko: 'Ablation + analysis' } },
+      { name: 'Write', command: '/ds-write', description: { zh: '论文撰写（含 LaTeX 模板）', en: 'Paper writing with LaTeX templates', ko: 'Paper writing' } },
+      { name: 'Review', command: '/ds-review', description: { zh: '模拟同行评审', en: 'Simulated peer review', ko: 'Peer review' } },
+    ],
+    mcp: [],
+    gpu: [],
+    setupScript: '',
+  },
 ];
