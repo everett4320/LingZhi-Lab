@@ -180,6 +180,12 @@ function CodeEditor({ file, onClose, projectPath, selectedProject = null, onStar
   const [candidates, setCandidates] = useState(null);
   const [resolvedPath, setResolvedPath] = useState(null);
   const editorRef = useRef(null);
+  const abortRef = useRef(null);
+
+  const handleAbortAndClose = () => {
+    abortRef.current?.abort();
+    onClose();
+  };
 
   // Check if file is markdown
   const isMarkdownFile = useMemo(() => {
@@ -488,6 +494,10 @@ function CodeEditor({ file, onClose, projectPath, selectedProject = null, onStar
 
   // Load file content
   useEffect(() => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const signal = controller.signal;
+
     const loadFileContent = async () => {
       try {
         setLoading(true);
@@ -500,7 +510,7 @@ function CodeEditor({ file, onClose, projectPath, selectedProject = null, onStar
 
         // Binary files (PDF, image): fetch as blob
         if (isBinary) {
-          const blob = await api.getFileContentBlob(file.projectName, absoluteFilePath);
+          const blob = await api.getFileContentBlob(file.projectName, absoluteFilePath, { signal });
           const url = URL.createObjectURL(blob);
           setBlobUrl(url);
           setLoading(false);
@@ -519,7 +529,7 @@ function CodeEditor({ file, onClose, projectPath, selectedProject = null, onStar
 
         // Otherwise, load from disk (use resolved path if available after disambiguation)
         const actualPath = resolvedPath || file.path;
-        const response = await api.readFile(file.projectName, actualPath);
+        const response = await api.readFile(file.projectName, actualPath, { signal });
 
         if (!response.ok) {
           if (response.status === 404) {
@@ -539,16 +549,20 @@ function CodeEditor({ file, onClose, projectPath, selectedProject = null, onStar
 
         setContent(data.content);
       } catch (error) {
+        if (error.name === 'AbortError') return;
         console.error('Error loading file:', error);
         setContent(`// Error loading file: ${error.message}\n// File: ${file.name}\n// Path: ${file.path}`);
       } finally {
-        setLoading(false);
+        if (!signal.aborted) {
+          setLoading(false);
+        }
       }
     };
 
     loadFileContent();
 
     return () => {
+      controller.abort();
       if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
   }, [absoluteFilePath, file, projectPath, isBinary, isUnsupported, resolvedPath]);
@@ -704,7 +718,10 @@ function CodeEditor({ file, onClose, projectPath, selectedProject = null, onStar
           `}
         </style>
         {isSidebar ? (
-          <div className="w-full h-full flex items-center justify-center bg-background">
+          <div className="w-full h-full flex items-center justify-center bg-background relative">
+            <button onClick={handleAbortAndClose} className="absolute top-2 right-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded z-10">
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
             <div className="flex items-center gap-3">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
               <span className="text-gray-900 dark:text-white">{t('loading', { fileName: file.name })}</span>
@@ -712,7 +729,10 @@ function CodeEditor({ file, onClose, projectPath, selectedProject = null, onStar
           </div>
         ) : (
           <div className="fixed inset-0 z-[9999] md:bg-black/50 md:flex md:items-center md:justify-center">
-            <div className="code-editor-loading w-full h-full md:rounded-lg md:w-auto md:h-auto p-8 flex items-center justify-center">
+            <div className="code-editor-loading w-full h-full md:rounded-lg md:w-auto md:h-auto p-8 flex items-center justify-center relative">
+              <button onClick={handleAbortAndClose} className="absolute top-2 right-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded z-10">
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
               <div className="flex items-center gap-3">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                 <span className="text-gray-900 dark:text-white">{t('loading', { fileName: file.name })}</span>

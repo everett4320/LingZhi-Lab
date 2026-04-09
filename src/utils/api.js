@@ -155,13 +155,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(workspaceData),
     }),
-  readFile: (projectName, filePath) =>
-    authenticatedFetch(`/api/projects/${projectName}/file?filePath=${encodeURIComponent(filePath)}`),
+  readFile: (projectName, filePath, options = {}) =>
+    authenticatedFetch(`/api/projects/${projectName}/file?filePath=${encodeURIComponent(filePath)}`, options),
   resolveSkill: (skillName, workingDir) =>
     authenticatedFetch(`/api/skills/resolve?name=${encodeURIComponent(skillName)}&workingDir=${encodeURIComponent(workingDir || '')}`),
   /** Fetch binary file content (e.g. PDF) as Blob. absolutePath must be the full filesystem path. */
-  getFileContentBlob: (projectName, absolutePath) =>
-    authenticatedFetch(`/api/projects/${projectName}/files/content?path=${encodeURIComponent(absolutePath)}`).then((r) => {
+  getFileContentBlob: (projectName, absolutePath, options = {}) =>
+    authenticatedFetch(`/api/projects/${projectName}/files/content?path=${encodeURIComponent(absolutePath)}`, options).then((r) => {
       if (!r.ok) throw new Error(r.status === 404 ? 'Not found' : `HTTP ${r.status}`);
       return r.blob();
     }),

@@ -22,7 +22,7 @@ import { Button } from '../../ui/button';
 import type { PendingAutoIntake } from '../../../types/app';
 import { CLAUDE_MODELS, CURSOR_MODELS, CODEX_MODELS, GEMINI_MODELS, OPENROUTER_MODELS } from '../../../../shared/modelConstants';
 import { getProviderDisplayName } from '../utils/chatFormatting';
-import CodeEditor from '../../CodeEditor';
+const CodeEditor = React.lazy(() => import('../../CodeEditor'));
 import type { EditingFile } from '../../main-content/types/types';
 import { normalizePath, toRelativePath, isSafePath, fileNameFromPath } from '../../../utils/pathUtils';
 import { useDeviceSettings } from '../../../hooks/useDeviceSettings';
@@ -712,13 +712,24 @@ function ChatInterface({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {previewFile && (
             <div className="flex-1 min-h-0 overflow-hidden">
-              <CodeEditor
-                file={previewFile}
-                onClose={handleClosePreview}
-                projectPath={selectedProject?.path}
-                selectedProject={selectedProject}
-                isSidebar
-              />
+              <React.Suspense fallback={
+                <div className="w-full h-full flex items-center justify-center bg-background relative">
+                  <button onClick={handleClosePreview} className="absolute top-2 right-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded z-10">
+                    <svg className="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  </button>
+                  <div className="flex items-center gap-3">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  </div>
+                </div>
+              }>
+                <CodeEditor
+                  file={previewFile}
+                  onClose={handleClosePreview}
+                  projectPath={selectedProject?.path}
+                  selectedProject={selectedProject}
+                  isSidebar
+                />
+              </React.Suspense>
             </div>
           )}
           <div className={previewFile ? 'hidden' : `flex min-h-0 flex-1 flex-col ${isEmpty ? 'justify-start pt-[18vh] overflow-y-auto' : ''}`}>
