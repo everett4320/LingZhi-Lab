@@ -191,7 +191,7 @@ export function useSurveyData(selectedProject: Project | null): UseSurveyDataRes
 
       try {
         const [filesResponse, tasksResponse] = await Promise.all([
-          api.getFiles(projectName, { signal: abortController.signal }),
+          api.getFiles(projectName, { maxDepth: 10, signal: abortController.signal }),
           api.get(`/taskmaster/tasks/${encodeURIComponent(projectName)}`),
         ]);
 

@@ -1280,7 +1280,7 @@ app.get('/api/projects/:projectName/files', authenticateToken, async (req, res) 
         }
 
         const projectRoot = path.resolve(actualPath);
-        const { path: requestedPath, maxDepth: maxDepthQuery, showHidden: showHiddenQuery } = req.query;
+        const { path: requestedPath, maxDepth: maxDepthQuery, showHidden: showHiddenQuery, metadata: metadataQuery } = req.query;
 
         let targetPath = projectRoot;
         if (typeof requestedPath === 'string' && requestedPath.trim()) {
@@ -1301,7 +1301,7 @@ app.get('/api/projects/:projectName/files', authenticateToken, async (req, res) 
             return res.status(404).json({ error: `Project path not found: ${targetPath}` });
         }
 
-        let maxDepth = 10;
+        let maxDepth = 2;
         if (maxDepthQuery !== undefined) {
             const parsedDepth = Number.parseInt(String(maxDepthQuery), 10);
             if (!Number.isNaN(parsedDepth)) {
@@ -1313,12 +1313,16 @@ app.get('/api/projects/:projectName/files', authenticateToken, async (req, res) 
             ? true
             : ['1', 'true', 'yes', 'on'].includes(String(showHiddenQuery).toLowerCase());
 
+        const includeMetadata = metadataQuery === undefined
+            ? true
+            : ['1', 'true', 'yes', 'on'].includes(String(metadataQuery).toLowerCase());
+
         const stats = await fsPromises.stat(targetPath);
         if (!stats.isDirectory()) {
             return res.status(400).json({ error: 'Path must be a directory' });
         }
 
-        const files = await getFileTree(targetPath, maxDepth, 0, showHidden);
+        const files = await getFileTree(targetPath, maxDepth, 0, showHidden, false, includeMetadata);
         res.json(files);
     } catch (error) {
         console.error('[ERROR] File tree error:', error.message);
@@ -3010,18 +3014,12 @@ async function resolveProjectFilePath(projectRoot, inputPath) {
     return { resolved: direct };
 }
 
-async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden = true, isBrowsing = false) {
-    // Using fsPromises from import
-    const items = [];
-
+async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden = true, isBrowsing = false, includeMetadata = true) {
     try {
         const entries = await fsPromises.readdir(dirPath, { withFileTypes: true });
 
-        for (const entry of entries) {
-            // Debug: log all entries including hidden files
-            if (!showHidden && entry.name.startsWith('.')) continue;
-
-            // Skip heavy build directories and VCS directories unless we are browsing
+        const filteredEntries = entries.filter(entry => {
+            if (!showHidden && entry.name.startsWith('.')) return false;
             if (!isBrowsing && (
                 entry.name === 'node_modules' ||
                 entry.name === 'dist' ||
@@ -3029,8 +3027,11 @@ async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden =
                 entry.name === '.git' ||
                 entry.name === '.svn' ||
                 entry.name === '.hg'
-            )) continue;
+            )) return false;
+            return true;
+        });
 
+        const items = await Promise.all(filteredEntries.map(async (entry) => {
             const itemPath = path.join(dirPath, entry.name);
             let isDirectory = entry.isDirectory();
 
@@ -3050,54 +3051,56 @@ async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden =
                 type: isDirectory ? 'directory' : 'file'
             };
 
-            // Get file stats for additional metadata
-            try {
-                const stats = await fsPromises.stat(itemPath);
-                item.size = stats.size;
-                item.modified = stats.mtime.toISOString();
-
-                // Convert permissions to rwx format
-                const mode = stats.mode;
-                const ownerPerm = (mode >> 6) & 7;
-                const groupPerm = (mode >> 3) & 7;
-                const otherPerm = mode & 7;
-                item.permissions = ((mode >> 6) & 7).toString() + ((mode >> 3) & 7).toString() + (mode & 7).toString();
-                item.permissionsRwx = permToRwx(ownerPerm) + permToRwx(groupPerm) + permToRwx(otherPerm);
-            } catch (statError) {
-                // If stat fails, provide default values
-                item.size = 0;
-                item.modified = null;
-                item.permissions = '000';
-                item.permissionsRwx = '---------';
-            }
-
-            if (isDirectory && currentDepth < maxDepth) {
-                // Recursively get subdirectories but limit depth
+            // Get file stats for additional metadata (skip when metadata=false for faster traversal)
+            if (includeMetadata) {
                 try {
-                    // Check if we can access the directory before trying to read it
-                    await fsPromises.access(item.path, fs.constants.R_OK);
-                    item.children = await getFileTree(item.path, maxDepth, currentDepth + 1, showHidden);
-                } catch (e) {
-                    // Silently skip directories we can't access (permission denied, etc.)
-                    item.children = [];
+                    const stats = await fsPromises.stat(itemPath);
+                    item.size = stats.size;
+                    item.modified = stats.mtime.toISOString();
+
+                    const mode = stats.mode;
+                    const ownerPerm = (mode >> 6) & 7;
+                    const groupPerm = (mode >> 3) & 7;
+                    const otherPerm = mode & 7;
+                    item.permissions = ownerPerm.toString() + groupPerm.toString() + otherPerm.toString();
+                    item.permissionsRwx = permToRwx(ownerPerm) + permToRwx(groupPerm) + permToRwx(otherPerm);
+                } catch (statError) {
+                    item.size = 0;
+                    item.modified = null;
+                    item.permissions = '000';
+                    item.permissionsRwx = '---------';
                 }
             }
 
-            items.push(item);
-        }
+            if (isDirectory) {
+                if (currentDepth < maxDepth) {
+                    try {
+                        await fsPromises.access(item.path, fs.constants.R_OK);
+                        item.children = await getFileTree(item.path, maxDepth, currentDepth + 1, showHidden, false, includeMetadata);
+                    } catch (e) {
+                        item.children = [];
+                    }
+                } else {
+                    // Mark as not-yet-loaded so frontend can lazy-load on expand
+                    item.children = null;
+                }
+            }
+
+            return item;
+        }));
+
+        return items.sort((a, b) => {
+            if (a.type !== b.type) {
+                return a.type === 'directory' ? -1 : 1;
+            }
+            return a.name.localeCompare(b.name);
+        });
     } catch (error) {
-        // Only log non-permission errors to avoid spam
         if (error.code !== 'EACCES' && error.code !== 'EPERM') {
             console.error('Error reading directory:', error);
         }
+        return [];
     }
-
-    return items.sort((a, b) => {
-        if (a.type !== b.type) {
-            return a.type === 'directory' ? -1 : 1;
-        }
-        return a.name.localeCompare(b.name);
-    });
 }
 
 const REQUESTED_PORT = parsePortNumber(process.env.PORT, DEFAULT_BACKEND_PORT);

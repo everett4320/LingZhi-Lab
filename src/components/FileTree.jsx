@@ -274,6 +274,9 @@ function FileTree({ selectedProject, onFileOpen, onStartWorkspaceQa }) {
   const [deleting, setDeleting] = useState(false);
   const [dragOverDir, setDragOverDir] = useState(null);
   const [copiedPath, setCopiedPath] = useState(null);
+  const [loadingDirs, setLoadingDirs] = useState(new Set());
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const searchTimerRef = useRef(null);
   const uploadTargetDirRef = useRef('');
   const fileInputRef = useRef(null);
 
@@ -417,24 +420,40 @@ function FileTree({ selectedProject, onFileOpen, onStartWorkspaceQa }) {
     }
   }, []);
 
+  // Debounce search query by 200ms
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 200);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (!debouncedSearchQuery.trim()) {
       setFilteredFiles(files);
     } else {
-      const filtered = filterFiles(files, searchQuery.toLowerCase());
+      const filtered = filterFiles(files, debouncedSearchQuery.toLowerCase());
       setFilteredFiles(filtered);
 
-      const expandMatches = (items) => {
+      // Batch-collect all paths to expand, then update state once
+      const pathsToExpand = new Set();
+      const collectMatches = (items) => {
         items.forEach(item => {
           if (item.type === 'directory' && item.children && item.children.length > 0) {
-            setExpandedDirs(prev => new Set(prev.add(item.path)));
-            expandMatches(item.children);
+            pathsToExpand.add(item.path);
+            collectMatches(item.children);
           }
         });
       };
-      expandMatches(filtered);
+      collectMatches(filtered);
+      setExpandedDirs(prev => {
+        const next = new Set(prev);
+        pathsToExpand.forEach(p => next.add(p));
+        return next;
+      });
     }
-  }, [files, searchQuery]);
+  }, [files, debouncedSearchQuery]);
 
   const filterFiles = (items, query) => {
     return items.reduce((filtered, item) => {
@@ -459,7 +478,9 @@ function FileTree({ selectedProject, onFileOpen, onStartWorkspaceQa }) {
   const fetchFiles = async () => {
     setLoading(true);
     try {
-      const response = await api.getFiles(selectedProject.name);
+      const response = await api.getFiles(selectedProject.name, {
+        metadata: viewMode !== 'simple',
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -478,14 +499,49 @@ function FileTree({ selectedProject, onFileOpen, onStartWorkspaceQa }) {
     }
   };
 
-  const toggleDirectory = (path) => {
-    const newExpanded = new Set(expandedDirs);
-    if (newExpanded.has(path)) {
-      newExpanded.delete(path);
-    } else {
-      newExpanded.add(path);
+  // Recursively merge loaded children into the file tree state
+  const mergeSubtree = (items, targetPath, children) => {
+    return items.map(item => {
+      if (item.path === targetPath) {
+        return { ...item, children };
+      }
+      if (item.type === 'directory' && item.children && item.children.length > 0) {
+        return { ...item, children: mergeSubtree(item.children, targetPath, children) };
+      }
+      return item;
+    });
+  };
+
+  const toggleDirectory = async (dirPath, item) => {
+    if (expandedDirs.has(dirPath)) {
+      const newExpanded = new Set(expandedDirs);
+      newExpanded.delete(dirPath);
+      setExpandedDirs(newExpanded);
+      return;
     }
-    setExpandedDirs(newExpanded);
+
+    // Expand immediately
+    setExpandedDirs(prev => new Set(prev).add(dirPath));
+
+    // Lazy-load children if not yet loaded (children === null)
+    if (item && item.children === null && selectedProject) {
+      setLoadingDirs(prev => new Set(prev).add(dirPath));
+      try {
+        const response = await api.getFiles(selectedProject.name, { path: dirPath, maxDepth: 2 });
+        if (response.ok) {
+          const loadedChildren = await response.json();
+          setFiles(prev => mergeSubtree(prev, dirPath, loadedChildren));
+        }
+      } catch (error) {
+        console.error('Error lazy-loading directory:', error);
+      } finally {
+        setLoadingDirs(prev => {
+          const next = new Set(prev);
+          next.delete(dirPath);
+          return next;
+        });
+      }
+    }
   };
 
   const changeViewMode = (mode) => {
@@ -528,7 +584,7 @@ function FileTree({ selectedProject, onFileOpen, onStartWorkspaceQa }) {
   // ── Click handler shared across all view modes ──
   const handleItemClick = (item) => {
     if (item.type === 'directory') {
-      toggleDirectory(item.path);
+      toggleDirectory(item.path, item);
     } else if (isImageFile(item.name)) {
       setSelectedImage({
         name: item.name,
@@ -620,14 +676,21 @@ function FileTree({ selectedProject, onFileOpen, onStartWorkspaceQa }) {
             {renderRowActions(item)}
           </div>
 
-          {isDir && isOpen && item.children && item.children.length > 0 && (
+          {isDir && isOpen && (
             <div className="relative">
               <span
                 className="absolute top-0 bottom-0 border-l border-border/40"
                 style={{ left: `${level * 16 + 14}px` }}
                 aria-hidden="true"
               />
-              {renderFileTree(item.children, level + 1)}
+              {loadingDirs.has(item.path) ? (
+                <div className="flex items-center gap-1.5 py-1" style={{ paddingLeft: `${(level + 1) * 16 + 4}px` }}>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{t('fileTree.loading')}</span>
+                </div>
+              ) : item.children && item.children.length > 0 ? (
+                renderFileTree(item.children, level + 1)
+              ) : null}
             </div>
           )}
         </div>
@@ -680,14 +743,21 @@ function FileTree({ selectedProject, onFileOpen, onStartWorkspaceQa }) {
             </div>
           </div>
 
-          {isDir && isOpen && item.children && (
+          {isDir && isOpen && (
             <div className="relative">
               <span
                 className="absolute top-0 bottom-0 border-l border-border/40"
                 style={{ left: `${level * 16 + 14}px` }}
                 aria-hidden="true"
               />
-              {renderDetailedView(item.children, level + 1)}
+              {loadingDirs.has(item.path) ? (
+                <div className="flex items-center gap-1.5 py-1" style={{ paddingLeft: `${(level + 1) * 16 + 4}px` }}>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{t('fileTree.loading')}</span>
+                </div>
+              ) : item.children && item.children.length > 0 ? (
+                renderDetailedView(item.children, level + 1)
+              ) : null}
             </div>
           )}
         </div>
@@ -739,14 +809,21 @@ function FileTree({ selectedProject, onFileOpen, onStartWorkspaceQa }) {
             </div>
           </div>
 
-          {isDir && isOpen && item.children && (
+          {isDir && isOpen && (
             <div className="relative">
               <span
                 className="absolute top-0 bottom-0 border-l border-border/40"
                 style={{ left: `${level * 16 + 14}px` }}
                 aria-hidden="true"
               />
-              {renderCompactView(item.children, level + 1)}
+              {loadingDirs.has(item.path) ? (
+                <div className="flex items-center gap-1.5 py-1" style={{ paddingLeft: `${(level + 1) * 16 + 4}px` }}>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{t('fileTree.loading')}</span>
+                </div>
+              ) : item.children && item.children.length > 0 ? (
+                renderCompactView(item.children, level + 1)
+              ) : null}
             </div>
           )}
         </div>

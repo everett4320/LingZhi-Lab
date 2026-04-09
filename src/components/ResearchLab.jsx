@@ -2554,7 +2554,7 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false, onFil
     try {
       const [tasksResponse, filesResponse, tagsResponse] = await Promise.all([
         api.get(`/taskmaster/tasks/${encodeURIComponent(projectName)}`).catch(() => null),
-        api.getFiles(projectName),
+        api.getFiles(projectName, { maxDepth: 10 }),
         api.projectTags(projectName, 'stage').catch(() => null),
       ]);
       const taskData = tasksResponse && tasksResponse.ok ? await tasksResponse.json() : null;

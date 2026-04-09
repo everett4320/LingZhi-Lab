@@ -174,7 +174,7 @@ export const api = {
       body: JSON.stringify({ filePath }),
     }),
   getFiles: (projectName, options = {}) => {
-    const { path, maxDepth, showHidden, ...fetchOptions } = options || {};
+    const { path, maxDepth, showHidden, metadata, ...fetchOptions } = options || {};
     const params = new URLSearchParams();
 
     if (typeof path === 'string' && path) {
@@ -185,6 +185,9 @@ export const api = {
     }
     if (showHidden !== undefined && showHidden !== null) {
       params.append('showHidden', String(showHidden));
+    }
+    if (metadata !== undefined && metadata !== null) {
+      params.append('metadata', String(metadata));
     }
 
     const query = params.toString();
