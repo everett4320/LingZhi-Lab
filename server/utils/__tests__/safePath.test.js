@@ -76,4 +76,26 @@ describe('safePath', () => {
     const result = safePath('deep/nested/new/file.js', ROOT);
     assert.ok(result.startsWith(ROOT + path.sep));
   });
+
+  it('normalizes allowedRoot for falsy input', () => {
+    // Pass a non-normalized root (with trailing segments) to verify
+    // the falsy-input path returns path.resolve(allowedRoot), not the raw string.
+    const nonNormalized = ROOT + path.sep + 'src' + path.sep + '..';
+    const result = safePath('', nonNormalized);
+    assert.equal(result, ROOT);
+  });
+
+  it('allows symlinks inside the project that point outside the root', () => {
+    // Simulate: project/data -> /tmp (an external location)
+    // This should NOT be blocked — legitimate workflow (shared datasets, etc.)
+    const linkPath = path.join(ROOT, 'external-data');
+    try {
+      fs.symlinkSync(os.tmpdir(), linkPath);
+      // Logical path is inside root, so safePath should allow it
+      const result = safePath('external-data/some-file.csv', ROOT);
+      assert.equal(result, path.join(ROOT, 'external-data', 'some-file.csv'));
+    } finally {
+      try { fs.unlinkSync(linkPath); } catch { /* ignore cleanup errors */ }
+    }
+  });
 });
