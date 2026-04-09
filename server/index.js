@@ -1547,11 +1547,17 @@ function handleChatConnection(ws, request) {
                 const sessionId = data.options?.sessionId || data.sessionId;
                 if (sessionId && isClaudeSDKSessionActive(sessionId)) {
                     console.log(`[WARN] Session ${sessionId} is already active. Ignoring concurrent request.`);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'session-busy', sessionId, provider: 'claude' });
+                    }
                     return;
                 }
                 
                 queryClaudeSDK(data.command, { ...data.options, userId, env: sessionEnv }, writer).catch(error => {
                     console.error('[ERROR] Claude query error:', error);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'claude-error', error: error.message || 'Claude query failed', sessionId });
+                    }
                 });
             } else if (data.type === 'cursor-command') {
                 console.log('[DEBUG] Cursor message:', data.command || '[Continue/Resume]');
@@ -1563,9 +1569,12 @@ function handleChatConnection(ws, request) {
                 
                 if (sessionId && isCursorSessionActive(sessionId)) {
                     console.log(`[WARN] Cursor session ${sessionId} is already active. Ignoring concurrent request.`);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'session-busy', sessionId, provider: 'cursor' });
+                    }
                     return;
                 }
-                
+
                 enqueueConversationTelemetry(
                     {
                         name: 'agent_dialogue_meta',
@@ -1581,6 +1590,9 @@ function handleChatConnection(ws, request) {
                 writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
                 spawnCursor(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
                     console.error('[ERROR] Cursor spawn error:', error);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'cursor-error', error: error.message || 'Cursor spawn failed', sessionId });
+                    }
                 });
             } else if (data.type === 'codex-command') {
                 console.log('[DEBUG] Codex message:', data.command || '[Continue/Resume]');
@@ -1592,6 +1604,9 @@ function handleChatConnection(ws, request) {
                 
                 if (sessionId && isCodexSessionActive(sessionId)) {
                     console.log(`[WARN] Codex session ${sessionId} is already active. Ignoring concurrent request.`);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'session-busy', sessionId, provider: 'codex' });
+                    }
                     return;
                 }
                 
@@ -1610,6 +1625,9 @@ function handleChatConnection(ws, request) {
                 writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
                 queryCodex(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
                     console.error('[ERROR] Codex query error:', error);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'codex-error', error: error.message || 'Codex query failed', sessionId });
+                    }
                 });
             } else if (data.type === 'gemini-command') {
                 console.log('[DEBUG] Gemini message:', data.command || '[Continue/Resume]');
@@ -1621,6 +1639,9 @@ function handleChatConnection(ws, request) {
                 
                 if (sessionId && (isGeminiApiSessionActive(sessionId) || isGeminiSessionActive(sessionId))) {
                     console.log(`[WARN] Gemini session ${sessionId} is already active. Ignoring concurrent request.`);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'session-busy', sessionId, provider: 'gemini' });
+                    }
                     return;
                 }
                 
@@ -1652,6 +1673,9 @@ function handleChatConnection(ws, request) {
                     })
                     .catch(error => {
                         console.error('[ERROR] Gemini CLI fallback error:', error);
+                        if (ws.readyState === WebSocket.OPEN) {
+                            writer.send({ type: 'gemini-error', error: error.message || 'Gemini query failed (API + CLI)', sessionId });
+                        }
                     });
             } else if (data.type === 'openrouter-command') {
                 console.log('[DEBUG] OpenRouter message:', data.command || '[Continue/Resume]');
@@ -1663,6 +1687,9 @@ function handleChatConnection(ws, request) {
 
                 if (sessionId && isOpenRouterSessionActive(sessionId)) {
                     console.log(`[WARN] OpenRouter session ${sessionId} is already active. Ignoring concurrent request.`);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'session-busy', sessionId, provider: 'openrouter' });
+                    }
                     return;
                 }
 
@@ -1681,6 +1708,9 @@ function handleChatConnection(ws, request) {
                 writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
                 queryOpenRouter(data.command, { ...data.options, userId, env: sessionEnv }, writer).catch(error => {
                     console.error('[ERROR] OpenRouter query error:', error);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'openrouter-error', error: error.message || 'OpenRouter query failed', sessionId });
+                    }
                 });
             } else if (data.type === 'local-command') {
                 console.log('[DEBUG] Local GPU message:', data.command || '[Continue/Resume]');
@@ -1693,6 +1723,9 @@ function handleChatConnection(ws, request) {
 
                 if (sessionId && isLocalGPUSessionActive(sessionId)) {
                     console.log(`[WARN] Local GPU session ${sessionId} is already active. Ignoring concurrent request.`);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'session-busy', sessionId, provider: 'local' });
+                    }
                     return;
                 }
 
@@ -1711,6 +1744,9 @@ function handleChatConnection(ws, request) {
                 writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
                 queryLocalGPU(data.command, { ...data.options, userId, env: sessionEnv }, writer).catch(error => {
                     console.error('[ERROR] Local GPU query error:', error);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'localgpu-error', error: error.message || 'Local GPU query failed', sessionId });
+                    }
                 });
             } else if (data.type === 'cursor-resume') {
                 // Backward compatibility: treat as cursor-command with resume and no prompt
@@ -1719,9 +1755,12 @@ function handleChatConnection(ws, request) {
                 
                 if (sessionId && isCursorSessionActive(sessionId)) {
                     console.log(`[WARN] Cursor session ${sessionId} is already active. Ignoring concurrent request.`);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'session-busy', sessionId, provider: 'cursor' });
+                    }
                     return;
                 }
-                
+
                 spawnCursor('', {
                     sessionId: data.sessionId,
                     resume: true,
@@ -1729,6 +1768,9 @@ function handleChatConnection(ws, request) {
                     env: sessionEnv
                 }, writer).catch(error => {
                     console.error('[ERROR] Cursor resume error:', error);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        writer.send({ type: 'cursor-error', error: error.message || 'Cursor resume failed', sessionId });
+                    }
                 });
             } else if (data.type === 'abort-session') {
                 console.log('[DEBUG] Abort session request:', data.sessionId);

@@ -184,6 +184,14 @@ const runMigrations = () => {
       db.exec('ALTER TABLE users ADD COLUMN memory_enabled BOOLEAN DEFAULT 1');
     }
 
+    // Performance indexes for session_metadata last_activity sorting
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_session_metadata_last_activity
+        ON session_metadata(last_activity);
+      CREATE INDEX IF NOT EXISTS idx_session_metadata_project_activity
+        ON session_metadata(project_name, last_activity);
+    `);
+
     console.log('Database migrations completed successfully');
   } catch (error) {
     console.error('Error running migrations:', error.message);

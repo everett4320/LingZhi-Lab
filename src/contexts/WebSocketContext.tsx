@@ -39,6 +39,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
   const [latestMessage, setLatestMessage] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
   const { token } = useAuth();
 
   // Message queue: ensures every WebSocket message is delivered to consumers
@@ -62,6 +63,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
     
     return () => {
       unmountedRef.current = true;
+      retryCountRef.current = 0;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
@@ -84,6 +86,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
       const websocket = new WebSocket(wsUrl);
 
       websocket.onopen = () => {
+        retryCountRef.current = 0;
         setIsConnected(true);
         wsRef.current = websocket;
       };
@@ -103,11 +106,13 @@ const useWebSocketProviderState = (): WebSocketContextType => {
       websocket.onclose = () => {
         setIsConnected(false);
         wsRef.current = null;
-        
+
+        const delay = Math.min(3000 * Math.pow(2, retryCountRef.current), 30000);
+        retryCountRef.current++;
         reconnectTimeoutRef.current = setTimeout(() => {
           if (unmountedRef.current) return;
           connect();
-        }, 3000);
+        }, delay);
       };
 
       websocket.onerror = (error) => {

@@ -392,6 +392,7 @@ export function useChatRealtimeHandlers({
       'gemini-error',
       'openrouter-error',
       'localgpu-error',
+      'session-busy',
     ]);
 
     const isClaudeSystemInit =
@@ -1312,6 +1313,16 @@ export function useChatRealtimeHandlers({
         }
         break;
       }
+
+      case 'session-busy':
+        console.warn(`[session-busy] Session ${latestMessage.sessionId} is already processing (${latestMessage.provider})`);
+        setChatMessages((previous) => {
+          const busyMsg = 'This session is still processing. Please wait for the current response to complete.';
+          const last = previous[previous.length - 1];
+          if (last?.type === 'error' && last.content === busyMsg) return previous;
+          return [...previous, { type: 'error', content: busyMsg, timestamp: new Date() }];
+        });
+        break;
 
       case 'session-status': {
         const statusSessionId = latestMessage.sessionId;
