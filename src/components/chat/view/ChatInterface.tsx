@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QuickSettingsPanel from '../../QuickSettingsPanel';
+import ChatTaskProgressPill from './subcomponents/ChatTaskProgressPill';
+import { useTasksSettings } from '../../../contexts/TasksSettingsContext';
 import { useTaskMaster } from '../../../contexts/TaskMasterContext';
 import { useTranslation } from 'react-i18next';
 import ChatMessagesPane from './subcomponents/ChatMessagesPane';
 import ChatComposer from './subcomponents/ChatComposer';
 import BtwOverlay from './subcomponents/BtwOverlay';
 import ChatContextSidebar from './subcomponents/ChatContextSidebar';
+import ChatContextFilePreview, { type PreviewFileTarget } from './subcomponents/ChatContextFilePreview';
+import GuidedPromptStarter from './subcomponents/GuidedPromptStarter';
 import { RESUMING_STATUS_TEXT } from '../types/types';
 import type { ChatInterfaceProps } from '../types/types';
 import type { ProviderAvailability } from '../types/types';
@@ -20,9 +24,9 @@ import { Button } from '../../ui/button';
 import type { PendingAutoIntake } from '../../../types/app';
 import { CLAUDE_MODELS, CURSOR_MODELS, CODEX_MODELS, GEMINI_MODELS, LOCAL_MODELS, NANO_CLAUDE_CODE_MODELS, OPENROUTER_MODELS } from '../../../../shared/modelConstants';
 import { getProviderDisplayName } from '../utils/chatFormatting';
-import CodeEditor from '../../CodeEditor';
-import type { EditingFile } from '../../main-content/types/types';
 import { normalizePath, toRelativePath, isSafePath, fileNameFromPath } from '../../../utils/pathUtils';
+import { useDeviceSettings } from '../../../hooks/useDeviceSettings';
+import { X } from 'lucide-react';
 
 
 const DEFAULT_PROVIDER_AVAILABILITY: Record<Provider, ProviderAvailability> = {
@@ -74,6 +78,8 @@ type PendingViewSession = {
   startedAt: number;
 };
 
+type SidebarTab = 'context' | 'research' | 'files' | 'shell' | 'git';
+
 function ChatInterface({
   selectedProject,
   selectedSession,
@@ -101,31 +107,46 @@ function ChatInterface({
   clearPendingAutoIntake,
   importedProjectAnalysisPrompt,
   clearImportedProjectAnalysisPrompt,
-  onOpenShellForSession,
   newSessionMode = 'research',
   onNewSessionModeChange,
 }: ChatInterfaceProps) {
+  const { tasksEnabled, isTaskMasterInstalled } = useTasksSettings();
   const { refreshTasks } = useTaskMaster();
   const { t } = useTranslation('chat');
+  const { isMobile } = useDeviceSettings({ trackPWA: false });
   const [isShellEditPromptOpen, setIsShellEditPromptOpen] = useState(false);
-  const [previewFile, setPreviewFile] = useState<EditingFile | null>(null);
+  const [previewFile, setPreviewFile] = useState<PreviewFileTarget | null>(null);
 
   const handleFilePreview = useCallback((filePath: string) => {
     const root = selectedProject?.fullPath || selectedProject?.path || '';
     const relative = toRelativePath(filePath, root);
     if (!relative || !isSafePath(relative)) return;
     const name = fileNameFromPath(normalizePath(filePath));
-    setPreviewFile({ name, path: relative, projectName: selectedProject?.name });
+    setPreviewFile({
+      name,
+      relativePath: relative,
+      absolutePath: normalizePath(filePath),
+    });
   }, [selectedProject]);
 
   const handleClosePreview = useCallback(() => {
     setPreviewFile(null);
   }, []);
 
-  const [sidebarTab, setSidebarTab] = useState<'context' | 'research' | 'files' | 'shell' | 'git'>(() => {
+  const handleOpenPreviewInEditor = useCallback((filePath: string) => {
+    setPreviewFile(null);
+    onFileOpen?.(filePath);
+  }, [onFileOpen]);
+
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>(() => {
     if (typeof window === 'undefined') return 'context';
     const stored = window.localStorage.getItem('chat-sidebar-active-tab');
-    return (stored === 'research' || stored === 'files' || stored === 'shell' || stored === 'git') ? stored : 'context';
+    if (stored === 'research' || stored === 'files' || stored === 'shell' || stored === 'git') return stored;
+    return 'context';
+  });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('chat-session-context-collapsed') === '1';
   });
 
   useEffect(() => {
@@ -559,6 +580,24 @@ function ChatInterface({
   }, [selectedSession?.id, selectedProject?.name]);
 
   useEffect(() => {
+    if (!previewFile) {
+      return undefined;
+    }
+
+    const handlePreviewEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.repeat || event.defaultPrevented) {
+        return;
+      }
+
+      event.stopPropagation();
+      setPreviewFile(null);
+    };
+
+    document.addEventListener('keydown', handlePreviewEscape);
+    return () => document.removeEventListener('keydown', handlePreviewEscape);
+  }, [previewFile]);
+
+  useEffect(() => {
     if (!isLoading || !canAbortSession) {
       return;
     }
@@ -665,11 +704,11 @@ function ChatInterface({
   ]);
 
   const handleOpenShellEditPrompt = useCallback(() => {
-    if (!selectedSession || !onOpenShellForSession) {
+    if (!selectedSession) {
       return;
     }
     setIsShellEditPromptOpen(true);
-  }, [onOpenShellForSession, selectedSession]);
+  }, [selectedSession]);
 
   const handleCloseShellEditPrompt = useCallback(() => {
     setIsShellEditPromptOpen(false);
@@ -677,8 +716,11 @@ function ChatInterface({
 
   const handleConfirmOpenShell = useCallback(() => {
     setIsShellEditPromptOpen(false);
-    onOpenShellForSession?.();
-  }, [onOpenShellForSession]);
+    setSidebarTab('shell');
+    setIsSidebarCollapsed(false);
+  }, []);
+
+  const isEmpty = chatMessages.length === 0 && !isLoadingSessionMessages && !selectedSession && !currentSessionId;
 
   if (!selectedProject) {
     const selectedProviderLabel = getProviderDisplayName(provider);
@@ -695,26 +737,21 @@ function ChatInterface({
             </p>
           </div>
         </div>
+        <div className="flex justify-end px-4 pb-4">
+          <ChatTaskProgressPill
+            onStartTask={handleStartTaskInChat}
+            onShowAllTasks={() => setSidebarTab('research')}
+          />
+        </div>
       </>
     );
   }
 
   return (
     <>
-      <div className="h-full flex min-h-0 flex-col xl:flex-row">
+      <div className={`h-full flex min-h-0 ${isMobile ? 'flex-col' : 'flex-row'}`}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {previewFile && (
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <CodeEditor
-                file={previewFile}
-                onClose={handleClosePreview}
-                projectPath={selectedProject?.path}
-                selectedProject={selectedProject}
-                isSidebar
-              />
-            </div>
-          )}
-          <div className={previewFile ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
+          <div className={`flex min-h-0 flex-1 flex-col ${isEmpty ? 'justify-start pt-[18vh] overflow-y-auto' : ''}`}>
         {shouldShowImportedProjectAnalysisPrompt && (
           <div className="mx-auto mt-4 w-full max-w-3xl px-3 sm:px-4">
             <div className="rounded-xl border border-border bg-card/95 shadow-sm px-4 py-4 sm:px-5">
@@ -791,24 +828,6 @@ function ChatInterface({
           intakeGreeting={intakeGreeting}
           currentSessionId={currentSessionId}
           provider={provider}
-          setProvider={(nextProvider) => setProvider(nextProvider as Provider)}
-          textareaRef={textareaRef}
-          setInput={setInput}
-          setAttachedPrompt={setAttachedPrompt}
-          claudeModel={claudeModel}
-          setClaudeModel={setClaudeModel}
-          cursorModel={cursorModel}
-          setCursorModel={setCursorModel}
-          codexModel={codexModel}
-          setCodexModel={setCodexModel}
-          geminiModel={geminiModel}
-          setGeminiModel={setGeminiModel}
-          openrouterModel={openrouterModel}
-          setOpenrouterModel={setOpenrouterModel}
-          localModel={localModel}
-          setLocalModel={setLocalModel}
-          nanoModel={nanoModel}
-          setNanoModel={setNanoModel}
           isLoadingMoreMessages={isLoadingMoreMessages}
           hasMoreMessages={hasMoreMessages}
           totalMessages={totalMessages}
@@ -832,9 +851,7 @@ function ChatInterface({
           selectedProject={selectedProject}
           isLoading={isLoading}
           statusText={statusTextOverride || claudeStatus?.text}
-          providerAvailability={providerAvailability}
           newSessionMode={newSessionMode}
-          onNewSessionModeChange={onNewSessionModeChange}
           onRetry={handleRetry}
         />
 
@@ -896,9 +913,11 @@ function ChatInterface({
           onTextareaInput={handleTextareaInput}
           onInputFocusChange={handleInputFocusChange}
           isInputFocused={isInputFocused}
-          placeholder={t('input.placeholder', {
-            provider: getProviderDisplayName(provider),
-          })}
+          placeholder={
+            isEmpty && newSessionMode === 'workspace_qa'
+              ? t('session.mode.workspaceQaPlaceholder', { defaultValue: 'Ask about any file, module, or implementation detail...' })
+              : t('input.placeholder', { provider: getProviderDisplayName(provider) })
+          }
           isTextareaExpanded={isTextareaExpanded}
           sendByCtrlEnter={sendByCtrlEnter}
           onTranscript={handleTranscript}
@@ -911,7 +930,34 @@ function ChatInterface({
           onUpdateAttachedPrompt={(text) =>
             setAttachedPrompt((prev) => prev ? { ...prev, promptText: text } : null)
           }
+          centered={isEmpty}
+          setAttachedPrompt={setAttachedPrompt}
+          setProvider={(next) => setProvider(next as Provider)}
+          claudeModel={claudeModel}
+          setClaudeModel={setClaudeModel}
+          cursorModel={cursorModel}
+          setCursorModel={setCursorModel}
+          setCodexModel={setCodexModel}
+          setGeminiModel={setGeminiModel}
+          openrouterModel={openrouterModel}
+          setOpenrouterModel={setOpenrouterModel}
+          localModel={localModel}
+          setLocalModel={setLocalModel}
+          nanoModel={nanoModel}
+          setNanoModel={setNanoModel}
+          providerAvailability={providerAvailability}
+          newSessionMode={newSessionMode}
+          onNewSessionModeChange={onNewSessionModeChange}
         />
+
+        {isEmpty && newSessionMode === 'research' && (
+          <GuidedPromptStarter
+            projectName={selectedProject?.name || ''}
+            setInput={setInput}
+            textareaRef={textareaRef}
+            setAttachedPrompt={setAttachedPrompt}
+          />
+        )}
 
           </div>
         </div>
@@ -926,10 +972,40 @@ function ChatInterface({
           onFileOpen={handleFilePreview}
           activeSidebarTab={sidebarTab}
           onSidebarTabChange={setSidebarTab}
+          isCollapsed={isSidebarCollapsed}
+          onCollapsedChange={setIsSidebarCollapsed}
           onStartWorkspaceQa={onStartWorkspaceQa}
           onStartTask={handleStartTaskInChat}
         />
       </div>
+
+      {previewFile && selectedProject && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={handleClosePreview}
+        >
+          <div
+            className="relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={handleClosePreview}
+              className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              title={t('sessionContext.preview.closePreview')}
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ChatContextFilePreview
+                projectName={selectedProject.name}
+                file={previewFile}
+                onOpenInEditor={handleOpenPreviewInEditor}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {isShellEditPromptOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
