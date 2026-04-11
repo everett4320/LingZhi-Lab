@@ -23,6 +23,7 @@ import { applyStageTagsToSession, recordIndexedSession } from './utils/sessionIn
 import { createRequestId, waitForToolApproval, matchesToolPermission } from './utils/permissions.js';
 import { buildMemoryBlock } from './utils/memoryPrompt.js';
 import { expandSkillCommand } from './utils/skillExpander.js';
+import { safePath } from './utils/safePath.js';
 
 const execAsync = promisify(exec);
 
@@ -223,10 +224,9 @@ function sendMessage(ws, data) {
 // ---------------------------------------------------------------------------
 
 async function executeTool(name, args, workingDir) {
-  const resolve = (p) => {
-    if (!p) return workingDir;
-    return path.isAbsolute(p) ? p : path.resolve(workingDir, p);
-  };
+  // Constrain all paths to the project root to prevent LLM-driven
+  // prompt-injection attacks from reading/writing outside the workspace.
+  const resolve = (p) => safePath(p, workingDir);
   const trunc = (s) =>
     s.length <= MAX_OUTPUT_CHARS ? s : s.slice(0, MAX_OUTPUT_CHARS) + `\n…(truncated, ${s.length} total chars)`;
 

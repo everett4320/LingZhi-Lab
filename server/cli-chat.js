@@ -15,6 +15,7 @@ import os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import spawnAsync from './utils/spawnAsync.js';
+import { safePath } from './utils/safePath.js';
 
 const execAsync = promisify(exec);
 
@@ -165,10 +166,9 @@ const TOOL_SCHEMAS = [
 // ── Tool execution ────────────────────────────────────────────────────────────
 
 async function executeTool(name, args, workingDir) {
-  const resolve = (p) => {
-    if (!p) return workingDir;
-    return path.isAbsolute(p) ? p : path.resolve(workingDir, p);
-  };
+  // Constrain all paths to the project root to prevent LLM-driven
+  // prompt-injection attacks from reading/writing outside the workspace.
+  const resolve = (p) => safePath(p, workingDir);
   const trunc = (s) =>
     s.length <= MAX_OUTPUT_CHARS ? s : s.slice(0, MAX_OUTPUT_CHARS) + `\n…(truncated)`;
 
