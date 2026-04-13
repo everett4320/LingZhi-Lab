@@ -193,6 +193,7 @@ function ChatInterface({
   const {
     chatMessages,
     setChatMessages,
+    addOptimisticMessage,
     isLoading,
     setIsLoading,
     currentSessionId,
@@ -327,6 +328,7 @@ function ChatInterface({
     pendingViewSessionRef,
     scrollToBottom,
     setChatMessages,
+    addOptimisticMessage,
     setSessionMessages,
     setIsLoading,
     setCanAbortSession,

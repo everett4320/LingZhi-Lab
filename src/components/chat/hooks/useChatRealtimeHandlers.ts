@@ -791,6 +791,11 @@ export function useChatRealtimeHandlers({
         }
         if (selectedProject && latestMessage.exitCode === 0) {
           safeLocalStorage.removeItem(`chat_messages_${selectedProject.name}`);
+          // Also clear session-level store (new persistence layer)
+          const completedSid = latestMessage.sessionId || currentSessionId || selectedSession?.id;
+          if (completedSid) {
+            try { localStorage.removeItem(`msg_store_${completedSid}`); } catch { /* ignore */ }
+          }
         }
         setPendingPermissionRequests([]);
         break;
@@ -1288,6 +1293,11 @@ export function useChatRealtimeHandlers({
           sessionStorage.removeItem('pendingSessionId');
         }
         if (selectedProject) safeLocalStorage.removeItem(`chat_messages_${selectedProject.name}`);
+        // Also clear session-level store (new persistence layer)
+        const codexDoneSid = latestMessage.sessionId || currentSessionId || selectedSession?.id;
+        if (codexDoneSid) {
+          try { localStorage.removeItem(`msg_store_${codexDoneSid}`); } catch { /* ignore */ }
+        }
         break;
       }
 

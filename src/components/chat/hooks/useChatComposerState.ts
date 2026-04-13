@@ -82,6 +82,7 @@ interface UseChatComposerStateArgs {
   pendingViewSessionRef: { current: PendingViewSession | null };
   scrollToBottom: () => void;
   setChatMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  addOptimisticMessage?: (message: ChatMessage) => void;
   setSessionMessages?: Dispatch<SetStateAction<any[]>>;
   setIsLoading: (loading: boolean) => void;
   setCanAbortSession: (canAbort: boolean) => void;
@@ -258,6 +259,7 @@ export function useChatComposerState({
   pendingViewSessionRef,
   scrollToBottom,
   setChatMessages,
+  addOptimisticMessage,
   setSessionMessages,
   setIsLoading,
   setCanAbortSession,
@@ -1126,7 +1128,12 @@ export function useChatComposerState({
         ...(attachedPrompt ? { attachedPrompt } : {}),
       };
 
-      setChatMessages((previous) => [...previous, userMessage]);
+      // Use optimistic layer if available, otherwise fall back to direct append
+      if (addOptimisticMessage) {
+        addOptimisticMessage(userMessage);
+      } else {
+        setChatMessages((previous) => [...previous, userMessage]);
+      }
       if (abortTimeoutRef.current) {
         clearTimeout(abortTimeoutRef.current);
         abortTimeoutRef.current = null;

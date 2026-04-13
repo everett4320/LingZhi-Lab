@@ -286,9 +286,14 @@ export default function ChatMessagesPane({
               );
             }
             // kind === 'agent-turn'
+            // Use a stable key derived from the first message in the turn, not the array index.
+            const turnFirstMsg = item.allMessages?.[0];
+            const turnKey = turnFirstMsg
+              ? `agent-turn-${getMessageKey(turnFirstMsg)}`
+              : `agent-turn-fallback-${index}`;
             return (
               <AgentTurnContainer
-                key={`agent-turn-${index}`}
+                key={turnKey}
                 turn={item}
                 getMessageKey={getMessageKey}
                 createDiff={createDiff}

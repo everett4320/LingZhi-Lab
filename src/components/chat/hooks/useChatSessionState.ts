@@ -12,6 +12,7 @@ import {
   createCachedDiffCalculator,
   type DiffCalculator,
 } from '../utils/messageTransforms';
+import { useSessionMessageStore } from './useSessionMessageStore';
 
 const MESSAGES_PER_PAGE = 20;
 const INITIAL_VISIBLE_MESSAGES = 100;
@@ -76,36 +77,23 @@ export function useChatSessionState({
 }: UseChatSessionStateArgs) {
   const persistedInitialStartTime = selectedSession?.id ? readSessionTimerStart(selectedSession.id) : null;
 
-  const [chatMessages, _setChatMessages] = useState<ChatMessage[]>(() => {
-    if (typeof window !== 'undefined' && selectedProject) {
-      const saved = safeLocalStorage.getItem(`chat_messages_${selectedProject.name}`);
-      if (saved) {
-        try {
-          return JSON.parse(saved) as ChatMessage[];
-        } catch {
-          console.error('Failed to parse saved chat messages, resetting');
-          safeLocalStorage.removeItem(`chat_messages_${selectedProject.name}`);
-          return [];
-        }
-      }
-      return [];
-    }
-    return [];
-  });
+  // --- SessionMessageStore: three-layer message state ---
+  const messageStore = useSessionMessageStore();
+  const { chatMessages, setChatMessages, setPersistedMessages, addOptimisticMessage, clearAll: clearMessageStore } = messageStore;
 
-  const setChatMessages = useCallback((updater: React.SetStateAction<ChatMessage[]>) => {
-    _setChatMessages((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      let hasChanges = false;
-      const final = next.map((msg) => {
-        if (!msg.id && !msg.messageId && !msg.toolId && !msg.toolCallId && !msg.blobId && !msg.rowid && !msg.sequence) {
-          hasChanges = true;
-          return { ...msg, messageId: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) };
-        }
-        return msg;
-      });
-      return hasChanges ? final : next;
-    });
+  // Try to load session-level recovery data on first mount
+  const initialLoadDoneRef = useRef(false);
+  useEffect(() => {
+    if (initialLoadDoneRef.current) return;
+    initialLoadDoneRef.current = true;
+    if (selectedSession?.id) {
+      messageStore.loadPersisted(selectedSession.id);
+    }
+    // Migrate: clear old project-level localStorage cache if it exists
+    if (selectedProject) {
+      safeLocalStorage.removeItem(`chat_messages_${selectedProject.name}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [isLoading, setIsLoading] = useState(() => {
@@ -330,9 +318,12 @@ export function useChatSessionState({
           height: previousScrollHeight,
           top: previousScrollTop,
         };
+        // Convert and prepend older messages to the store's persisted layer
+        const convertedMore = convertSessionMessages(moreMessages);
+        messageStore.prependPersistedMessages(convertedMore);
         setSessionMessages((previous) => [...moreMessages, ...previous]);
         // Keep the rendered window in sync with top-pagination so newly loaded history becomes visible.
-        setVisibleMessageCount((previousCount) => previousCount + moreMessages.length);
+        setVisibleMessageCount((previousCount) => previousCount + convertedMore.length);
         return true;
       } finally {
         isLoadingMoreRef.current = false;
@@ -419,7 +410,7 @@ export function useChatSessionState({
           if (!isSystemSessionChange) {
             resetStreamingState();
             pendingViewSessionRef.current = null;
-            setChatMessages([]);
+            clearMessageStore();
             setSessionMessages([]);
             setClaudeStatus(null);
             setCanAbortSession(false);
@@ -466,7 +457,7 @@ export function useChatSessionState({
             const projectPath = selectedProject.fullPath || selectedProject.path || '';
             const converted = await loadCursorSessionMessages(projectPath, selectedSession.id);
             setSessionMessages([]);
-            setChatMessages(converted);
+            setPersistedMessages(converted);
           } else {
             setIsSystemSessionChange(false);
           }
@@ -489,7 +480,7 @@ export function useChatSessionState({
         if (!isSystemSessionChange) {
           resetStreamingState();
           pendingViewSessionRef.current = null;
-          setChatMessages([]);
+          clearMessageStore();
           setSessionMessages([]);
           setClaudeStatus(null);
           setCanAbortSession(false);
@@ -537,7 +528,7 @@ export function useChatSessionState({
           const projectPath = selectedProject.fullPath || selectedProject.path || '';
           const converted = await loadCursorSessionMessages(projectPath, selectedSession.id);
           setSessionMessages([]);
-          setChatMessages(converted);
+          setPersistedMessages(converted);
           return;
         }
 
@@ -577,16 +568,26 @@ export function useChatSessionState({
   }, [pendingViewSessionRef, selectedSession?.id]);
 
   useEffect(() => {
-    // Sync converted messages to chat state.
-    // We update even for empty arrays to clear old state when switching to an empty session.
-    setChatMessages(convertedMessages);
-  }, [convertedMessages, setChatMessages]);
+    // Sync converted messages to the store's persisted layer.
+    // This uses setPersistedMessages which reconciles optimistic messages
+    // instead of blowing them away.
+    setPersistedMessages(convertedMessages);
+  }, [convertedMessages, setPersistedMessages]);
 
+  // Session-level persistence (replaces old project-level localStorage)
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (selectedProject && chatMessages.length > 0) {
-      safeLocalStorage.setItem(`chat_messages_${selectedProject.name}`, JSON.stringify(chatMessages));
-    }
-  }, [chatMessages, selectedProject]);
+    if (!selectedSession?.id || chatMessages.length === 0) return;
+    // Throttle persistence to avoid main-thread jank on every message
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      messageStore.persist(selectedSession.id);
+    }, 2000);
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatMessages.length, selectedSession?.id]);
 
   useEffect(() => {
     if (!selectedProject || !selectedSession?.id || selectedSession.id.startsWith('new-session-')) {
@@ -738,6 +739,59 @@ export function useChatSessionState({
     };
   }, [currentSessionId, pendingStatusValidationSessionId, processingSessions, selectedSession?.id]);
 
+  // Hard timeout: if the session has been in "Resuming" for too long (e.g. backend restarted
+  // and no codex-complete/codex-error was ever sent), force-clear the stale state.
+  // This fires even when processingSessions still thinks the session is active, because
+  // after a backend restart the in-memory processingSessions set is never cleaned up.
+  const HARD_RESUME_TIMEOUT_MS = 15000;
+  useEffect(() => {
+    const activeViewSessionId = selectedSession?.id || currentSessionId;
+    if (!activeViewSessionId) return;
+
+    const persistedStartTime = readSessionTimerStart(activeViewSessionId);
+    if (!persistedStartTime) return;
+
+    // Only apply hard timeout when we're actually showing Resuming status
+    if (!isLoading) return;
+
+    const elapsed = Date.now() - persistedStartTime;
+    const remaining = Math.max(0, HARD_RESUME_TIMEOUT_MS - elapsed);
+
+    const hardTimeoutId = window.setTimeout(() => {
+      const latestStart = readSessionTimerStart(activeViewSessionId);
+      // If the start time changed, a new turn started — don't clear
+      if (latestStart !== persistedStartTime) return;
+
+      // Re-check session status via WebSocket before force-clearing
+      if (ws && activeViewSessionId) {
+        const provider = selectedProject
+          ? resolveSessionProviderForLoad(selectedSession, selectedProject)
+          : 'claude';
+        sendMessage({
+          type: 'check-session-status',
+          sessionId: activeViewSessionId,
+          provider,
+        });
+      }
+
+      // Give the WebSocket 3 seconds to respond; if still stuck, force-clear
+      window.setTimeout(() => {
+        const finalStart = readSessionTimerStart(activeViewSessionId);
+        if (finalStart !== persistedStartTime) return;
+
+        console.warn(`[SessionMessageStore] Hard timeout: clearing stale Resuming state for ${activeViewSessionId}`);
+        clearSessionTimerStart(activeViewSessionId);
+        setPendingStatusValidationSessionId((prev) => (prev === activeViewSessionId ? null : prev));
+        setClaudeStatus((prev) => (prev?.text === RESUMING_STATUS_TEXT ? null : prev));
+        setIsLoading(false);
+        setCanAbortSession(false);
+      }, 3000);
+    }, remaining);
+
+    return () => clearTimeout(hardTimeoutId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId, selectedSession?.id, isLoading]);
+
   // Show "Load all" overlay after a batch finishes loading, persist for 2s then hide
   const prevLoadingRef = useRef(false);
   useEffect(() => {
@@ -845,6 +899,8 @@ export function useChatSessionState({
   return {
     chatMessages,
     setChatMessages,
+    messageStore,
+    addOptimisticMessage,
     isLoading,
     setIsLoading,
     currentSessionId,

@@ -238,7 +238,12 @@ const isUpdateAdditive = (
     currentSelectedSession.id === updatedSelectedSession.id &&
     currentSelectedSession.title === updatedSelectedSession.title &&
     currentSelectedSession.created_at === updatedSelectedSession.created_at &&
-    currentSelectedSession.updated_at === updatedSelectedSession.updated_at
+    currentSelectedSession.updated_at === updatedSelectedSession.updated_at &&
+    // Also compare fields that change during active sessions to avoid
+    // treating metadata-only updates as structural changes
+    currentSelectedSession.lastActivity === updatedSelectedSession.lastActivity &&
+    currentSelectedSession.messageCount === updatedSelectedSession.messageCount &&
+    currentSelectedSession.mode === updatedSelectedSession.mode
   );
 };
 
