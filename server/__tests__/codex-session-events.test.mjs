@@ -4,10 +4,11 @@ import { buildCodexSessionCreatedEvent } from '../utils/codexSessionEvents.js';
 
 describe('codex session event payloads', () => {
   it('includes projectName when provided', () => {
+    const projectName = 'C--Users-test-user-dr-claw-project';
     const event = buildCodexSessionCreatedEvent({
       sessionId: '019d82e8-1ee3-7860-baa1-24603f424ade',
       sessionMode: 'research',
-      projectName: 'C--Users-Xingjian-Hu-dr-claw-jyw',
+      projectName,
     });
 
     expect(event).toEqual({
@@ -15,7 +16,7 @@ describe('codex session event payloads', () => {
       sessionId: '019d82e8-1ee3-7860-baa1-24603f424ade',
       provider: 'codex',
       mode: 'research',
-      projectName: 'C--Users-Xingjian-Hu-dr-claw-jyw',
+      projectName,
     });
   });
 

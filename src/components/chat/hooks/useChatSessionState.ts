@@ -33,6 +33,8 @@ import {
 } from '../utils/sessionSnapshotCache';
 import {
   buildSessionScopeKey,
+  isSessionScopeKeyTemporary,
+  isTemporarySessionId,
   parseSessionScopeKey,
   scopeKeyMatchesSessionId,
 } from '../../../utils/sessionScope';
@@ -110,6 +112,25 @@ function hasSessionHistoryHint(session: ProjectSession | null | undefined): bool
 
   const parsedMessageCount = Number(rawMessageCount);
   return Number.isFinite(parsedMessageCount) && parsedMessageCount > 0;
+}
+
+export function hasPendingOptimisticSessionState(
+  pendingViewSessionRefValue: PendingViewSession | null | undefined,
+  currentSessionId: string | null | undefined,
+): boolean {
+  return Boolean(pendingViewSessionRefValue) || isTemporarySessionId(currentSessionId);
+}
+
+export function hasTemporaryProcessingSessionKeys(
+  processingSessions: Set<string> | null | undefined,
+): boolean {
+  if (!processingSessions) {
+    return false;
+  }
+
+  return Array.from(processingSessions).some((sessionKey) => (
+    isSessionScopeKeyTemporary(sessionKey) || isTemporarySessionId(sessionKey)
+  ));
 }
 
 type PendingViewSession = {
@@ -877,23 +898,20 @@ export function useChatSessionState({
         const pendingViewSessionId =
           pendingViewSessionRef.current?.sessionId || null;
         const hasPendingOptimisticSession =
-          Boolean(pendingViewSessionRef.current) ||
-          Boolean(currentSessionId && currentSessionId.startsWith("new-session-"));
+          hasPendingOptimisticSessionState(
+            pendingViewSessionRef.current,
+            currentSessionId,
+          );
         const pendingOptimisticSessionId =
           pendingViewSessionId || currentSessionId || null;
-          const hasPendingProcessing =
+        const hasPendingProcessing =
           pendingOptimisticSessionId
             ? hasProcessingSession(
                 pendingOptimisticSessionId,
                 selectedSession?.__provider || DEFAULT_PROVIDER,
                 selectedProject?.name || null,
               )
-            : Boolean(
-                processingSessions &&
-                  Array.from(processingSessions).some((sessionKey) =>
-                    sessionKey.startsWith('new-session-') || sessionKey.includes('::new-session-'),
-                  ),
-              );
+            : hasTemporaryProcessingSessionKeys(processingSessions);
         const hasPendingStartTime = Boolean(
           pendingOptimisticSessionId &&
             readSessionTimerStart(pendingOptimisticSessionId),
@@ -1134,7 +1152,7 @@ export function useChatSessionState({
   ]);
 
   useEffect(() => {
-    if (!selectedProject || !selectedSession?.id || selectedSession.id.startsWith('new-session-')) {
+    if (!selectedProject || !selectedSession?.id || isTemporarySessionId(selectedSession.id)) {
       setTokenBudget(null);
       return;
     }
@@ -1475,4 +1493,3 @@ export function useChatSessionState({
     resolveSessionStatusCheck,
   };
 }
-
