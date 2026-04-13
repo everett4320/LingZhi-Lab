@@ -13,6 +13,7 @@ import {
   persistSessionTimerStart,
   safeLocalStorage,
 } from '../utils/chatStorage';
+import { invalidateSessionMessageCache } from './useChatSessionState';
 import { RESUMING_STATUS_TEXT } from '../types/types';
 import i18n from '../../../i18n/config';
 import type { ChatMessage, PendingPermissionRequest } from '../types/types';
@@ -784,6 +785,9 @@ export function useChatRealtimeHandlers({
         const completedSessionId = latestMessage.sessionId || currentSessionId || pendingSessionId;
         flushAndFinalizePendingStream();
         clearLoadingIndicators();
+        if (selectedProject?.name && completedSessionId) {
+          invalidateSessionMessageCache(selectedProject.name, completedSessionId);
+        }
         markSessionsAsCompleted(completedSessionId, currentSessionId, selectedSession?.id, pendingSessionId);
         if (pendingSessionId && !currentSessionId && latestMessage.exitCode === 0) {
           setCurrentSessionId(pendingSessionId);
@@ -811,6 +815,9 @@ export function useChatRealtimeHandlers({
           null;
         flushAndFinalizePendingStream();
         clearLoadingIndicators();
+        if (selectedProject?.name && erroredSessionId) {
+          invalidateSessionMessageCache(selectedProject.name, erroredSessionId);
+        }
         markSessionsAsCompleted(erroredSessionId, currentSessionId, selectedSession?.id);
         // Clear pendingSessionId for the errored session (not all sessions — other tabs may be active)
         if (typeof window !== 'undefined') {
@@ -876,6 +883,9 @@ export function useChatRealtimeHandlers({
         if (isLegacyTaskMasterInstallError(latestMessage.error)) break;
         flushAndFinalizePendingStream();
         clearLoadingIndicators();
+        if (selectedProject?.name && (latestMessage.sessionId || currentSessionId)) {
+          invalidateSessionMessageCache(selectedProject.name, (latestMessage.sessionId || currentSessionId)!);
+        }
         markSessionsAsCompleted(latestMessage.sessionId, currentSessionId, selectedSession?.id);
         setPendingPermissionRequests([]);
         setChatMessages((previous) => [
@@ -1278,6 +1288,9 @@ export function useChatRealtimeHandlers({
         const codexActualSessionId = latestMessage.actualSessionId || codexPendingSessionId;
         const codexCompletedSessionId = latestMessage.sessionId || currentSessionId || codexPendingSessionId;
         clearLoadingIndicators();
+        if (selectedProject?.name && codexCompletedSessionId) {
+          invalidateSessionMessageCache(selectedProject.name, codexCompletedSessionId);
+        }
         markSessionsAsCompleted(codexCompletedSessionId, codexActualSessionId, currentSessionId, selectedSession?.id, codexPendingSessionId);
         if (codexPendingSessionId && !currentSessionId) {
           setCurrentSessionId(codexActualSessionId);
@@ -1295,6 +1308,9 @@ export function useChatRealtimeHandlers({
         if (isLegacyTaskMasterInstallError(latestMessage.error)) break;
         flushAndFinalizePendingStream();
         clearLoadingIndicators();
+        if (selectedProject?.name && (latestMessage.sessionId || currentSessionId)) {
+          invalidateSessionMessageCache(selectedProject.name, (latestMessage.sessionId || currentSessionId)!);
+        }
         markSessionsAsCompleted(latestMessage.sessionId, currentSessionId, selectedSession?.id);
         setPendingPermissionRequests([]);
         setChatMessages((previous) => [...previous, { type: 'error', content: latestMessage.error || 'An error occurred with Codex', timestamp: new Date(), errorType: latestMessage.errorType, isRetryable: latestMessage.isRetryable === true }]);

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 import ChatInterface from '../../chat/view/ChatInterface';
 import SkillsDashboard from '../../SkillsDashboard';
@@ -10,9 +10,12 @@ import ProjectDashboard from '../../project-dashboard/view/ProjectDashboard';
 import TrashDashboard from '../../project-dashboard/view/TrashDashboard';
 import NewsDashboard from '../../news-dashboard/view/NewsDashboard';
 
+import ChatTabBar from '../../chat/view/ChatTabBar';
+import { useChatTabs } from '../../../hooks/useChatTabs';
 import MainContentHeader from './subcomponents/MainContentHeader';
 import MainContentStateView from './subcomponents/MainContentStateView';
 import type { MainContentProps } from '../types/types';
+import { resolveChatTabSyncAction } from './chatTabSync';
 
 import { useTaskMaster } from '../../../contexts/TaskMasterContext';
 import { useUiPreferences } from '../../../hooks/useUiPreferences';
@@ -58,12 +61,52 @@ function MainContent({
   onChatFromReference,
   newSessionMode,
   onNewSessionModeChange,
+  sessionNavigationSource,
+  onResetNavigationSource,
+  onNewSession,
 }: MainContentProps) {
   const { preferences } = useUiPreferences();
   const { autoExpandTools, showRawParameters, showThinking, autoScrollToBottom, sendByCtrlEnter } = preferences;
 
   const { currentProject, setCurrentProject } = useTaskMaster() as TaskMasterContextValue;
   const shouldShowTasksTab = false;
+
+  const chatTabs = useChatTabs(selectedProject, onNavigateToSession);
+
+  // Sync selectedSession changes into tab state using navigation source to
+  // distinguish user sidebar clicks from system session-created events.
+  const prevSessionRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const prevId = prevSessionRef.current;
+    const currId = selectedSession?.id ?? null;
+    prevSessionRef.current = currId;
+
+    if (prevId === undefined) return;
+
+    const action = resolveChatTabSyncAction({
+      activeAppTab: activeTab,
+      hasSelectedProject: Boolean(selectedProject),
+      nextSessionId: currId,
+      activeChatTabSessionId: chatTabs.activeTab?.sessionId,
+      tabCount: chatTabs.tabs.length,
+      navigationSource: sessionNavigationSource,
+    });
+
+    if (action === 'open-new-tab') {
+      chatTabs.openNewTab();
+    } else if (action === 'update-active-tab-session' && currId && selectedProject) {
+      chatTabs.updateActiveTabSession(selectedSession!, selectedProject);
+    } else if (action === 'open-tab' && currId && selectedProject) {
+      chatTabs.openTab(selectedSession!, selectedProject);
+    }
+
+    onResetNavigationSource();
+  }, [selectedSession?.id, selectedProject?.name, activeTab, sessionNavigationSource]);
+
+  // When the active tab has no session (new chat via [+]), pass null to ChatInterface
+  const effectiveSession = chatTabs.activeTab?.sessionId === null
+    ? null
+    : selectedSession;
 
   useEffect(() => {
     if (selectedProject && selectedProject !== currentProject) {
@@ -248,11 +291,23 @@ function MainContent({
 
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-          <div className={`h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
+          <div className={`h-full flex flex-col ${activeTab === 'chat' ? '' : 'hidden'}`}>
+            <ChatTabBar
+              tabs={chatTabs.tabs}
+              processingSessions={processingSessions}
+              onSwitchTab={chatTabs.switchTab}
+              onCloseTab={chatTabs.closeTab}
+              onNewTab={() => {
+                if (selectedProject && onNewSession) {
+                  onNewSession(selectedProject);
+                }
+                chatTabs.openNewTab();
+              }}
+            />
             <ErrorBoundary showDetails>
               <ChatInterface
                 selectedProject={selectedProject}
-                selectedSession={selectedSession}
+                selectedSession={effectiveSession}
                 ws={ws}
                 sendMessage={sendMessage}
                 latestMessage={latestMessage}

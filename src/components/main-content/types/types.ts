@@ -6,6 +6,7 @@ import type {
   Project,
   ProjectSession,
   SessionMode,
+  SessionNavigationSource,
   SessionProvider,
   TrashProject,
 } from '../../../types/app';
@@ -93,6 +94,9 @@ export interface MainContentProps {
   onChatFromReference?: (project: Project, ref: Reference) => void;
   newSessionMode?: SessionMode;
   onNewSessionModeChange?: (mode: SessionMode) => void;
+  sessionNavigationSource: SessionNavigationSource;
+  onResetNavigationSource: () => void;
+  onNewSession?: (project: Project, mode?: SessionMode) => void;
 }
 
 export interface MainContentHeaderProps {
