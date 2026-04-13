@@ -89,7 +89,7 @@ interface UseChatComposerStateArgs {
   setIsUserScrolledUp: (isScrolledUp: boolean) => void;
   setPendingPermissionRequests: Dispatch<SetStateAction<PendingPermissionRequest[]>>;
   newSessionMode?: SessionMode;
-  /** Current chat messages for /btw context (Claude provider). */
+  /** Current chat messages for /btw context. */
   getChatMessagesForBtw?: () => ChatMessage[];
 }
 
@@ -606,13 +606,14 @@ export function useChatComposerState({
             ]);
             return;
           }
-          if (provider !== 'claude') {
+          const btwSupportedProviders = new Set(['claude', 'gemini', 'codex']);
+          if (!btwSupportedProviders.has(provider)) {
             setChatMessages((previous) => [
               ...previous,
               {
                 type: 'assistant',
                 content:
-                  '`/btw` is only available with the Claude Code provider. Switch to Claude in the chat controls, then try again.',
+                  '`/btw` is available with Claude, Gemini, and Codex providers. Switch to one of them in the chat controls, then try again.',
                 timestamp: Date.now(),
               },
             ]);
@@ -634,7 +635,13 @@ export function useChatComposerState({
           });
           try {
             const transcript = buildBtwTranscript(getChatMessagesForBtw?.() ?? []);
-            const btwResponse = await authenticatedFetch('/api/claude/btw', {
+            const btwModel =
+              provider === 'gemini'
+                ? geminiModel
+                : provider === 'codex'
+                  ? codexModel
+                  : claudeModel;
+            const btwResponse = await authenticatedFetch('/api/btw', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -643,7 +650,8 @@ export function useChatComposerState({
                 question,
                 transcript,
                 projectPath: selectedProject.fullPath || selectedProject.path,
-                model: claudeModel,
+                model: btwModel,
+                provider,
               }),
               signal: abortController.signal,
             });

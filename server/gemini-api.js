@@ -12,6 +12,8 @@ import { createRequestId, waitForToolApproval, matchesToolPermission } from './u
 import { getGeminiAuthHeaders } from './utils/geminiOAuth.js';
 import { buildGeminiThinkingConfig } from '../shared/geminiThinkingSupport.js';
 import { spawnGemini } from './gemini-cli.js';
+import { BTW_SYSTEM_PROMPT, buildBtwUserMessage } from './utils/btw.js';
+import { GEMINI_MODELS } from '../shared/modelConstants.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -1826,6 +1828,54 @@ export function getActiveGeminiApiSessions() {
       sessionId,
       startTime: session.startTime,
     }));
+}
+
+/**
+ * One-shot, tool-free side question for the /btw overlay.
+ * Uses the non-streaming generateContent endpoint for simplicity.
+ */
+export async function runGeminiBtw({ question, transcript, model, env, userId, signal }) {
+  const userBlock = buildBtwUserMessage(question, transcript);
+  const effectiveModel = model || GEMINI_MODELS.DEFAULT;
+
+  let auth = null;
+  if (env?.GEMINI_API_KEY) {
+    auth = { headers: { 'x-goog-api-key': env.GEMINI_API_KEY }, authMethod: 'api-key' };
+  } else if (env?.GOOGLE_API_KEY) {
+    auth = { headers: { 'x-goog-api-key': env.GOOGLE_API_KEY }, authMethod: 'api-key' };
+  } else {
+    auth = await getGeminiAuthHeaders(userId);
+  }
+
+  if (!auth?.headers) {
+    throw new Error('No Gemini API credentials available');
+  }
+
+  const requestBody = {
+    systemInstruction: { parts: [{ text: BTW_SYSTEM_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: userBlock }] }],
+  };
+
+  const url = `${GEMINI_API_BASE}/models/${encodeURIComponent(effectiveModel)}:generateContent`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { ...auth.headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`Gemini API error (${response.status}): ${errorBody.slice(0, 500)}`);
+  }
+
+  const data = await response.json();
+  const answer = data?.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text)
+    .filter(Boolean)
+    .join('') || '';
+
+  return { answer };
 }
 
 setInterval(() => {
