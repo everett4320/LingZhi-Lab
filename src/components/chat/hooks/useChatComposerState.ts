@@ -2041,10 +2041,6 @@ export function useChatComposerState({
         resolvedProvider,
         resolvedProjectPath,
       } = resolveSessionContext();
-      const isCurrentViewSession =
-        !selectedSession?.id ||
-        selectedSession?.id === sessionToActivate ||
-        currentSessionId === sessionToActivate;
       const isCodexSessionBusy =
         resolvedProvider === "codex" &&
         hasProcessingSession(
