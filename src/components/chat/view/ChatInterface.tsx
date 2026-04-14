@@ -228,7 +228,6 @@ function ChatInterface({
   } = useChatSessionState({
     selectedProject,
     selectedSession,
-    activeProvider: provider,
     ws,
     sendMessage,
     autoScrollToBottom,
@@ -298,6 +297,17 @@ function ChatInterface({
     submitProgrammaticInput,
     btwOverlay,
     closeBtwOverlay,
+    activeQueuedTurns,
+    isActiveQueuePaused,
+    removeQueuedCodexTurn,
+    promoteQueuedCodexTurnToSteer,
+    resumeQueuedCodexTurns,
+    activeQueueSessionId,
+    handleCodexTurnStarted,
+    handleCodexTurnSettled,
+    handleCodexSessionIdResolved,
+    handleCodexSessionBusy,
+    handleCodexSessionStatusUpdate,
   } = useChatComposerState({
     selectedProject,
     selectedSession,
@@ -318,9 +328,11 @@ function ChatInterface({
     sendMessage,
     sendByCtrlEnter,
     onSessionActive,
+    onSessionProcessing,
     onInputFocusChange,
     onFileOpen: handleFileOpen,
     onShowSettings,
+    processingSessions,
     pendingViewSessionRef,
     scrollToBottom,
     setChatMessages,
@@ -356,9 +368,13 @@ function ChatInterface({
     onSessionProcessing,
     onSessionNotProcessing,
     onSessionStatusResolved: resolveSessionStatusCheck,
+    onCodexTurnStarted: handleCodexTurnStarted,
+    onCodexTurnSettled: handleCodexTurnSettled,
+    onCodexSessionBusy: handleCodexSessionBusy,
+    onCodexSessionIdResolved: handleCodexSessionIdResolved,
+    onCodexSessionStatusUpdate: handleCodexSessionStatusUpdate,
     onReplaceTemporarySession,
     onNavigateToSession,
-    sendMessage,
   });
 
   const handleRetry = useCallback(() => {
@@ -850,6 +866,70 @@ function ChatInterface({
           newSessionMode={newSessionMode}
           onRetry={handleRetry}
         />
+
+        {/* Queue indicator: show queued messages above the composer */}
+        {activeQueuedTurns.length > 0 && (
+          <div className="mx-auto max-w-5xl px-4 pb-2 space-y-1.5">
+            {isActiveQueuePaused && activeQueueSessionId && (
+              <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+                <span>Queue paused</span>
+                <button
+                  type="button"
+                  onClick={() => resumeQueuedCodexTurns(activeQueueSessionId)}
+                  className="font-medium hover:underline"
+                >
+                  Resume
+                </button>
+              </div>
+            )}
+            {activeQueuedTurns.map((turn) => (
+              <div
+                key={turn.id}
+                className="flex items-center gap-2 rounded-xl border border-border/40 bg-muted/40 px-3 py-2 text-sm"
+              >
+                {/* Left icon */}
+                <svg className="shrink-0 w-4 h-4 text-muted-foreground/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+
+                {/* Message text */}
+                <span className="truncate flex-1 text-foreground/80">{turn.text}</span>
+
+                {/* Steer button — only show for normal turns */}
+                {turn.kind === 'normal' && activeQueueSessionId && (
+                  <button
+                    type="button"
+                    onClick={() => promoteQueuedCodexTurnToSteer(activeQueueSessionId, turn.id)}
+                    className="shrink-0 rounded-md border border-border/50 bg-background/80 px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                    title="Promote to steer (insert ahead of queue)"
+                  >
+                    Steer
+                  </button>
+                )}
+                {/* Already steer badge */}
+                {turn.kind === 'steer' && (
+                  <span className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                    Steer
+                  </span>
+                )}
+
+                {/* Delete button */}
+                <button
+                  type="button"
+                  onClick={() => activeQueueSessionId && removeQueuedCodexTurn(activeQueueSessionId, turn.id)}
+                  className="shrink-0 rounded-md p-0.5 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                  title="Remove from queue"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         <ChatComposer
           pendingPermissionRequests={pendingPermissionRequests}

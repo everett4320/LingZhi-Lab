@@ -4,20 +4,11 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { ExternalLink, FileText, X } from 'lucide-react';
+import { ExternalLink, FileText } from 'lucide-react';
 
 import { Button } from '../../../ui/button';
 import { api } from '../../../../utils/api';
 import type { SessionContextFileItem, SessionContextOutputItem } from '../../utils/sessionContextSummary';
-
-export type PreviewFileTarget =
-  | SessionContextFileItem
-  | SessionContextOutputItem
-  | {
-      name?: string;
-      relativePath: string;
-      absolutePath?: string;
-    };
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
 const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'flac', 'm4a']);
@@ -25,9 +16,10 @@ const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'webm', 'mkv']);
 const MARKDOWN_EXTENSIONS = new Set(['md', 'mdx']);
 const HTML_EXTENSIONS = new Set(['html', 'htm']);
 
-type PreviewFile = PreviewFileTarget | null;
-
 type PreviewKind = 'empty' | 'loading' | 'text' | 'markdown' | 'html' | 'pdf' | 'image' | 'audio' | 'video' | 'error';
+export type PreviewFileTarget = Pick<SessionContextFileItem, 'name' | 'relativePath' | 'absolutePath'>
+  | Pick<SessionContextOutputItem, 'name' | 'relativePath' | 'absolutePath'>;
+type PreviewFile = PreviewFileTarget | null;
 
 const getPreviewKind = (file: PreviewFile): PreviewKind => {
   if (!file) {
@@ -59,7 +51,6 @@ export default function ChatContextFilePreview({
   projectName,
   file,
   onOpenInEditor,
-  onClose,
   compact = false,
   preloadedContent = null,
 }: ChatContextFilePreviewProps) {
@@ -164,32 +155,18 @@ export default function ChatContextFilePreview({
             {file?.relativePath || t('sessionContext.preview.selectFile')}
           </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {file && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => onOpenInEditor?.(openPath)}
-              className={compact ? 'h-7 px-2 text-[11px]' : undefined}
-            >
-              <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-              {t('sessionContext.preview.open')}
-            </Button>
-          )}
-          {onClose && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={onClose}
-              className="h-8 w-8 p-0"
-              title={t('sessionContext.preview.closePreview')}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
+        {file && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => onOpenInEditor?.(openPath)}
+            className={compact ? 'h-7 px-2 text-[11px]' : undefined}
+          >
+            <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+            {t('sessionContext.preview.open')}
+          </Button>
+        )}
       </div>
 
       {loading && (

@@ -3,7 +3,6 @@
 import {
   resolveSessionLoadProvider,
   shouldApplySessionLoadResult,
-  shouldSkipSessionMessageLoad,
 } from '../sessionLoadGuards';
 import { DEFAULT_PROVIDER } from '../../../../utils/providerPolicy';
 
@@ -22,14 +21,6 @@ describe('session load guards', () => {
     expect(shouldApplySessionLoadResult(1, 1, false)).toBe(true);
     expect(shouldApplySessionLoadResult(1, 2, false)).toBe(false);
     expect(shouldApplySessionLoadResult(2, 2, true)).toBe(false);
-  });
-
-  it('skips history fetch for temporary session ids', () => {
-    expect(shouldSkipSessionMessageLoad('new-session-123')).toBe(true);
-    expect(shouldSkipSessionMessageLoad('temp-abc')).toBe(true);
-    expect(shouldSkipSessionMessageLoad('019d82e8-1ee3-7860-baa1-24603f424ade')).toBe(false);
-    expect(shouldSkipSessionMessageLoad('')).toBe(false);
-    expect(shouldSkipSessionMessageLoad(null)).toBe(false);
   });
 
   it('prevents stale request overwrite after a fast session switch', () => {

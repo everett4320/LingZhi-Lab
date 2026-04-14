@@ -45,12 +45,24 @@ export function getSessionQueue(queueBySession: SessionQueueMap, sessionId?: str
   return queueBySession[sessionId] || [];
 }
 
+function insertSteerTurn(queue: QueuedTurn[], turn: QueuedTurn): QueuedTurn[] {
+  const firstNormalIndex = queue.findIndex((candidate) => candidate.kind === 'normal');
+  if (firstNormalIndex === -1) {
+    return [...queue, turn];
+  }
+  return [
+    ...queue.slice(0, firstNormalIndex),
+    turn,
+    ...queue.slice(firstNormalIndex),
+  ];
+}
+
 export function enqueueSessionTurn(queueBySession: SessionQueueMap, turn: QueuedTurn): SessionQueueMap {
   const currentQueue = getSessionQueue(queueBySession, turn.sessionId);
   if (turn.kind === 'steer') {
     return {
       ...queueBySession,
-      [turn.sessionId]: [turn, ...currentQueue],
+      [turn.sessionId]: insertSteerTurn(currentQueue, turn),
     };
   }
   return {
@@ -114,7 +126,7 @@ export function promoteQueuedTurnToSteer(
 
   return {
     ...queueBySession,
-    [sessionId]: [promotedTurn, ...remainingTurns],
+    [sessionId]: insertSteerTurn(remainingTurns, promotedTurn),
   };
 }
 

@@ -34,14 +34,7 @@ export function useSessionProtection() {
       return;
     }
 
-    setActiveSessions((prev) => {
-      if (prev.has(trackingKey)) {
-        return prev;
-      }
-      const next = new Set(prev);
-      next.add(trackingKey);
-      return next;
-    });
+    setActiveSessions((prev) => new Set([...prev, trackingKey]));
   }, [resolveTrackingKey]);
 
   const markSessionAsInactive = useCallback((
@@ -55,17 +48,9 @@ export function useSessionProtection() {
     }
 
     setActiveSessions((prev) => {
-      const shouldDeleteTrackingKey = prev.has(trackingKey);
-      const shouldDeleteRawSessionId = Boolean(sessionId && prev.has(sessionId));
-      if (!shouldDeleteTrackingKey && !shouldDeleteRawSessionId) {
-        return prev;
-      }
-
       const next = new Set(prev);
-      if (shouldDeleteTrackingKey) {
-        next.delete(trackingKey);
-      }
-      if (sessionId && shouldDeleteRawSessionId) {
+      next.delete(trackingKey);
+      if (sessionId) {
         next.delete(sessionId);
       }
       return next;
@@ -82,14 +67,7 @@ export function useSessionProtection() {
       return;
     }
 
-    setProcessingSessions((prev) => {
-      if (prev.has(trackingKey)) {
-        return prev;
-      }
-      const next = new Set(prev);
-      next.add(trackingKey);
-      return next;
-    });
+    setProcessingSessions((prev) => new Set([...prev, trackingKey]));
   }, [resolveTrackingKey]);
 
   const markSessionAsNotProcessing = useCallback((
@@ -103,17 +81,9 @@ export function useSessionProtection() {
     }
 
     setProcessingSessions((prev) => {
-      const shouldDeleteTrackingKey = prev.has(trackingKey);
-      const shouldDeleteRawSessionId = Boolean(sessionId && prev.has(sessionId));
-      if (!shouldDeleteTrackingKey && !shouldDeleteRawSessionId) {
-        return prev;
-      }
-
       const next = new Set(prev);
-      if (shouldDeleteTrackingKey) {
-        next.delete(trackingKey);
-      }
-      if (sessionId && shouldDeleteRawSessionId) {
+      next.delete(trackingKey);
+      if (sessionId) {
         next.delete(sessionId);
       }
       return next;

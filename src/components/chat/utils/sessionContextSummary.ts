@@ -447,20 +447,72 @@ export function deriveSessionContextSummary(
         break;
       }
 
-      case 'UpdatePlan': {
+      case 'UpdatePlan':
+      case 'update_plan': {
         const planItems = Array.isArray(parsedInput?.plan) ? parsedInput.plan : [];
         if (planItems.length === 0) {
-          addTask(tasks, 'task', 'Plan update', 'Plan updated', timestamp);
-        } else {
-          planItems.forEach((item: any, index: number) => {
-            const label =
-              (typeof item?.step === 'string' && item.step.trim())
-              || (typeof item?.title === 'string' && item.title.trim())
-              || `Plan step ${index + 1}`;
-            const status = typeof item?.status === 'string' ? item.status.trim() : '';
-            addTask(tasks, 'task', label, status || 'Plan update', timestamp);
-          });
+          addTask(tasks, 'task', 'Plan update', undefined, timestamp);
+          break;
         }
+
+        planItems.forEach((item: any) => {
+          const label = item?.step || item?.label || item?.title || item?.task || '';
+          if (typeof label !== 'string' || !label.trim()) {
+            return;
+          }
+
+          const detail =
+            typeof item?.status === 'string' && item.status.trim()
+              ? `Status: ${item.status.trim()}`
+              : undefined;
+
+          addTask(tasks, 'task', label.trim(), detail, timestamp);
+        });
+        break;
+      }
+
+      case 'WebSearch': {
+        const queryCandidates = [
+          typeof parsedInput?.query === 'string' ? parsedInput.query : null,
+          ...(Array.isArray(parsedInput?.queries) ? parsedInput.queries : []),
+        ]
+          .filter((candidate): candidate is string => typeof candidate === 'string')
+          .map((candidate) => candidate.trim())
+          .filter(Boolean);
+
+        if (queryCandidates.length === 0) {
+          addTask(tasks, 'task', 'Web search', undefined, timestamp);
+          break;
+        }
+
+        Array.from(new Set(queryCandidates)).forEach((query) => {
+          addTask(tasks, 'task', query, 'Web search query', timestamp);
+        });
+        break;
+      }
+
+      case 'OpenPage': {
+        const url = typeof parsedInput?.url === 'string' ? parsedInput.url.trim() : '';
+        if (!url) {
+          addTask(tasks, 'task', 'Open page', undefined, timestamp);
+          break;
+        }
+
+        addTask(tasks, 'task', url, 'Opened page', timestamp, url);
+        break;
+      }
+
+      case 'FindInPage': {
+        const pattern = typeof parsedInput?.pattern === 'string' ? parsedInput.pattern.trim() : '';
+        const url = typeof parsedInput?.url === 'string' ? parsedInput.url.trim() : '';
+
+        if (pattern) {
+          const detail = url ? `Find in ${url}` : 'Find in page';
+          addTask(tasks, 'task', pattern, detail, timestamp, url || undefined);
+          break;
+        }
+
+        addTask(tasks, 'task', 'Find in page', url || undefined, timestamp, url || undefined);
         break;
       }
 
@@ -492,52 +544,6 @@ export function deriveSessionContextSummary(
         const skillLabel = parsedInput?.name || parsedInput?.skill;
         if (typeof skillLabel === 'string' && skillLabel.trim()) {
           addTask(skills, 'skill', skillLabel.trim(), 'Activated in session', timestamp);
-        }
-        break;
-      }
-
-      case 'WebSearch': {
-        const queries: unknown[] = Array.isArray(parsedInput?.queries)
-          ? (parsedInput.queries as unknown[])
-          : [];
-        const normalizedQueries: string[] = queries
-          .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
-          .filter((entry): entry is string => Boolean(entry));
-        if (typeof parsedInput?.query === 'string' && parsedInput.query.trim()) {
-          normalizedQueries.unshift(parsedInput.query.trim());
-        }
-
-        if (normalizedQueries.length === 0) {
-          addTask(tasks, 'task', 'Web search', 'Search requested', timestamp);
-        } else {
-          normalizedQueries.forEach((query) => {
-            addTask(tasks, 'task', query, 'Web search query', timestamp);
-          });
-        }
-        break;
-      }
-
-      case 'OpenPage': {
-        const url = typeof parsedInput?.url === 'string' ? parsedInput.url.trim() : '';
-        if (url) {
-          addTask(tasks, 'task', url, 'Opened web page', timestamp);
-        } else {
-          addTask(tasks, 'task', 'Open page', 'Web page opened', timestamp);
-        }
-        break;
-      }
-
-      case 'FindInPage': {
-        const url = typeof parsedInput?.url === 'string' ? parsedInput.url.trim() : '';
-        const pattern = typeof parsedInput?.pattern === 'string' ? parsedInput.pattern.trim() : '';
-        if (url) {
-          addTask(tasks, 'task', url, 'Find in page target', timestamp);
-        }
-        if (pattern) {
-          addTask(tasks, 'task', pattern, 'Find in page pattern', timestamp);
-        }
-        if (!url && !pattern) {
-          addTask(tasks, 'task', 'Find in page', 'In-page search', timestamp);
         }
         break;
       }

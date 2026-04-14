@@ -527,7 +527,7 @@ export default function ChatComposer({
               type="submit"
               disabled={
                 (!input.trim() && attachedFiles.length === 0 && !attachedPrompt) ||
-                (isLoading && !input.trim().startsWith('/btw '))
+                (isLoading && provider !== 'codex' && !input.trim().startsWith('/btw '))
               }
               onMouseDown={(event) => {
                 event.preventDefault();

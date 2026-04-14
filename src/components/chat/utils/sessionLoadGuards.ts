@@ -5,13 +5,6 @@ export function resolveSessionLoadProvider(provider: Provider | string | null | 
   return normalizeProvider((provider || DEFAULT_PROVIDER) as Provider);
 }
 
-export function shouldSkipSessionMessageLoad(sessionId: string | null | undefined): boolean {
-  if (!sessionId) {
-    return false;
-  }
-  return sessionId.startsWith('new-session-') || sessionId.startsWith('temp-');
-}
-
 export function shouldApplySessionLoadResult(
   requestId: number,
   activeRequestId: number,

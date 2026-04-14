@@ -78,7 +78,7 @@ import computeRoutes from './routes/compute.js';
 import newsRoutes from './routes/news.js';
 import autoResearchRoutes from './routes/auto-research.js';
 import referencesRoutes from './routes/references.js';
-import { initializeDatabase, projectDb, sessionDb, tagDb } from './database/db.js';
+import { initializeDatabase, sessionDb, tagDb } from './database/db.js';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
 import { IS_PLATFORM } from './constants/config.js';
 import { enqueueTelemetryEvent } from './telemetry.js';
@@ -1637,11 +1637,10 @@ function handleChatConnection(ws, request) {
             provider,
             sessionId,
             requestType,
+            projectPath,
             acceptedAt: Date.now(),
             ...(resolvedProjectName ? { projectName: resolvedProjectName } : {}),
         });
-        // Keep these writes adjacent and synchronous so clients always see
-        // `session-accepted` before the corresponding `running` state transition.
         sendSessionStateChanged({
             provider,
             sessionId,
@@ -1685,6 +1684,7 @@ function handleChatConnection(ws, request) {
     ws.on('message', async (message) => {
         try {
             const data = JSON.parse(message);
+            console.log(`[DEBUG] Received WebSocket message: ${data.type}`);
             
             if (data.type === 'telemetry-settings') {
                 const enabled = data.enabled !== false;
@@ -3002,7 +3002,28 @@ app.get('/api/projects/:projectName/sessions/:sessionId/token-usage', authentica
 
     // Handle Codex sessions
     if (provider === 'codex') {
-      const sessionFilePath = await resolveCodexSessionFilePath(safeSessionId);
+      const codexSessionsDir = path.join(homeDir, '.codex', 'sessions');
+
+      // Find the session file by searching for the session ID
+      const findSessionFile = async (dir) => {
+        try {
+          const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              const found = await findSessionFile(fullPath);
+              if (found) return found;
+            } else if (entry.name.includes(safeSessionId) && entry.name.endsWith('.jsonl')) {
+              return fullPath;
+            }
+          }
+        } catch (error) {
+          // Skip directories we can't read
+        }
+        return null;
+      };
+
+      const sessionFilePath = await findSessionFile(codexSessionsDir);
 
       if (!sessionFilePath) {
         return res.status(404).json({ error: 'Codex session file not found', sessionId: safeSessionId });

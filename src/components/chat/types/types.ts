@@ -129,6 +129,7 @@ export interface Question {
   multiSelect?: boolean;
 }
 
+export type QueuedMessageKind = 'queue' | 'steer';
 export type QueuedTurnKind = 'normal' | 'steer';
 export type QueuedTurnStatus = 'queued' | 'paused';
 

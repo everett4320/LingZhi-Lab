@@ -22,9 +22,8 @@ import {
 } from '../utils/messageTransforms';
 import {
   resolveSessionLoadProvider,
-  shouldSkipSessionMessageLoad,
+  shouldApplySessionLoadResult,
 } from '../utils/sessionLoadGuards';
-import { buildSessionMessageCacheCandidateKeys } from '../utils/sessionMessageCache';
 import {
   buildSessionSnapshotKey,
   cloneSessionSnapshot,
@@ -43,10 +42,13 @@ const MESSAGES_PER_PAGE = 20;
 const INITIAL_VISIBLE_MESSAGES = 100;
 /** Grace period for WebSocket status-check response before clearing stale resume state */
 const STATUS_VALIDATION_TIMEOUT_MS = 5000;
+const SESSION_STATUS_CHECK_DEBOUNCE_MS = 1200;
 const MAX_SESSION_SNAPSHOT_CACHE_ENTRIES = 40;
+
 /**
- * Infer provider from project session lists when session metadata is incomplete.
- * This is a final fallback only after session-bound and UI provider hints are considered.
+ * Prefer session.__provider; else infer from project session lists.
+ * Never fall back to chat composer `selected-provider` — if that is "nano", every unmatched session
+ * would request provider=nano and load empty history.
  */
 function resolveSessionProviderForLoad(session: ProjectSession | null, project: Project | null): Provider | string {
   if (session?.__provider) {
@@ -133,6 +135,7 @@ export function hasTemporaryProcessingSessionKeys(
   ));
 }
 
+
 type PendingViewSession = {
   sessionId: string | null;
   startedAt: number;
@@ -141,7 +144,6 @@ type PendingViewSession = {
 interface UseChatSessionStateArgs {
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
-  activeProvider?: Provider | null;
   ws: WebSocket | null;
   sendMessage: (message: unknown) => void;
   autoScrollToBottom?: boolean;
@@ -189,7 +191,6 @@ function buildFallbackMessageFingerprint(message: ChatMessage): string {
 export function useChatSessionState({
   selectedProject,
   selectedSession,
-  activeProvider,
   ws,
   sendMessage,
   autoScrollToBottom,
@@ -202,18 +203,26 @@ export function useChatSessionState({
 
   const [chatMessages, _setChatMessages] = useState<ChatMessage[]>(() => {
     if (typeof window !== 'undefined' && selectedProject && selectedSession?.id) {
-      const providerHint = selectedSession.__provider
-        || (activeProvider as Provider | undefined)
-        || (window.localStorage.getItem('selected-provider') as Provider | null);
-      const inferredProvider = providerHint
-        || resolveSessionProviderForLoad(selectedSession, selectedProject);
-      const allowLegacyFallback = !providerHint;
-      return readStoredChatMessages(
+      const initialProvider = normalizeProvider(selectedSession.__provider || DEFAULT_PROVIDER);
+      const storageKey = buildChatMessagesStorageKey(
         selectedProject.name,
         selectedSession.id,
-        normalizeProvider(inferredProvider || DEFAULT_PROVIDER),
-        { allowLegacyFallback },
+        initialProvider,
       );
+      if (!storageKey) {
+        return [];
+      }
+      const saved = safeLocalStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          return JSON.parse(saved) as ChatMessage[];
+        } catch {
+          console.error('Failed to parse saved chat messages, resetting');
+          safeLocalStorage.removeItem(storageKey);
+          return [];
+        }
+      }
+      return [];
     }
     return [];
   });
@@ -286,42 +295,11 @@ export function useChatSessionState({
     [processingSessions, selectedProject?.name],
   );
 
-  const resolvePreferredLoadProvider = useCallback(
-    (
-      session: ProjectSession | null,
-      project: Project | null,
-    ): Provider => {
-      if (session?.__provider) {
-        return resolveSessionLoadProvider(session.__provider);
-      }
-
-      if (activeProvider) {
-        return resolveSessionLoadProvider(activeProvider);
-      }
-
-      if (typeof window !== 'undefined') {
-        const persistedProvider = window.localStorage.getItem('selected-provider');
-        if (persistedProvider) {
-          return resolveSessionLoadProvider(persistedProvider as Provider);
-        }
-      }
-
-      const inferredProvider = resolveSessionProviderForLoad(session, project);
-      if (inferredProvider) {
-        return resolveSessionLoadProvider(inferredProvider);
-      }
-
-      return resolveSessionLoadProvider(DEFAULT_PROVIDER);
-    },
-    [activeProvider],
-  );
-
   const [isLoading, setIsLoading] = useState(() => {
     if (selectedSession?.id && selectedProject?.name) {
-      const initialProvider = resolvePreferredLoadProvider(selectedSession, selectedProject);
       const scopeKey = buildSessionScopeKey(
         selectedProject.name,
-        initialProvider,
+        selectedSession.__provider || DEFAULT_PROVIDER,
         selectedSession.id,
       );
       if (scopeKey && processingSessions?.has(scopeKey)) {
@@ -335,7 +313,6 @@ export function useChatSessionState({
   });
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(selectedSession?.id || null);
   const [sessionMessages, setSessionMessages] = useState<any[]>([]);
-  const [isSessionMessagesAuthoritative, setIsSessionMessagesAuthoritative] = useState(false);
   const [isLoadingSessionMessages, setIsLoadingSessionMessages] = useState(false);
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
@@ -369,12 +346,8 @@ export function useChatSessionState({
   const isLoadingMoreRef = useRef(false);
   const initialLoadCountRef = useRef(0);
   const moreLoadCountRef = useRef(0);
-  const latestSelectionRef = useRef<{ projectName: string | null; sessionId: string | null }>({
-    projectName: selectedProject?.name || null,
-    sessionId: selectedSession?.id || null,
-  });
-  const sessionLoadGenerationRef = useRef(0);
-  const externalReloadGenerationRef = useRef(0);
+  const sessionLoadRequestIdRef = useRef(0);
+  const externalReloadRequestIdRef = useRef(0);
   const allMessagesLoadedRef = useRef(false);
   const topLoadLockRef = useRef(false);
   const pendingScrollRestoreRef = useRef<ScrollRestoreState | null>(null);
@@ -439,13 +412,7 @@ export function useChatSessionState({
   useEffect(() => {
     pendingStatusValidationSessionIdRef.current = pendingStatusValidationSessionId;
   }, [pendingStatusValidationSessionId]);
-
-  useEffect(() => {
-    latestSelectionRef.current = {
-      projectName: selectedProject?.name || null,
-      sessionId: selectedSession?.id || null,
-    };
-  }, [selectedProject?.name, selectedSession?.id]);
+  const sessionStatusCheckSentAtRef = useRef<Map<string, number>>(new Map());
 
   const markSessionStatusCheckPending = useCallback((sessionId?: string | null) => {
     if (!sessionId) {
@@ -463,18 +430,34 @@ export function useChatSessionState({
     setPendingStatusValidationSessionId((previous) => (previous === sessionId ? null : previous));
   }, []);
 
+  const requestSessionStatusCheck = useCallback(
+    (sessionId?: string | null, provider?: Provider | string | null) => {
+      if (!ws || !sessionId) {
+        return;
+      }
+
+      const normalizedProvider = normalizeProvider(provider || DEFAULT_PROVIDER);
+      const key = `${normalizedProvider}:${sessionId}`;
+      const now = Date.now();
+      const lastSentAt = sessionStatusCheckSentAtRef.current.get(key) || 0;
+      if (now - lastSentAt < SESSION_STATUS_CHECK_DEBOUNCE_MS) {
+        return;
+      }
+
+      sessionStatusCheckSentAtRef.current.set(key, now);
+      markSessionStatusCheckPending(sessionId);
+      sendMessage({
+        type: 'check-session-status',
+        sessionId,
+        provider: normalizedProvider,
+      });
+    },
+    [markSessionStatusCheckPending, sendMessage, ws],
+  );
+
   const loadSessionMessages = useCallback(
     async (projectName: string, sessionId: string, loadMore = false, provider: Provider | string = DEFAULT_PROVIDER) => {
       if (!projectName || !sessionId) {
-        return [] as any[];
-      }
-
-      if (shouldSkipSessionMessageLoad(sessionId)) {
-        if (!loadMore) {
-          messagesOffsetRef.current = 0;
-          setHasMoreMessages(false);
-          setTotalMessages(0);
-        }
         return [] as any[];
       }
 
@@ -501,6 +484,7 @@ export function useChatSessionState({
         }
 
         const data = await response.json();
+        console.log('[DEBUG] Received session messages data:', data);
         if (isInitialLoad && data.tokenUsage) {
           setTokenBudget(data.tokenUsage);
         }
@@ -705,10 +689,11 @@ export function useChatSessionState({
     lastScrollTopRef.current = 0;
     initialLoadCountRef.current = 0;
     moreLoadCountRef.current = 0;
+    sessionLoadRequestIdRef.current += 1;
+    externalReloadRequestIdRef.current += 1;
     generatedMessageIdMapRef.current.clear();
     setVisibleMessageCount(INITIAL_VISIBLE_MESSAGES);
     setIsUserScrolledUp(false);
-    setIsSessionMessagesAuthoritative(false);
     setIsLoadingSessionMessages(false);
     setIsLoadingMoreMessages(false);
   }, [selectedProject?.name, selectedSession?.id]);
@@ -730,31 +715,20 @@ export function useChatSessionState({
   }, [chatMessages.length, isLoadingSessionMessages, scrollToBottom]);
 
   useEffect(() => {
+    const requestId = sessionLoadRequestIdRef.current + 1;
+    sessionLoadRequestIdRef.current = requestId;
     let cancelled = false;
-    const requestGeneration = sessionLoadGenerationRef.current + 1;
-    sessionLoadGenerationRef.current = requestGeneration;
-    const requestSelection = {
-      projectName: selectedProject?.name || null,
-      sessionId: selectedSession?.id || null,
-    };
     const isStaleRequest = () =>
-      cancelled
-      || sessionLoadGenerationRef.current !== requestGeneration
-      || latestSelectionRef.current.projectName !== requestSelection.projectName
-      || latestSelectionRef.current.sessionId !== requestSelection.sessionId;
+      !shouldApplySessionLoadResult(requestId, sessionLoadRequestIdRef.current, cancelled);
 
     const loadMessages = async () => {
       if (selectedSession && selectedProject) {
-        const currentProvider = resolvePreferredLoadProvider(selectedSession, selectedProject);
+        const currentProvider = resolveSessionLoadProvider(selectedSession.__provider);
         isLoadingSessionRef.current = true;
         const cachedSnapshot =
           !isSystemSessionChange
             ? readSessionSnapshot(selectedProject.name, selectedSession.id, currentProvider)
             : null;
-        const cachedStoredMessages =
-          !isSystemSessionChange
-            ? readStoredChatMessages(selectedProject.name, selectedSession.id, currentProvider)
-            : [];
 
         const sessionChanged = currentSessionId !== null && currentSessionId !== selectedSession.id;
         if (sessionChanged) {
@@ -764,20 +738,13 @@ export function useChatSessionState({
             if (cachedSnapshot) {
               if (currentProvider === 'cursor') {
                 setSessionMessages([]);
-                setIsSessionMessagesAuthoritative(false);
                 setChatMessages(cachedSnapshot.chatMessages);
               } else {
                 setSessionMessages(cachedSnapshot.sessionMessages);
-                setIsSessionMessagesAuthoritative(true);
               }
-            } else if (cachedStoredMessages.length > 0) {
-              setSessionMessages([]);
-              setIsSessionMessagesAuthoritative(false);
-              setChatMessages(cachedStoredMessages);
             } else {
-              setSessionMessages([]);
-              setIsSessionMessagesAuthoritative(false);
               setChatMessages([]);
+              setSessionMessages([]);
             }
             setClaudeStatus(null);
             setCanAbortSession(false);
@@ -811,13 +778,8 @@ export function useChatSessionState({
 
         // Always check status if we have a websocket and a session, 
         // especially on initial load or reconnect.
-        if (ws && selectedSession?.id) {
-          markSessionStatusCheckPending(selectedSession.id);
-          sendMessage({
-            type: 'check-session-status',
-            sessionId: selectedSession.id,
-            provider: currentProvider,
-          });
+        if (selectedSession?.id) {
+          requestSessionStatusCheck(selectedSession.id, currentProvider);
         }
 
         if (currentProvider === 'cursor') {
@@ -830,22 +792,14 @@ export function useChatSessionState({
             if (isStaleRequest()) {
               return;
             }
-            const shouldKeepCachedCursorMessages =
-              converted.length === 0
-              && cachedStoredMessages.length > 0
-              && hasSessionHistoryHint(selectedSession);
-            const nextCursorMessages = shouldKeepCachedCursorMessages
-              ? cachedStoredMessages
-              : converted;
             setSessionMessages([]);
-            setIsSessionMessagesAuthoritative(false);
-            setChatMessages(nextCursorMessages);
+            setChatMessages(converted);
             rememberSessionSnapshot(
               selectedProject.name,
               selectedSession.id,
               currentProvider,
               [],
-              nextCursorMessages,
+              converted,
             );
           } else {
             setIsSystemSessionChange(false);
@@ -863,33 +817,14 @@ export function useChatSessionState({
             if (isStaleRequest()) {
               return;
             }
-            const shouldKeepCachedHistory =
-              messages.length === 0
-              && cachedStoredMessages.length > 0
-              && hasSessionHistoryHint(selectedSession);
-
-            if (shouldKeepCachedHistory) {
-              setSessionMessages([]);
-              setIsSessionMessagesAuthoritative(false);
-              setChatMessages(cachedStoredMessages);
-              rememberSessionSnapshot(
-                selectedProject.name,
-                selectedSession.id,
-                currentProvider,
-                [],
-                cachedStoredMessages,
-              );
-            } else {
-              setSessionMessages(messages);
-              setIsSessionMessagesAuthoritative(true);
-              rememberSessionSnapshot(
-                selectedProject.name,
-                selectedSession.id,
-                currentProvider,
-                messages,
-                [],
-              );
-            }
+            setSessionMessages(messages);
+            rememberSessionSnapshot(
+              selectedProject.name,
+              selectedSession.id,
+              currentProvider,
+              messages,
+              [],
+            );
           } else {
             setIsSystemSessionChange(false);
           }
@@ -931,7 +866,6 @@ export function useChatSessionState({
             pendingViewSessionRef.current = null;
             setChatMessages([]);
             setSessionMessages([]);
-            setIsSessionMessagesAuthoritative(false);
             setClaudeStatus(null);
             setCanAbortSession(false);
             setIsLoading(false);
@@ -973,13 +907,11 @@ export function useChatSessionState({
     pendingViewSessionRef,
     rememberSessionSnapshot,
     resetStreamingState,
-    resolvePreferredLoadProvider,
-    markSessionStatusCheckPending,
+    requestSessionStatusCheck,
     hasProcessingSession,
     processingSessions,
     selectedProject,
     selectedSession,
-    sendMessage,
     ws,
   ]);
 
@@ -988,27 +920,15 @@ export function useChatSessionState({
       return;
     }
 
+    const requestId = externalReloadRequestIdRef.current + 1;
+    externalReloadRequestIdRef.current = requestId;
     let cancelled = false;
-    const requestGeneration = externalReloadGenerationRef.current + 1;
-    externalReloadGenerationRef.current = requestGeneration;
-    const reloadSelection = {
-      projectName: selectedProject.name,
-      sessionId: selectedSession.id,
-    };
     const isStaleReload = () =>
-      cancelled
-      || externalReloadGenerationRef.current !== requestGeneration
-      || latestSelectionRef.current.projectName !== reloadSelection.projectName
-      || latestSelectionRef.current.sessionId !== reloadSelection.sessionId;
+      !shouldApplySessionLoadResult(requestId, externalReloadRequestIdRef.current, cancelled);
 
     const reloadExternalMessages = async () => {
       try {
-        const provider = resolvePreferredLoadProvider(selectedSession, selectedProject);
-        const cachedStoredMessages = readStoredChatMessages(
-          selectedProject.name,
-          selectedSession.id,
-          provider,
-        );
+        const provider = resolveSessionLoadProvider(selectedSession.__provider);
 
         if (provider === 'cursor') {
           const projectPath = selectedProject.fullPath || selectedProject.path || '';
@@ -1016,22 +936,14 @@ export function useChatSessionState({
           if (isStaleReload()) {
             return;
           }
-          const shouldKeepCachedCursorMessages =
-            converted.length === 0
-            && cachedStoredMessages.length > 0
-            && hasSessionHistoryHint(selectedSession);
-          const nextCursorMessages = shouldKeepCachedCursorMessages
-            ? cachedStoredMessages
-            : converted;
           setSessionMessages([]);
-          setIsSessionMessagesAuthoritative(false);
-          setChatMessages(nextCursorMessages);
+          setChatMessages(converted);
           rememberSessionSnapshot(
             selectedProject.name,
             selectedSession.id,
             provider,
             [],
-            nextCursorMessages,
+            converted,
           );
           return;
         }
@@ -1045,33 +957,14 @@ export function useChatSessionState({
         if (isStaleReload()) {
           return;
         }
-        const shouldKeepCachedHistory =
-          messages.length === 0
-          && cachedStoredMessages.length > 0
-          && hasSessionHistoryHint(selectedSession);
-
-        if (shouldKeepCachedHistory) {
-          setSessionMessages([]);
-          setIsSessionMessagesAuthoritative(false);
-          setChatMessages(cachedStoredMessages);
-          rememberSessionSnapshot(
-            selectedProject.name,
-            selectedSession.id,
-            provider,
-            [],
-            cachedStoredMessages,
-          );
-        } else {
-          setSessionMessages(messages);
-          setIsSessionMessagesAuthoritative(true);
-          rememberSessionSnapshot(
-            selectedProject.name,
-            selectedSession.id,
-            provider,
-            messages,
-            [],
-          );
-        }
+        setSessionMessages(messages);
+        rememberSessionSnapshot(
+          selectedProject.name,
+          selectedSession.id,
+          provider,
+          messages,
+          [],
+        );
 
         const shouldAutoScroll = Boolean(autoScrollToBottom) && isNearBottom();
         if (shouldAutoScroll) {
@@ -1093,7 +986,6 @@ export function useChatSessionState({
     loadCursorSessionMessages,
     loadSessionMessages,
     rememberSessionSnapshot,
-    resolvePreferredLoadProvider,
     scrollToBottom,
     selectedProject,
     selectedSession,
@@ -1106,21 +998,18 @@ export function useChatSessionState({
   }, [pendingViewSessionRef, selectedSession?.id]);
 
   useEffect(() => {
-    // Only sync converted session payloads when sessionMessages are the authoritative source.
-    // Cursor and compatibility fallbacks write directly to chatMessages.
-    if (!isSessionMessagesAuthoritative) {
-      return;
-    }
+    // Sync converted messages to chat state.
+    // We update even for empty arrays to clear old state when switching to an empty session.
     setChatMessages(convertedMessages);
-  }, [convertedMessages, isSessionMessagesAuthoritative, setChatMessages]);
+  }, [convertedMessages, setChatMessages]);
 
   useEffect(() => {
     const activeSessionId = selectedSession?.id || currentSessionId;
-    const resolvedActiveProvider = resolvePreferredLoadProvider(selectedSession, selectedProject);
+    const activeProvider = normalizeProvider(selectedSession?.__provider || DEFAULT_PROVIDER);
     const storageKey = buildChatMessagesStorageKey(
       selectedProject?.name || null,
       activeSessionId,
-      resolvedActiveProvider,
+      activeProvider,
     );
 
     if (!storageKey) {
@@ -1132,24 +1021,8 @@ export function useChatSessionState({
       return;
     }
 
-    if (isLoadingSessionMessages || isLoading || !isSessionMessagesAuthoritative) {
-      return;
-    }
-
     safeLocalStorage.removeItem(storageKey);
-  }, [
-    chatMessages,
-    currentSessionId,
-    isLoading,
-    isLoadingSessionMessages,
-    isSessionMessagesAuthoritative,
-    resolvePreferredLoadProvider,
-    selectedProject,
-    selectedSession,
-    selectedProject?.name,
-    selectedSession?.id,
-    selectedSession?.__provider,
-  ]);
+  }, [chatMessages, currentSessionId, selectedProject?.name, selectedSession?.id, selectedSession?.__provider]);
 
   useEffect(() => {
     if (!selectedProject || !selectedSession?.id || isTemporarySessionId(selectedSession.id)) {
@@ -1157,7 +1030,7 @@ export function useChatSessionState({
       return;
     }
 
-    const sessionProvider = resolvePreferredLoadProvider(selectedSession, selectedProject);
+    const sessionProvider = normalizeProvider(selectedSession.__provider || DEFAULT_PROVIDER);
     if (sessionProvider === 'cursor') {
       setTokenBudget(null);
       return;
@@ -1179,7 +1052,7 @@ export function useChatSessionState({
     };
 
     fetchInitialTokenUsage();
-  }, [resolvePreferredLoadProvider, selectedProject, selectedSession]);
+  }, [selectedProject, selectedSession]);
 
   const visibleMessages = useMemo(() => {
     if (chatMessages.length <= visibleMessageCount) {
@@ -1257,7 +1130,7 @@ export function useChatSessionState({
       });
     }
 
-    const activeProvider = resolvePreferredLoadProvider(selectedSession, selectedProject);
+    const activeProvider = selectedSession?.__provider || DEFAULT_PROVIDER;
     const isTrackedProcessing = hasProcessingSession(
       activeViewSessionId,
       activeProvider,
@@ -1276,8 +1149,6 @@ export function useChatSessionState({
     hasProcessingSession,
     isLoading,
     pendingStatusValidationSessionId,
-    resolvePreferredLoadProvider,
-    selectedProject,
     selectedProject?.name,
     selectedSession?.id,
     selectedSession?.__provider,
@@ -1294,7 +1165,7 @@ export function useChatSessionState({
       !persistedStartTime ||
       hasProcessingSession(
         activeViewSessionId,
-        resolvePreferredLoadProvider(selectedSession, selectedProject),
+        selectedSession?.__provider || DEFAULT_PROVIDER,
         selectedProject?.name || null,
       )
     ) {
@@ -1305,7 +1176,7 @@ export function useChatSessionState({
       if (
         hasProcessingSession(
           activeViewSessionId,
-          resolvePreferredLoadProvider(selectedSession, selectedProject),
+          selectedSession?.__provider || DEFAULT_PROVIDER,
           selectedProject?.name || null,
         )
       ) {
@@ -1331,8 +1202,6 @@ export function useChatSessionState({
     currentSessionId,
     hasProcessingSession,
     pendingStatusValidationSessionId,
-    resolvePreferredLoadProvider,
-    selectedProject,
     selectedProject?.name,
     selectedSession?.id,
     selectedSession?.__provider,

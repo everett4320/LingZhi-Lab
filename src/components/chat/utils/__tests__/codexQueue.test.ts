@@ -3,15 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   buildQueuedTurn,
   enqueueSessionTurn,
+  getSessionQueue,
   getNextDispatchableTurn,
   promoteQueuedTurnToSteer,
   reconcileSessionQueueId,
   reconcileSettledSessionQueue,
+  removeQueuedTurn,
+  setSessionQueueStatus,
   type SessionQueueMap,
 } from "../codexQueue";
 
 describe("codexQueue", () => {
-  it("prepends steer turns when enqueueing", () => {
+  it("keeps steer turns ahead of normal turns when enqueueing", () => {
     const sessionId = "session-1";
     const initialQueue: SessionQueueMap = {
       [sessionId]: [
@@ -37,6 +40,42 @@ describe("codexQueue", () => {
     expect(next[sessionId].map((turn) => turn.id)).toEqual([
       "steer-1",
       "normal-1",
+    ]);
+  });
+
+  it("keeps steer turns FIFO when enqueueing multiple steers", () => {
+    const sessionId = "session-1";
+    const initialQueue: SessionQueueMap = {
+      [sessionId]: [
+        buildQueuedTurn({
+          id: "steer-1",
+          sessionId,
+          text: "first steer",
+          kind: "steer",
+        }),
+        buildQueuedTurn({
+          id: "normal-1",
+          sessionId,
+          text: "normal one",
+          kind: "normal",
+        }),
+      ],
+    };
+
+    const next = enqueueSessionTurn(
+      initialQueue,
+      buildQueuedTurn({
+        id: "steer-2",
+        sessionId,
+        text: "second steer",
+        kind: "steer",
+      }),
+    );
+
+    expect(next[sessionId].map((turn) => `${turn.id}:${turn.kind}`)).toEqual([
+      "steer-1:steer",
+      "steer-2:steer",
+      "normal-1:normal",
     ]);
   });
 
@@ -90,101 +129,308 @@ describe("codexQueue", () => {
     expect(next[sessionId][1].id).toBe("normal-1");
   });
 
-  it("reconciles temporary session queues into the settled session while preserving order", () => {
-    const tempSessionId = "new-session-123";
-    const settledSessionId = "session-42";
+  it("promotes a queued turn to steer after existing steer turns", () => {
+    const sessionId = "session-1";
     const initialQueue: SessionQueueMap = {
-      [settledSessionId]: [
+      [sessionId]: [
         buildQueuedTurn({
-          id: "existing-1",
-          sessionId: settledSessionId,
-          text: "existing queued turn",
-          kind: "normal",
-        }),
-      ],
-      [tempSessionId]: [
-        buildQueuedTurn({
-          id: "temp-1",
-          sessionId: tempSessionId,
-          text: "first temp turn",
-          kind: "normal",
-        }),
-        buildQueuedTurn({
-          id: "temp-2",
-          sessionId: tempSessionId,
-          text: "second temp turn",
+          id: "steer-1",
+          sessionId,
+          text: "first steer",
           kind: "steer",
+        }),
+        buildQueuedTurn({
+          id: "normal-1",
+          sessionId,
+          text: "normal one",
+          kind: "normal",
+        }),
+        buildQueuedTurn({
+          id: "normal-2",
+          sessionId,
+          text: "normal two",
+          kind: "normal",
         }),
       ],
     };
 
-    const reconciled = reconcileSessionQueueId(
+    const next = promoteQueuedTurnToSteer(
       initialQueue,
-      tempSessionId,
-      settledSessionId,
+      sessionId,
+      "normal-2",
     );
 
-    expect(reconciled[tempSessionId]).toBeUndefined();
-    expect(reconciled[settledSessionId].map((turn) => turn.id)).toEqual([
-      "existing-1",
-      "temp-1",
-      "temp-2",
-    ]);
-    expect(reconciled[settledSessionId].map((turn) => turn.sessionId)).toEqual([
-      settledSessionId,
-      settledSessionId,
-      settledSessionId,
+    expect(next[sessionId].map((turn) => `${turn.id}:${turn.kind}`)).toEqual([
+      "steer-1:steer",
+      "normal-2:steer",
+      "normal-1:normal",
     ]);
   });
 
-  it("treats reconciliation as a no-op when the source queue is empty", () => {
-    const initialQueue: SessionQueueMap = {
-      "session-1": [
+  it("returns queued normal turn when no steer is queued", () => {
+    const queue = [
+      buildQueuedTurn({
+        id: "paused-steer",
+        sessionId: "session-1",
+        text: "should not dispatch",
+        kind: "steer",
+        status: "paused",
+      }),
+      buildQueuedTurn({
+        id: "normal-1",
+        sessionId: "session-1",
+        text: "normal one",
+        kind: "normal",
+        status: "queued",
+      }),
+    ];
+
+    expect(getNextDispatchableTurn(queue)?.id).toBe("normal-1");
+  });
+
+  it("removes one queued turn and keeps the rest in order", () => {
+    const sessionId = "session-1";
+    const queueBySession: SessionQueueMap = {
+      [sessionId]: [
         buildQueuedTurn({
-          id: "turn-1",
-          sessionId: "session-1",
+          id: "steer-1",
+          sessionId,
+          text: "steer one",
+          kind: "steer",
+        }),
+        buildQueuedTurn({
+          id: "normal-1",
+          sessionId,
+          text: "normal one",
+          kind: "normal",
+        }),
+        buildQueuedTurn({
+          id: "normal-2",
+          sessionId,
+          text: "normal two",
+          kind: "normal",
+        }),
+      ],
+    };
+
+    const next = removeQueuedTurn(queueBySession, sessionId, "normal-1");
+    expect(next[sessionId].map((turn) => turn.id)).toEqual([
+      "steer-1",
+      "normal-2",
+    ]);
+  });
+
+  it("removes session entry entirely when last queued turn is removed", () => {
+    const sessionId = "session-1";
+    const queueBySession: SessionQueueMap = {
+      [sessionId]: [
+        buildQueuedTurn({
+          id: "only-turn",
+          sessionId,
           text: "only turn",
           kind: "normal",
         }),
       ],
     };
 
-    const reconciled = reconcileSessionQueueId(
-      initialQueue,
-      "new-session-404",
-      "session-1",
-    );
-
-    expect(reconciled).toBe(initialQueue);
+    const next = removeQueuedTurn(queueBySession, sessionId, "only-turn");
+    expect(next[sessionId]).toBeUndefined();
+    expect(Object.keys(next)).toHaveLength(0);
   });
 
-  it("does not reconcile settled queues for non-temporary fallback ids", () => {
+  it("sets queue status for all turns in one session", () => {
+    const sessionId = "session-1";
     const queueBySession: SessionQueueMap = {
-      "session-real": [
+      [sessionId]: [
         buildQueuedTurn({
-          id: "real-1",
-          sessionId: "session-real",
-          text: "real turn",
+          id: "turn-1",
+          sessionId,
+          text: "turn one",
+          kind: "normal",
+          status: "queued",
+        }),
+        buildQueuedTurn({
+          id: "turn-2",
+          sessionId,
+          text: "turn two",
+          kind: "steer",
+          status: "queued",
+        }),
+      ],
+    };
+
+    const paused = setSessionQueueStatus(queueBySession, sessionId, "paused");
+    expect(paused[sessionId].every((turn) => turn.status === "paused")).toBe(
+      true,
+    );
+  });
+
+  it("keeps object identity when setting status on an empty session queue", () => {
+    const queueBySession: SessionQueueMap = {};
+    const next = setSessionQueueStatus(queueBySession, "missing-session", "paused");
+    expect(next).toBe(queueBySession);
+  });
+
+  it("reconciles temporary session queue into settled session preserving settled-first order", () => {
+    const queueBySession: SessionQueueMap = {
+      "session-settled": [
+        buildQueuedTurn({
+          id: "settled-1",
+          sessionId: "session-settled",
+          text: "already settled",
           kind: "normal",
         }),
       ],
-      "session-fallback": [
+      "new-session-123": [
         buildQueuedTurn({
-          id: "fallback-1",
-          sessionId: "session-fallback",
-          text: "fallback turn",
+          id: "temp-steer",
+          sessionId: "new-session-123",
+          text: "temp steer",
+          kind: "steer",
+        }),
+        buildQueuedTurn({
+          id: "temp-queue",
+          sessionId: "new-session-123",
+          text: "temp queue",
+          kind: "normal",
+        }),
+      ],
+    };
+
+    const reconciled = reconcileSessionQueueId(
+      queueBySession,
+      "new-session-123",
+      "session-settled",
+    );
+
+    expect(reconciled["new-session-123"]).toBeUndefined();
+    expect(
+      reconciled["session-settled"].map((turn) => `${turn.id}:${turn.sessionId}`),
+    ).toEqual([
+      "settled-1:session-settled",
+      "temp-steer:session-settled",
+      "temp-queue:session-settled",
+    ]);
+  });
+
+  it("treats reconcileSessionQueueId as no-op for invalid or empty source", () => {
+    const initial: SessionQueueMap = {
+      "session-a": [
+        buildQueuedTurn({
+          id: "a-1",
+          sessionId: "session-a",
+          text: "a one",
+          kind: "normal",
+        }),
+      ],
+    };
+
+    expect(reconcileSessionQueueId(initial, undefined, "session-b")).toBe(initial);
+    expect(reconcileSessionQueueId(initial, "session-a", undefined)).toBe(initial);
+    expect(reconcileSessionQueueId(initial, "session-a", "session-a")).toBe(initial);
+    expect(
+      reconcileSessionQueueId(initial, "new-session-missing", "session-b"),
+    ).toBe(initial);
+  });
+
+  it("reconciles settled session only when fallback id is a temporary session id", () => {
+    const withTemp: SessionQueueMap = {
+      "session-live": [
+        buildQueuedTurn({
+          id: "live-1",
+          sessionId: "session-live",
+          text: "live",
+          kind: "normal",
+        }),
+      ],
+      "new-session-999": [
+        buildQueuedTurn({
+          id: "temp-1",
+          sessionId: "new-session-999",
+          text: "temp",
           kind: "normal",
         }),
       ],
     };
 
     const reconciled = reconcileSettledSessionQueue(
+      withTemp,
+      "session-live",
+      "new-session-999",
+    );
+    expect(reconciled["new-session-999"]).toBeUndefined();
+    expect(reconciled["session-live"].map((turn) => turn.id)).toEqual([
+      "live-1",
+      "temp-1",
+    ]);
+
+    const withNonTemp = reconcileSettledSessionQueue(
+      withTemp,
+      "session-live",
+      "session-other",
+    );
+    expect(withNonTemp).toBe(withTemp);
+  });
+
+  it("preserves queue semantics when switching models within the same provider (codex 5.2 -> 5.3)", () => {
+    const sessionId = "session-model-switch";
+    const queueBySession: SessionQueueMap = {};
+
+    // User started with gpt-5.2 and queued two turns while busy.
+    const withFirstModel = enqueueSessionTurn(
       queueBySession,
-      "session-real",
-      "session-fallback",
+      buildQueuedTurn({
+        id: "q-1",
+        sessionId,
+        text: "first queued turn",
+        kind: "normal",
+      }),
+    );
+    const withSecondTurn = enqueueSessionTurn(
+      withFirstModel,
+      buildQueuedTurn({
+        id: "q-2",
+        sessionId,
+        text: "second queued turn",
+        kind: "normal",
+      }),
     );
 
-    expect(reconciled).toBe(queueBySession);
+    // User switches Codex model to gpt-5.3 before the queue drains.
+    // Queue functions are model-agnostic and must keep order intact.
+    const queueAfterModelSwitch = getSessionQueue(withSecondTurn, sessionId);
+    expect(queueAfterModelSwitch.map((turn) => turn.id)).toEqual(["q-1", "q-2"]);
+    expect(getNextDispatchableTurn(queueAfterModelSwitch)?.id).toBe("q-1");
+  });
+
+  it("keeps steer-first order after serialization round-trip (refresh recovery)", () => {
+    const sessionId = "session-refresh";
+    const queueBySession: SessionQueueMap = {
+      [sessionId]: [
+        buildQueuedTurn({
+          id: "steer-urgent",
+          sessionId,
+          text: "urgent steer",
+          kind: "steer",
+          status: "queued",
+          createdAt: 1111,
+        }),
+        buildQueuedTurn({
+          id: "queue-1",
+          sessionId,
+          text: "queued one",
+          kind: "normal",
+          status: "queued",
+          createdAt: 2222,
+        }),
+      ],
+    };
+
+    const restored = JSON.parse(
+      JSON.stringify(queueBySession),
+    ) as SessionQueueMap;
+    const next = getNextDispatchableTurn(getSessionQueue(restored, sessionId));
+    expect(next?.id).toBe("steer-urgent");
   });
 
   it("preserves order under concurrent temp→settled promotions from multiple temp sessions", () => {

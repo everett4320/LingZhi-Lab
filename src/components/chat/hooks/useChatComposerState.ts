@@ -11,7 +11,6 @@ import type {
 } from "react";
 import { useDropzone } from "react-dropzone";
 import type { FileRejection } from "react-dropzone";
-import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { authenticatedFetch } from "../../../utils/api";
 import { isTelemetryEnabled } from "../../../utils/telemetry";
@@ -185,6 +184,7 @@ const PROGRAMMATIC_SUBMIT_MAX_RETRIES = 12;
 const PROGRAMMATIC_SUBMIT_RETRY_DELAY_MS = 50;
 const CODEX_QUEUE_DISPATCH_AFTER_SETTLE_MS = 800;
 const CODEX_QUEUE_DISPATCH_ACK_TIMEOUT_MS = 6000;
+const SESSION_STATUS_CHECK_DEBOUNCE_MS = 1200;
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
 const CODEX_ATTACHMENT_DIR = ".dr-claw/chat-attachments";
@@ -263,13 +263,7 @@ function formatRejectedFileMessage(rejection: FileRejection) {
 }
 
 const isTemporarySessionId = (sessionId: string | null | undefined) =>
-  Boolean(
-    sessionId
-    && (
-      sessionId.startsWith("new-session-")
-      || sessionId.startsWith("temp-")
-    ),
-  );
+  Boolean(sessionId && sessionId.startsWith("new-session-"));
 
 const BTW_TRANSCRIPT_MAX_CHARS = 120_000;
 
@@ -444,11 +438,10 @@ export function useChatComposerState({
   setClaudeStatus,
   setIsUserScrolledUp,
   setPendingPermissionRequests,
-  newSessionMode = "research",
   getChatMessagesForBtw,
+  newSessionMode = "research",
 }: UseChatComposerStateArgs) {
   const { t } = useTranslation("chat");
-  const { pathname } = useLocation();
   const initialDraftBucket =
     selectedSession?.id || currentSessionId || pendingViewSessionRef.current?.sessionId || "new";
   const initialDraftStorageKey = buildDraftInputStorageKey(
@@ -549,6 +542,7 @@ export function useChatComposerState({
   const queueBootstrapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const lastSessionStatusCheckAtRef = useRef<Map<string, number>>(new Map());
   const lastSubmittedCodexSessionRef = useRef<string | null>(null);
   const forceSteerForSubmitRef = useRef(false);
   const normalizedProvider = normalizeProvider(provider);
@@ -610,6 +604,33 @@ export function useChatComposerState({
       });
     },
     [currentProjectName, normalizedProvider, processingSessions],
+  );
+
+  const requestSessionStatusCheck = useCallback(
+    (
+      sessionId?: string | null,
+      providerForCheck: SessionProvider = "codex",
+      options?: { force?: boolean },
+    ) => {
+      if (!sessionId) {
+        return;
+      }
+
+      const key = `${providerForCheck}:${sessionId}`;
+      const now = Date.now();
+      const lastSentAt = lastSessionStatusCheckAtRef.current.get(key) || 0;
+      if (!options?.force && now - lastSentAt < SESSION_STATUS_CHECK_DEBOUNCE_MS) {
+        return;
+      }
+
+      lastSessionStatusCheckAtRef.current.set(key, now);
+      sendMessage({
+        type: "check-session-status",
+        sessionId,
+        provider: providerForCheck,
+      });
+    },
+    [sendMessage],
   );
 
   useEffect(() => {
@@ -676,18 +697,14 @@ export function useChatComposerState({
     }
 
     queuedSessionIds.forEach((sessionId) => {
-      sendMessage({
-        type: "check-session-status",
-        sessionId,
-        provider: "codex",
-      });
+      requestSessionStatusCheck(sessionId, "codex");
     });
 
     queueBootstrapTimerRef.current = setTimeout(() => {
       setIsQueueBootstrapReady(true);
       queueBootstrapTimerRef.current = null;
     }, 1200);
-  }, [isQueueBootstrapReady, queuedTurnsBySession, sendMessage]);
+  }, [isQueueBootstrapReady, queuedTurnsBySession, requestSessionStatusCheck]);
 
   useEffect(() => {
     setPendingStageTagKeys([]);
@@ -1332,7 +1349,8 @@ export function useChatComposerState({
     // If we're on the root path with no routed session and no selected session,
     // treat this as an explicit new-session start and clear stale IDs.
     const isExplicitNewSessionStart =
-      pathname === "/" &&
+      typeof window !== "undefined" &&
+      window.location.pathname === "/" &&
       !routedSessionId &&
       !selectedSession?.id;
     if (isExplicitNewSessionStart) {
@@ -1379,7 +1397,6 @@ export function useChatComposerState({
     };
   }, [
     currentSessionId,
-    pathname,
     pendingViewSessionRef,
     provider,
     selectedProject?.fullPath,
@@ -1537,15 +1554,21 @@ export function useChatComposerState({
         return;
       }
 
-      if (
-        !options?.ignoreProcessingCheck &&
-        hasProcessingSession(
-          sessionId,
-          "codex",
-          nextTurn.projectName || selectedProject?.name || currentProjectName,
-        )
-      ) {
-        return;
+      if (!options?.ignoreProcessingCheck) {
+        // Check both isLoading (local state, updates synchronously) and
+        // hasProcessingSession (parent state, may lag behind).
+        if (isLoading) {
+          return;
+        }
+        if (
+          hasProcessingSession(
+            sessionId,
+            "codex",
+            nextTurn.projectName || selectedProject?.name || currentProjectName,
+          )
+        ) {
+          return;
+        }
       }
 
       const queuedProjectPath =
@@ -1595,11 +1618,7 @@ export function useChatComposerState({
         queueDispatchAckTimersRef.current.delete(sessionId);
         queueDispatchLocksRef.current.delete(sessionId);
         pendingQueueDispatchesRef.current.delete(sessionId);
-        sendMessage({
-          type: "check-session-status",
-          sessionId,
-          provider: "codex",
-        });
+        requestSessionStatusCheck(sessionId, "codex");
       }, CODEX_QUEUE_DISPATCH_ACK_TIMEOUT_MS);
       queueDispatchAckTimersRef.current.set(sessionId, ackTimer);
 
@@ -1617,6 +1636,7 @@ export function useChatComposerState({
     [
       clearQueueDispatchAckTimer,
       currentSessionId,
+      isLoading,
       newSessionMode,
       pendingViewSessionRef,
       hasProcessingSession,
@@ -1683,6 +1703,7 @@ export function useChatComposerState({
       }
 
       const fallbackTemporarySessionId = lastSubmittedCodexSessionRef.current;
+      let dispatchSessionId = sessionId;
       if (fallbackTemporarySessionId) {
         const reconciled = reconcileSettledSessionQueue(
           queuedTurnsBySessionRef.current,
@@ -1692,21 +1713,28 @@ export function useChatComposerState({
         if (reconciled !== queuedTurnsBySessionRef.current) {
           queuedTurnsBySessionRef.current = reconciled;
           setQueuedTurnsBySession(reconciled);
+          dispatchSessionId = sessionId;
+        } else if (
+          fallbackTemporarySessionId !== sessionId &&
+          fallbackTemporarySessionId.startsWith('new-session-') &&
+          queuedTurnsBySessionRef.current[fallbackTemporarySessionId]?.length
+        ) {
+          dispatchSessionId = fallbackTemporarySessionId;
         }
       }
 
-      queueDispatchLocksRef.current.add(sessionId);
+      queueDispatchLocksRef.current.add(dispatchSessionId);
       setTimeout(() => {
-        queueDispatchLocksRef.current.delete(sessionId);
-        sendMessage({
-          type: "check-session-status",
-          sessionId,
-          provider: "codex",
-        });
-        dispatchNextQueuedCodexTurn(sessionId);
+        queueDispatchLocksRef.current.delete(dispatchSessionId);
+        requestSessionStatusCheck(dispatchSessionId, "codex");
+        dispatchNextQueuedCodexTurn(dispatchSessionId);
       }, CODEX_QUEUE_DISPATCH_AFTER_SETTLE_MS);
     },
-    [dispatchNextQueuedCodexTurn, releasePendingQueueDispatch, sendMessage],
+    [
+      dispatchNextQueuedCodexTurn,
+      releasePendingQueueDispatch,
+      requestSessionStatusCheck,
+    ],
   );
 
   const handleCodexSessionIdResolved = useCallback(
@@ -1764,11 +1792,7 @@ export function useChatComposerState({
           queueDispatchAckTimersRef.current.delete(actualSessionId);
           queueDispatchLocksRef.current.delete(actualSessionId);
           pendingQueueDispatchesRef.current.delete(actualSessionId);
-          sendMessage({
-            type: "check-session-status",
-            sessionId: actualSessionId,
-            provider: "codex",
-          });
+          requestSessionStatusCheck(actualSessionId, "codex");
         }, CODEX_QUEUE_DISPATCH_ACK_TIMEOUT_MS);
         queueDispatchAckTimersRef.current.set(actualSessionId, ackTimer);
       }
@@ -1785,7 +1809,7 @@ export function useChatComposerState({
       queuedTurnsBySessionRef.current = reconciled;
       setQueuedTurnsBySession(reconciled);
     },
-    [clearQueueDispatchAckTimer, sendMessage],
+    [clearQueueDispatchAckTimer, requestSessionStatusCheck],
   );
 
   const handleCodexSessionBusy = useCallback(
@@ -1799,15 +1823,15 @@ export function useChatComposerState({
       queueDispatchLocksRef.current.delete(sessionId);
 
       setTimeout(() => {
-        sendMessage({
-          type: "check-session-status",
-          sessionId,
-          provider: "codex",
-        });
+        requestSessionStatusCheck(sessionId, "codex");
         dispatchNextQueuedCodexTurn(sessionId);
       }, CODEX_QUEUE_DISPATCH_AFTER_SETTLE_MS);
     },
-    [dispatchNextQueuedCodexTurn, releasePendingQueueDispatch, sendMessage],
+    [
+      dispatchNextQueuedCodexTurn,
+      releasePendingQueueDispatch,
+      requestSessionStatusCheck,
+    ],
   );
 
   const handleCodexSessionStatusUpdate = useCallback(
@@ -1865,14 +1889,10 @@ export function useChatComposerState({
       setQueuedTurnsBySession((previous) =>
         promoteQueuedTurnToSteer(previous, sessionId, turnId),
       );
-      sendMessage({
-        type: "check-session-status",
-        sessionId,
-        provider: "codex",
-      });
+      requestSessionStatusCheck(sessionId, "codex");
       dispatchNextQueuedCodexTurn(sessionId);
     },
-    [dispatchNextQueuedCodexTurn, sendMessage],
+    [dispatchNextQueuedCodexTurn, requestSessionStatusCheck],
   );
 
   const resumeQueuedCodexTurns = useCallback(
@@ -1884,14 +1904,10 @@ export function useChatComposerState({
       setQueuedTurnsBySession((previous) =>
         setSessionQueueStatus(previous, sessionId, "queued"),
       );
-      sendMessage({
-        type: "check-session-status",
-        sessionId,
-        provider: "codex",
-      });
+      requestSessionStatusCheck(sessionId, "codex");
       dispatchNextQueuedCodexTurn(sessionId);
     },
-    [dispatchNextQueuedCodexTurn, sendMessage],
+    [dispatchNextQueuedCodexTurn, requestSessionStatusCheck],
   );
 
   useEffect(() => {
@@ -1911,7 +1927,14 @@ export function useChatComposerState({
         continue;
       }
 
-      if (hasProcessingSession(sessionId, "codex", selectedProject?.name || currentProjectName)) {
+      // Guard: if the UI is still loading (local state), do not auto-dispatch.
+      // processingSessions (parent state) may lag behind isLoading, so we check both.
+      if (isLoading) {
+        continue;
+      }
+
+      const isProcessing = hasProcessingSession(sessionId, "codex", selectedProject?.name || currentProjectName);
+      if (isProcessing) {
         continue;
       }
 
@@ -1921,6 +1944,7 @@ export function useChatComposerState({
     dispatchNextQueuedCodexTurn,
     hasProcessingSession,
     currentProjectName,
+    isLoading,
     isQueueBootstrapReady,
     queuedTurnsBySession,
     selectedProject?.name,
@@ -1994,7 +2018,7 @@ export function useChatComposerState({
         }
       }
 
-      if (isLoading) {
+      if (isLoading && provider !== "codex") {
         return;
       }
 
@@ -2044,14 +2068,17 @@ export function useChatComposerState({
       const isCurrentViewSession =
         !selectedSession?.id ||
         selectedSession?.id === sessionToActivate ||
-        currentSessionId === sessionToActivate;
+        currentSessionId === sessionToActivate ||
+        lastSubmittedCodexSessionRef.current === sessionToActivate;
       const isCodexSessionBusy =
         resolvedProvider === "codex" &&
         hasProcessingSession(
           sessionToActivate,
           resolvedProvider,
           selectedProject?.name || currentProjectName,
-        );
+        ) ||
+          (isLoading && isCurrentViewSession) ||
+          (isLoading && lastSubmittedCodexSessionRef.current != null));
       const useSteerForThisSubmit =
         resolvedProvider === "codex" && (steerMode || forceSteerForSubmit);
 
@@ -2303,6 +2330,12 @@ export function useChatComposerState({
       const toolsSettings = getToolsSettings(resolvedProvider);
       const telemetryEnabled = isTelemetryEnabled();
 
+      console.log("[DEBUG] useChatComposerState - provider:", resolvedProvider);
+      console.log(
+        "[DEBUG] useChatComposerState - effectiveSessionId:",
+        effectiveSessionId,
+      );
+
       if (isNewSession) {
         const sessionModeContext =
           newSessionMode === "workspace_qa"
@@ -2312,6 +2345,7 @@ export function useChatComposerState({
       }
 
       if (resolvedProvider === "cursor") {
+        console.log("[DEBUG] Sending cursor-command");
         sendMessage({
           type: "cursor-command",
           command: messageContent,
@@ -2331,6 +2365,7 @@ export function useChatComposerState({
           },
         });
       } else if (resolvedProvider === "gemini") {
+        console.log("[DEBUG] Sending gemini-command");
         sendMessage({
           type: "gemini-command",
           command: messageContent,
@@ -2352,6 +2387,7 @@ export function useChatComposerState({
           },
         });
       } else if (resolvedProvider === "codex") {
+        console.log("[DEBUG] Sending codex-command");
         sendMessage({
           type: "codex-command",
           command: messageContent,
@@ -2377,6 +2413,7 @@ export function useChatComposerState({
           },
         });
       } else if (resolvedProvider === "openrouter") {
+        console.log("[DEBUG] Sending openrouter-command");
         sendMessage({
           type: "openrouter-command",
           command: messageContent,
@@ -2396,6 +2433,7 @@ export function useChatComposerState({
           },
         });
       } else if (resolvedProvider === "local") {
+        console.log("[DEBUG] Sending local-command");
         sendMessage({
           type: "local-command",
           command: messageContent,
@@ -2418,9 +2456,10 @@ export function useChatComposerState({
             stageTagSource: "task_context",
           },
         });
-      } else if (resolvedProvider === "nano") {
+      } else if (provider === 'nano') {
+        console.log('[DEBUG] Sending nano-command');
         sendMessage({
-          type: "nano-command",
+          type: 'nano-command',
           command: messageContent,
           sessionId: effectiveSessionId,
           options: {
@@ -2433,10 +2472,11 @@ export function useChatComposerState({
             telemetryEnabled,
             sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
             stageTagKeys: pendingStageTagKeys,
-            stageTagSource: "task_context",
+            stageTagSource: 'task_context',
           },
         });
       } else {
+        console.log("[DEBUG] Sending claude-command");
         sendMessage({
           type: "claude-command",
           command: messageContent,
@@ -2845,11 +2885,7 @@ export function useChatComposerState({
         if (provider === "codex") {
           releasePendingQueueDispatch(sessionId);
         }
-        sendMessage({
-          type: "check-session-status",
-          sessionId,
-          provider,
-        });
+        requestSessionStatusCheck(sessionId, normalizeProvider(provider));
       }
 
       setIsLoading(false);
@@ -3058,10 +3094,10 @@ export function useChatComposerState({
     isInputFocused,
     intakeGreeting,
     setIntakeGreeting,
-    btwOverlay,
-    closeBtwOverlay,
     setPendingStageTagKeys,
     submitProgrammaticInput,
+    btwOverlay,
+    closeBtwOverlay,
     activeQueueSessionId,
     activeQueuedTurns,
     isActiveQueuePaused,

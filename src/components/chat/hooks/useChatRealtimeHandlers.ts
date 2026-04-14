@@ -21,10 +21,6 @@ import {
   readScopedPendingSessionId,
   safeLocalStorage,
 } from "../utils/chatStorage";
-import {
-  emitSessionFilterDebugLog,
-  syncSessionFilterDebugSetting,
-} from "../utils/sessionFilterDebug";
 import { RESUMING_STATUS_TEXT } from "../types/types";
 import i18n from "../../../i18n/config";
 import type { ChatMessage, PendingPermissionRequest } from "../types/types";
@@ -33,7 +29,7 @@ import type {
   ProjectSession,
   SessionProvider,
 } from "../../../types/app";
-import { isProviderAllowed, normalizeProvider } from "../../../utils/providerPolicy";
+import { normalizeProvider } from "../../../utils/providerPolicy";
 
 type PendingViewSession = {
   sessionId: string | null;
@@ -55,8 +51,6 @@ type LatestChatMessage = {
   actualSessionId?: string;
   [key: string]: any;
 };
-
-const warnedUnknownProviders = new Set<string>();
 
 interface UseChatRealtimeHandlersArgs {
   latestMessage: LatestChatMessage | null;
@@ -114,6 +108,10 @@ interface UseChatRealtimeHandlersArgs {
     previousSessionId?: string | null,
     actualSessionId?: string | null,
   ) => void;
+  onCodexSessionStatusUpdate?: (
+    sessionId?: string | null,
+    isProcessing?: boolean,
+  ) => void;
   onReplaceTemporarySession?: (
     sessionId?: string | null,
     provider?: SessionProvider | null,
@@ -125,7 +123,6 @@ interface UseChatRealtimeHandlersArgs {
     sessionProvider?: SessionProvider,
     targetProjectName?: string,
   ) => void;
-  sendMessage?: (message: Record<string, unknown>) => void;
 }
 
 const appendStreamingChunk = (
@@ -235,15 +232,11 @@ export function useChatRealtimeHandlers({
   onCodexTurnSettled,
   onCodexSessionBusy,
   onCodexSessionIdResolved,
+  onCodexSessionStatusUpdate,
   onReplaceTemporarySession,
   onNavigateToSession,
-  sendMessage,
 }: UseChatRealtimeHandlersArgs) {
   const lastProcessedMessageRef = useRef<LatestChatMessage | null>(null);
-
-  useEffect(() => {
-    syncSessionFilterDebugSetting(sendMessage);
-  }, [sendMessage]);
 
   // Helper: Handle structured assistant content
   const handleStructuredAssistantMessage = (
@@ -448,10 +441,10 @@ export function useChatRealtimeHandlers({
                     : JSON.stringify(part.content);
                 const parsedAnswers = parseAskUserAnswers(resultStr);
                 if (parsedAnswers) {
-                  const inputStr = typeof message.toolInput === 'string'
-                    ? message.toolInput
-                    : JSON.stringify(message.toolInput || {});
-                  result.toolInput = mergeAnswersIntoToolInput(inputStr, parsedAnswers);
+                  result.toolInput = mergeAnswersIntoToolInput(
+                    String(message.toolInput || "{}"),
+                    parsedAnswers,
+                  );
                 }
               }
               if (message.isSubagentContainer && message.subagentState) {
@@ -475,15 +468,6 @@ export function useChatRealtimeHandlers({
     }
 
     if (lastProcessedMessageRef.current === latestMessage) {
-      emitSessionFilterDebugLog(
-        {
-          reason: "dropped:duplicate-message-reference",
-          messageType: String(latestMessage.type || ""),
-          routedSessionId: latestMessage.actualSessionId || latestMessage.sessionId || null,
-          actualSessionId: latestMessage.actualSessionId || null,
-        },
-        sendMessage,
-      );
       return;
     }
     lastProcessedMessageRef.current = latestMessage;
@@ -517,7 +501,6 @@ export function useChatRealtimeHandlers({
       "gemini-complete",
       "openrouter-complete",
       "localgpu-complete",
-      "cursor-complete",
       "cursor-result",
       "session-aborted",
       "claude-error",
@@ -593,21 +576,6 @@ export function useChatRealtimeHandlers({
         typeof providerValue === "string" && providerValue.length > 0
           ? providerValue
           : fallback || inferredMessageProvider || provider;
-
-      if (typeof candidate === "string") {
-        const normalizedCandidate = candidate.trim().toLowerCase();
-        if (
-          normalizedCandidate &&
-          !isProviderAllowed(normalizedCandidate) &&
-          !warnedUnknownProviders.has(normalizedCandidate)
-        ) {
-          warnedUnknownProviders.add(normalizedCandidate);
-          console.warn(
-            `[chat] Unknown provider "${candidate}" on message type "${String(latestMessage.type || "")}", falling back to default provider`,
-          );
-        }
-      }
-
       return normalizeProvider(candidate as SessionProvider);
     };
     const resolveProjectName = (
@@ -633,7 +601,9 @@ export function useChatRealtimeHandlers({
     const activeViewProjectName =
       selectedSession?.__projectName || selectedProject?.name || null;
     const routedMessageSessionId =
-      latestMessage.actualSessionId || latestMessage.sessionId || null;
+      latestMessage.type === "codex-complete"
+        ? latestMessage.actualSessionId || latestMessage.sessionId || null
+        : latestMessage.sessionId || null;
     const temporaryActiveSessionId =
       activeViewSessionId?.startsWith("new-session-")
         ? activeViewSessionId
@@ -720,28 +690,6 @@ export function useChatRealtimeHandlers({
         latestMessage.type === "gemini-error" ||
         latestMessage.type === "openrouter-error" ||
         latestMessage.type === "localgpu-error");
-    const logFilterDecision = (reason: string, extra: Record<string, unknown> = {}) => {
-      emitSessionFilterDebugLog(
-        {
-          reason,
-          messageType: String(latestMessage.type || ""),
-          routedSessionId: routedMessageSessionId,
-          actualSessionId: latestMessage.actualSessionId || null,
-          sessionProvider: latestMessageProvider,
-          messageProjectName: latestMessageProjectName,
-          activeViewSessionId,
-          activeViewProvider,
-          activeViewProjectName,
-          isGlobalMessage,
-          isPendingViewSession: Boolean(pendingViewSessionRef.current),
-          shouldRebindCodexTemporarySession,
-          isUnscopedError: Boolean(isUnscopedError),
-          shouldBypassSessionFilter: Boolean(shouldBypassSessionFilter),
-          extra,
-        },
-        sendMessage,
-      );
-    };
 
     if (latestMessage.type === "codex-complete") {
       const completedSessionId =
@@ -766,7 +714,7 @@ export function useChatRealtimeHandlers({
       onCodexTurnSettled?.(actualSessionId || completedSessionId, "complete");
     } else if (latestMessage.type === "codex-error") {
       onCodexTurnSettled?.(
-        routedMessageSessionId || currentSessionId || null,
+        latestMessage.sessionId || currentSessionId || null,
         "error",
       );
     } else if (
@@ -774,19 +722,19 @@ export function useChatRealtimeHandlers({
       latestMessage.provider === "codex"
     ) {
       onCodexTurnSettled?.(
-        routedMessageSessionId || currentSessionId || null,
+        latestMessage.sessionId || currentSessionId || null,
         "aborted",
       );
     }
 
-    if (latestMessage.type === "codex-response" && routedMessageSessionId) {
+    if (latestMessage.type === "codex-response" && latestMessage.sessionId) {
       const codexData = latestMessage.data;
       if (
         codexData &&
         (codexData.type === "turn_started" ||
           (codexData.type === "item" && codexData.lifecycle === "started"))
       ) {
-        onCodexTurnStarted?.(routedMessageSessionId);
+        onCodexTurnStarted?.(latestMessage.sessionId);
       }
     }
 
@@ -839,6 +787,7 @@ export function useChatRealtimeHandlers({
       }
 
       if (
+        latestMessage.type === "codex-complete" &&
         latestMessage.actualSessionId &&
         latestMessage.actualSessionId !== latestMessage.sessionId
       ) {
@@ -928,56 +877,26 @@ export function useChatRealtimeHandlers({
           });
         }
         if (!isUnscopedError) {
-          logFilterDecision("dropped:no-active-view-session");
           return;
         }
       }
 
       if (!routedMessageSessionId && !isUnscopedError) {
-        logFilterDecision("dropped:missing-session-id");
-        return;
-      }
-
-      if (routedMessageSessionId && activeViewSessionId && routedMessageSessionId !== activeViewSessionId) {
-        if (lifecycleMessageTypes.has(String(latestMessage.type))) {
-          getLifecycleSessionIds().forEach((sessionId) => {
-            handleBackgroundLifecycle(sessionId);
-          });
-        }
-        logFilterDecision("dropped:session-id-mismatch", {
-          expectedSessionId: activeViewSessionId,
-          actualSessionId: routedMessageSessionId,
-        });
-        return;
-      }
-
-      if (latestMessageProvider !== activeViewProvider) {
-        if (lifecycleMessageTypes.has(String(latestMessage.type))) {
-          getLifecycleSessionIds().forEach((sessionId) => {
-            handleBackgroundLifecycle(sessionId);
-          });
-        }
-        logFilterDecision("dropped:provider-mismatch", {
-          expectedProvider: activeViewProvider,
-          actualProvider: latestMessageProvider,
-        });
         return;
       }
 
       if (
-        activeViewProjectName &&
-        latestMessageProjectName &&
-        activeViewProjectName !== latestMessageProjectName
+        !isMessageInActiveScope(
+          routedMessageSessionId,
+          latestMessageProvider,
+          latestMessageProjectName,
+        )
       ) {
         if (lifecycleMessageTypes.has(String(latestMessage.type))) {
           getLifecycleSessionIds().forEach((sessionId) => {
             handleBackgroundLifecycle(sessionId);
           });
         }
-        logFilterDecision("dropped:project-mismatch", {
-          expectedProjectName: activeViewProjectName,
-          actualProjectName: latestMessageProjectName,
-        });
         return;
       }
     }
@@ -985,7 +904,7 @@ export function useChatRealtimeHandlers({
     switch (latestMessage.type) {
       case "session-accepted": {
         const acceptedSessionId =
-          routedMessageSessionId ||
+          latestMessage.sessionId ||
           pendingViewSessionRef.current?.sessionId ||
           currentSessionId ||
           selectedSession?.id ||
@@ -1035,7 +954,7 @@ export function useChatRealtimeHandlers({
 
       case "session-busy": {
         const busySessionId =
-          routedMessageSessionId ||
+          latestMessage.sessionId ||
           pendingViewSessionRef.current?.sessionId ||
           currentSessionId ||
           selectedSession?.id ||
@@ -1067,7 +986,7 @@ export function useChatRealtimeHandlers({
           notifySessionProcessing(busySessionId, busyProvider, busyProjectName);
         }
 
-        if (busyProvider === "codex") {
+        if (latestMessage.provider === "codex") {
           onCodexSessionBusy?.(busySessionId);
         }
 
@@ -1103,8 +1022,8 @@ export function useChatRealtimeHandlers({
 
       case "session-state-changed": {
         const stateSessionId =
-          typeof routedMessageSessionId === "string"
-            ? routedMessageSessionId
+          typeof latestMessage.sessionId === "string"
+            ? latestMessage.sessionId
             : null;
         if (!stateSessionId) {
           break;
@@ -1141,6 +1060,9 @@ export function useChatRealtimeHandlers({
 
         if (isProcessingState) {
           notifySessionProcessing(stateSessionId, stateProvider, stateProjectName);
+          if (stateProvider === "codex") {
+            onCodexSessionStatusUpdate?.(stateSessionId, true);
+          }
           if (isCurrentSession) {
             setIsLoading(true);
             setCanAbortSession(true);
@@ -1151,6 +1073,9 @@ export function useChatRealtimeHandlers({
         if (isTerminalState) {
           clearSessionTimerStart(stateSessionId);
           notifySessionCompleted(stateSessionId, stateProvider, stateProjectName);
+          if (stateProvider === "codex") {
+            onCodexSessionStatusUpdate?.(stateSessionId, false);
+          }
           if (isCurrentSession) {
             clearLoadingIndicators();
           }
@@ -1317,6 +1242,7 @@ export function useChatRealtimeHandlers({
             !currentSessionId ||
             structuredMessageData.session_id !== currentSessionId
           ) {
+            console.log("Claude CLI session duplication or new init detected");
             setIsSystemSessionChange(true);
             onNavigateToSession?.(
               structuredMessageData.session_id,
@@ -1409,6 +1335,7 @@ export function useChatRealtimeHandlers({
             !currentSessionId ||
             structuredMessageData.session_id !== currentSessionId
           ) {
+            console.log("Gemini CLI session init detected");
             setIsSystemSessionChange(true);
             onNavigateToSession?.(
               structuredMessageData.session_id,
@@ -1560,7 +1487,6 @@ export function useChatRealtimeHandlers({
       }
 
       case "claude-complete":
-      case "cursor-complete":
       case "gemini-complete":
       case "openrouter-complete":
       case "localgpu-complete": {
@@ -2186,7 +2112,7 @@ export function useChatRealtimeHandlers({
         ) {
           clearLoadingIndicators();
           markSessionsAsCompleted(
-            routedMessageSessionId,
+            latestMessage.sessionId,
             currentSessionId,
             selectedSession?.id,
           );
@@ -2210,9 +2136,9 @@ export function useChatRealtimeHandlers({
         const codexActualSessionId =
           latestMessage.actualSessionId ||
           codexPendingSessionId ||
-          routedMessageSessionId;
+          latestMessage.sessionId;
         const codexCompletedSessionId =
-          routedMessageSessionId || currentSessionId || codexPendingSessionId;
+          latestMessage.sessionId || currentSessionId || codexPendingSessionId;
         clearLoadingIndicators();
         markSessionsAsCompleted(
           codexCompletedSessionId,
@@ -2257,7 +2183,7 @@ export function useChatRealtimeHandlers({
         flushAndFinalizePendingStream();
         clearLoadingIndicators();
         markSessionsAsCompleted(
-          routedMessageSessionId,
+          latestMessage.sessionId,
           currentSessionId,
           selectedSession?.id,
         );
@@ -2289,7 +2215,7 @@ export function useChatRealtimeHandlers({
           abortedProjectName,
           abortedProvider,
         );
-        const abortedSessionId = routedMessageSessionId || currentSessionId;
+        const abortedSessionId = latestMessage.sessionId || currentSessionId;
         if (latestMessage.success !== false) {
           clearLoadingIndicators();
           markSessionsAsCompleted(
@@ -2328,7 +2254,7 @@ export function useChatRealtimeHandlers({
       }
 
       case "session-status": {
-        const statusSessionId = routedMessageSessionId;
+        const statusSessionId = latestMessage.sessionId;
         if (!statusSessionId) {
           break;
         }
@@ -2360,6 +2286,9 @@ export function useChatRealtimeHandlers({
             statusProvider,
             statusProjectName,
           );
+          if (statusProvider === "codex") {
+            onCodexSessionStatusUpdate?.(statusSessionId, true);
+          }
 
           if (!isCurrentSession) {
             break;
@@ -2381,6 +2310,9 @@ export function useChatRealtimeHandlers({
             statusProvider,
             statusProjectName,
           );
+          if (statusProvider === "codex") {
+            onCodexSessionStatusUpdate?.(statusSessionId, false);
+          }
 
           if (!isCurrentSession) {
             break;
@@ -2403,7 +2335,7 @@ export function useChatRealtimeHandlers({
               requestId,
               toolName,
               input: toolInput,
-              sessionId: routedMessageSessionId || currentSessionId,
+              sessionId: latestMessage.sessionId || currentSessionId,
               receivedAt: new Date(),
             },
           ];
@@ -2430,7 +2362,7 @@ export function useChatRealtimeHandlers({
         if (!statusData) break;
         persistStartTime(
           statusData.startTime,
-          routedMessageSessionId,
+          latestMessage.sessionId,
           currentSessionId,
           selectedSession?.id,
         );
@@ -2486,8 +2418,8 @@ export function useChatRealtimeHandlers({
     onCodexTurnSettled,
     onCodexSessionBusy,
     onCodexSessionIdResolved,
+    onCodexSessionStatusUpdate,
     onReplaceTemporarySession,
     onNavigateToSession,
-    sendMessage,
   ]);
 }
