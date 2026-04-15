@@ -43,7 +43,7 @@ describe('hydrateStoredChatMessages', () => {
           {
             name: 'draft.md',
             kind: 'file',
-            path: '.dr-claw/chat-attachments/draft.md',
+            path: '.lingzhi-lab/chat-attachments/draft.md',
           },
         ],
         timestamp: 0,
@@ -56,7 +56,7 @@ describe('hydrateStoredChatMessages', () => {
     ] as ChatMessage[]);
 
     expect(hydrated[0].submittedContent).toBe(
-      'Please review the attached draft before responding.\n\nContinue from the saved draft.\n\n[Files available at the following paths]\n1. .dr-claw/chat-attachments/draft.md',
+      'Please review the attached draft before responding.\n\nContinue from the saved draft.\n\n[Files available at the following paths]\n1. .lingzhi-lab/chat-attachments/draft.md',
     );
     expect(hydrated[0].messageId).toBeTruthy();
     expect(hydrated[1].messageId).toBeTruthy();
