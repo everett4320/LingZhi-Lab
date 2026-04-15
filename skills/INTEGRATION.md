@@ -1,10 +1,10 @@
-# Research Flow Integration (Dr. Claw)
+# Research Flow Integration (Lingzhi Lab)
 
 Defines the **UI entry**, **backend API**, and **maturity judgment** for the Start Research pipeline so the correct branch (plan vs idea) runs.
 
 ## UI entry: Start Research
 
-- **Single entry**: One button or command, e.g. **"Start Research"**, in the Dr. Claw UI that kicks off the Research pipeline.
+- **Single entry**: One button or command, e.g. **"Start Research"**, in the Lingzhi Lab UI that kicks off the Research pipeline.
 - **User input** (one of):
   1. **Full plan text**: User pastes or uploads a complete implementation plan (method, data, training, evaluation). → Treated as **plan-level**; idea fixed; no idea generation.
   2. **Background / task only**: User provides task description, problem statement, or references without a full plan. → Treated as **idea-level**; system will generate ideas.
@@ -18,7 +18,7 @@ The UI should send the chosen input (and type hint if available) to the backend 
 - **Request body** (example):
   - `inputType`: `"plan"` | `"idea"` | `"instance"`
   - `payload`: string (plan text, idea/background text) or object (instance JSON with `source_papers`, `task1`, `task2`, `url`, etc.)
-  - Optional: `category`, `max_iter_times`, `instance` (path to instance file; paths inside instance.json are typically **absolute** when created by Dr. Claw, or may be relative; consumers should use as-is when absolute).
+  - Optional: `category`, `max_iter_times`, `instance` (path to instance file; paths inside instance.json are typically **absolute** when created by Lingzhi Lab, or may be relative; consumers should use as-is when absolute).
 - **Response**: e.g. `{ runId, status, branch: "plan"|"idea" }` and/or streamed progress (prepare → … → submit/refine).
 - **Behavior**: Backend receives payload → runs **maturity judgment** (see below) → runs **plan branch** or **idea branch** (by invoking the Python pipeline or by orchestrating the seven stage skills). Canonical implementation: call `run_infer.py` with `--mode plan` and `ideas=task1`, or `run_infer_idea_ours.py` for idea mode; or replicate the flow in-process using the same prompt/agent calls referenced in the skills.
 
@@ -35,4 +35,4 @@ The UI should send the chosen input (and type hint if available) to the backend 
 - **Plan**: prepare (with ideas) → inno-code-survey (Plan mode: survey on ideas/papers) → inno-experiment-dev (plan + implement + judge + submit) → inno-experiment-analysis (analyse + refine) → inno-paper-writing (optional). Use `run_infer.py` with `mode=plan` and `ideas=task1` or equivalent.
 - **Idea**: prepare → idea-generation → idea-eval (quality gate) → code-survey (Phase A: repo acquisition + Phase B: code survey) → inno-experiment-dev (plan + implement + judge + submit) → inno-experiment-analysis (analyse + refine) → inno-paper-writing (optional). Use `run_infer_idea_ours.py` or equivalent.
 
-Skills in `skills/` (Dr. Claw repo root) document inputs, outputs, and Python references for each step; the backend can call the existing Python entry points or re-use the same prompt/agent logic in another runtime. When a project is created, Dr. Claw symlinks these into the project's `.claude/skills/` so Claude can discover them.
+Skills in `skills/` (Lingzhi Lab repo root) document inputs, outputs, and Python references for each step; the backend can call the existing Python entry points or re-use the same prompt/agent logic in another runtime. When a project is created, Lingzhi Lab symlinks these into the project's `.claude/skills/` so Claude can discover them.

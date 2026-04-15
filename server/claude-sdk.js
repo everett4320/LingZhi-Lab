@@ -436,7 +436,7 @@ async function loadMcpConfig(cwd) {
       }
     }
 
-    // Dr. Claw no longer relies on TaskMaster MCP tooling in chat sessions.
+    // Lingzhi Lab no longer relies on TaskMaster MCP tooling in chat sessions.
     // Filter out any TaskMaster-related MCP entries to prevent legacy "not installed" errors.
     const filteredMcpServers = Object.fromEntries(
       Object.entries(mcpServers).filter(([name, config]) => {

@@ -12,15 +12,15 @@ description: >
 
 ## Inputs
 
-Read from **`instance.json`**. Path values are **absolute** when the project is created by Dr. Claw; use as-is. If relative (e.g. hand-edited), resolve with `path.join(project_path, value)`.
+Read from **`instance.json`**. Path values are **absolute** when the project is created by Lingzhi Lab; use as-is. If relative (e.g. hand-edited), resolve with `path.join(project_path, value)`.
 
 | Parameter              | Required | Description |
 |------------------------|----------|-------------|
-| `instance`             | Yes      | Path to the instance JSON file (absolute in Dr. Claw). Use as-is to read the file. File contains `source_papers`, `task1`/`task2`, etc. |
+| `instance`             | Yes      | Path to the instance JSON file (absolute in Lingzhi Lab). Use as-is to read the file. File contains `source_papers`, `task1`/`task2`, etc. |
 | `task_level`           | Yes      | Which task field to read from the instance — `"task1"` (Plan) or `"task2"` (Idea) |
-| `Ideation.references`  | Yes      | Path to Ideation references dir (absolute in Dr. Claw) — for downloaded papers and prepare logs |
-| `Experiment.code_references` | Yes | Path (absolute in Dr. Claw) — for cloned repos |
-| `Experiment.datasets`  | Yes      | Path (absolute in Dr. Claw) — for dataset files |
+| `Ideation.references`  | Yes      | Path to Ideation references dir (absolute in Lingzhi Lab) — for downloaded papers and prepare logs |
+| `Experiment.code_references` | Yes | Path (absolute in Lingzhi Lab) — for cloned repos |
+| `Experiment.datasets`  | Yes      | Path (absolute in Lingzhi Lab) — for dataset files |
 | `category`             | Yes      | Research category tag (e.g. `nlp_qa`, `gnn`, `recommendation`). Used to locate the built-in dataset metaprompt |
 | `references`           | Yes      | A pre-formatted string listing all source papers from the instance |
 | `context_variables`    | Yes      | Shared context dictionary; this step will write `date_limit` into it |
@@ -118,7 +118,7 @@ Each agent output file records the final context variables (no conversation mess
 
 ### Step 1 — Load the evaluation instance
 
-Call `load_instance(instance.instance, task_level)` — when created by Dr. Claw, `instance.instance` is already absolute; otherwise resolve with `path.join(project_path, instance.instance)`.
+Call `load_instance(instance.instance, task_level)` — when created by Lingzhi Lab, `instance.instance` is already absolute; otherwise resolve with `path.join(project_path, instance.instance)`.
 
 This reads the instance JSON and returns an **EvalMetadata** object containing:
 
@@ -249,7 +249,7 @@ Use bracket-matching JSON extraction — find the first complete `{…}` in the 
 
 ### Step 6 — Download arXiv paper sources
 
-Call `download_arxiv_source_by_title(paper_list, references_path)` where `references_path` is `instance.Ideation.references` (absolute in Dr. Claw) or `path.join(project_path, instance.Ideation.references)` if relative.
+Call `download_arxiv_source_by_title(paper_list, references_path)` where `references_path` is `instance.Ideation.references` (absolute in Lingzhi Lab) or `path.join(project_path, instance.Ideation.references)` if relative.
 
 This searches arXiv for each paper title, downloads the LaTeX / source archive, and extracts it into `Ideation/references/papers/`. Record the result log as `download_res`.
 

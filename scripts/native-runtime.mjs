@@ -67,6 +67,19 @@ function run(bin, args, extraEnv = {}) {
   });
 }
 
+function resolveElectronRebuildCommand() {
+  const ext = process.platform === 'win32' ? '.cmd' : '';
+  const localBin = path.join(projectRoot, 'node_modules', '.bin', `electron-rebuild${ext}`);
+  if (fs.existsSync(localBin)) {
+    return { bin: localBin, args: [] };
+  }
+
+  return {
+    bin: process.platform === 'win32' ? 'npx.cmd' : 'npx',
+    args: ['electron-rebuild'],
+  };
+}
+
 async function ensureNodeRuntime() {
   const state = readState();
 
@@ -88,6 +101,10 @@ async function ensureNodeRuntime() {
   console.log('[native-runtime] Node native modules ready');
 }
 
+async function patchNodePtyForCurrentToolchain() {
+  await run(process.platform === 'win32' ? 'node.exe' : 'node', ['scripts/fix-node-pty.js']);
+}
+
 async function ensureElectronRuntime() {
   const state = readState();
 
@@ -97,8 +114,10 @@ async function ensureElectronRuntime() {
   }
 
   console.log(`[native-runtime] Preparing Electron native modules for ${electronVersion}`);
-  await run(process.platform === 'win32' ? 'npx.cmd' : 'npx', [
-    'electron-rebuild',
+  await patchNodePtyForCurrentToolchain();
+  const rebuildCommand = resolveElectronRebuildCommand();
+  await run(rebuildCommand.bin, [
+    ...rebuildCommand.args,
     '--force',
     '--version', electronVersion,
     '--module-dir', projectRoot,

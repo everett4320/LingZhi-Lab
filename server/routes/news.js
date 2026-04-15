@@ -577,7 +577,7 @@ router.post('/xhs-login', (req, res) => {
     if (!authenticated) {
       contextHint = requestedMethod === 'qrcode'
         ? 'QR login is recommended for remote deployments and Linux browser-cookie issues.'
-        : 'Browser cookie extraction runs on the machine hosting the dr-claw service, not on the device where this page is open.';
+        : 'Browser cookie extraction runs on the machine hosting the lingzhi-lab service, not on the device where this page is open.';
     }
 
     sendOnce(200, {
@@ -595,7 +595,7 @@ router.post('/xhs-login', (req, res) => {
   child.on('error', (err) => {
     const contextHint = requestedMethod === 'qrcode'
       ? 'QR login is recommended for remote deployments and Linux browser-cookie issues.'
-      : 'Browser cookie extraction runs on the machine hosting the dr-claw service, not on the device where this page is open.';
+      : 'Browser cookie extraction runs on the machine hosting the lingzhi-lab service, not on the device where this page is open.';
 
     sendOnce(500, {
       success: false,
@@ -687,7 +687,7 @@ router.get('/results', async (req, res) => {
 // Helpers
 // ---------------------------------------------------------------------------
 function buildYamlConfig(config) {
-  let yaml = '# Auto-generated from Dr. Claw News Dashboard config\n\n';
+  let yaml = '# Auto-generated from Lingzhi Lab News Dashboard config\n\n';
   yaml += 'research_domains:\n';
 
   const domains = config.research_domains || {};

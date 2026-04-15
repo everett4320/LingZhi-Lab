@@ -345,7 +345,7 @@ function buildLegacyTags(skillName, summary, frontmatter, mapping) {
   }
 
   if (isPlatformNative) {
-    metaTags.push('Source: Dr. Claw');
+    metaTags.push('Source: Lingzhi Lab');
   }
 
   return {
@@ -508,18 +508,18 @@ function inferDomains(skill, override) {
 
 function inferSource(skill) {
   const explicitSource = normalizeKey(skill.frontmatter?.source);
-  if (explicitSource === 'vibelab' || explicitSource === 'dr-claw' || explicitSource === 'dr. claw') {
-    return 'dr-claw';
+  if (explicitSource === 'vibelab' || explicitSource === 'lingzhi-lab' || explicitSource === 'lingzhi-lab') {
+    return 'lingzhi-lab';
   }
 
   const normalizedSource = normalizeKey(skill.source);
-  return normalizedSource === 'vibelab' || normalizedSource === 'dr-claw' || normalizedSource === 'dr. claw'
-    ? 'dr-claw'
+  return normalizedSource === 'vibelab' || normalizedSource === 'lingzhi-lab' || normalizedSource === 'lingzhi-lab'
+    ? 'lingzhi-lab'
     : 'imported';
 }
 
 function inferStatus(skill, source) {
-  if (source === 'vibelab' || source === 'dr-claw') {
+  if (source === 'vibelab' || source === 'lingzhi-lab') {
     return 'verified';
   }
 
@@ -677,7 +677,7 @@ async function main() {
         key: `domain:${normalizeKey(domainLabel)}`,
         label: domainLabel,
       },
-      source: isPlatformNative ? 'dr-claw' : 'imported',
+      source: isPlatformNative ? 'lingzhi-lab' : 'imported',
       summary,
       fullDescription,
       tags: {

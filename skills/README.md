@@ -11,7 +11,7 @@ Project-scoped skills for the Research flow (idea generation, code survey, imple
 
 ## Project layout
 
-When a project is **created in Dr. Claw**, the app creates **`instance.json`** at the project root (single config with **absolute paths**) and these preset directories:
+When a project is **created in Lingzhi Lab**, the app creates **`instance.json`** at the project root (single config with **absolute paths**) and these preset directories:
 
 - `Survey/references`, `Survey/reports`
 - `Ideation/ideas`, `Ideation/references`
@@ -96,7 +96,7 @@ Orchestration ──► Research & Discovery ──► Ideation ──► Experi
 
 - `stageOverrides`: Per-skill stage tag override, keyed by skill folder name.
 - `domainOverrides`: Per-skill domain tag override, keyed by skill folder name.
-- `platformNativeSkills`: Skills that should show the source tag (`来源: 平台自研` / `Source: Dr. Claw`).
+- `platformNativeSkills`: Skills that should show the source tag (`来源: 平台自研` / `Source: Lingzhi Lab`).
 - `domainCsAiExceptions`: Exception list for the global `cs.AI` domain policy.
 
 ### Current policy
@@ -116,8 +116,8 @@ Orchestration ──► Research & Discovery ──► Ideation ──► Experi
   - Use the closest primary category for the skill's main capability; avoid overly broad custom names when a standard arXiv label exists.
 - `source`:
   - Use two levels:
-    - Internal: skills proposed/maintained by Dr. Claw (`来源: 平台自研` / `Source: Dr. Claw`).
-    - External: skills introduced from outside Dr. Claw (third-party/community/imported repositories).
+    - Internal: skills proposed/maintained by Lingzhi Lab (`来源: 平台自研` / `Source: Lingzhi Lab`).
+    - External: skills introduced from outside Lingzhi Lab (third-party/community/imported repositories).
   - `platformNativeSkills` should include all internal skills.
 - `stage`:
   - Keep stage tags aligned with the pipeline lifecycle. Recommended buckets:
@@ -136,7 +136,7 @@ Orchestration ──► Research & Discovery ──► Ideation ──► Experi
 
 ## Script reuse (plan-scripts-reuse)
 
-- **Call directly (same process / backend)**: All prompt builders (`build_*_query`, `build_*_query_for_plan`) and agents live in the research_agent Python codebase. When the Dr. Claw backend runs in an environment that can import `research_agent` (e.g. same repo or installed package), call the existing functions and agents directly; do not reimplement logic in SKILL.md.
+- **Call directly (same process / backend)**: All prompt builders (`build_*_query`, `build_*_query_for_plan`) and agents live in the research_agent Python codebase. When the Lingzhi Lab backend runs in an environment that can import `research_agent` (e.g. same repo or installed package), call the existing functions and agents directly; do not reimplement logic in SKILL.md.
 - **Thin wrappers when needed**: If the backend cannot import the Medical_ai_scientist_idea project, add a thin API or CLI that invokes `run_infer_idea_ours.py` / `run_infer.py` (or a small runner that calls `load_instance`, `github_search`, etc.) and returns structured outputs. Skills then reference "call backend endpoint X" or "run script Y" instead of in-process calls.
 - **Critical helpers**: Parsing `[REPO_ACQUIRED]` and scanning `.tex` in `workplace/papers_engineering` are small; either call the existing Python helpers or reimplement in a shared `scripts/` or `inno-utils/` folder and document the contract in the relevant SKILL.md (inno-code-survey, inno-idea-generation). The `github_search_clone.py` script in `inno-code-survey/scripts/` provides standalone GitHub repo search + clone.
 

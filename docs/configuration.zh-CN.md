@@ -2,7 +2,7 @@
 
 # 配置参考
 
-Dr. Claw 通过项目根目录下的 `.env` 文件中的环境变量进行配置。本指南记录了应用读取的所有变量。
+Lingzhi Lab 通过项目根目录下的 `.env` 文件中的环境变量进行配置。本指南记录了应用读取的所有变量。
 
 ## `.env` 加载机制
 
@@ -39,7 +39,7 @@ Dr. Claw 通过项目根目录下的 `.env` 文件中的环境变量进行配置
 
 | 变量 | 是否必需 | 默认值 | 说明 |
 |------|---------|--------|------|
-| `JWT_SECRET` | **是**（生产环境） | `claude-ui-dev-secret-change-in-production` | 用于签名和验证 JWT 令牌的密钥。在将 Dr. Claw 暴露到 localhost 以外之前**必须**更改。生成方法：`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `JWT_SECRET` | **是**（生产环境） | `claude-ui-dev-secret-change-in-production` | 用于签名和验证 JWT 令牌的密钥。在将 Lingzhi Lab 暴露到 localhost 以外之前**必须**更改。生成方法：`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `API_KEY` | 否 | *（无 — 跳过验证）* | 设置后，每个 HTTP 请求必须包含值为此密钥的 `X-Api-Key` 请求头。适用于托管部署中限制访问。 |
 
 ### 上下文窗口
@@ -56,7 +56,7 @@ Dr. Claw 通过项目根目录下的 `.env` 文件中的环境变量进行配置
 | 变量 | 是否必需 | 默认值 | 说明 |
 |------|---------|--------|------|
 | `VITE_IS_PLATFORM` | 否 | `false` | 设为 `true` 以启用平台模式。在此模式下，JWT 身份认证被绕过，所有请求使用数据库中的第一个用户。 |
-| `WORKSPACES_ROOT` | 否 | 用户主目录（`os.homedir()`） | Dr. Claw 查找和创建项目工作区的根目录。仅在 `VITE_IS_PLATFORM=true` 时有意义。 |
+| `WORKSPACES_ROOT` | 否 | 用户主目录（`os.homedir()`） | Lingzhi Lab 查找和创建项目工作区的根目录。仅在 `VITE_IS_PLATFORM=true` 时有意义。 |
 
 ### 集成
 
@@ -74,28 +74,28 @@ Dr. Claw 通过项目根目录下的 `.env` 文件中的环境变量进行配置
 
 ## OSS 模式 vs 平台模式
 
-Dr. Claw 支持两种身份认证路径：
+Lingzhi Lab 支持两种身份认证路径：
 
 | | OSS 模式（默认） | 平台模式 |
 |---|---|---|
-| **适用场景** | 本地运行 Dr. Claw 的个人开发者 | 托管 / 多租户部署 |
+| **适用场景** | 本地运行 Lingzhi Lab 的个人开发者 | 托管 / 多租户部署 |
 | **认证流程** | 使用用户名 + 密码注册/登录；每次会话签发 JWT | 绕过 JWT 认证；自动选择数据库中的第一个用户 |
 | **启用方式** | 默认 — 无需额外配置 | 设置 `VITE_IS_PLATFORM=true` |
 | **`WORKSPACES_ROOT`** | 忽略 | 定义所有项目工作区的根目录 |
 
-> 在 OSS 模式下，`WORKSPACES_ROOT` 变量被忽略 — Dr. Claw 从用户主目录下的 Claude Code / Cursor / Codex 会话目录中发现项目。
+> 在 OSS 模式下，`WORKSPACES_ROOT` 变量被忽略 — Lingzhi Lab 从用户主目录下的 Claude Code / Cursor / Codex 会话目录中发现项目。
 
 ---
 
 ## 安全检查清单
 
-在将 Dr. Claw 部署到网络（而非仅 `localhost`）之前，请检查以下事项：
+在将 Lingzhi Lab 部署到网络（而非仅 `localhost`）之前，请检查以下事项：
 
 1. **`JWT_SECRET`** — 将默认值替换为强随机字符串。默认值是公开的，不提供任何安全保障。
 2. **`API_KEY`** — 考虑设置 API 密钥以增加额外的认证层。
-3. **`WORKSPACES_ROOT`** — 在平台模式下，确保此路径指向你信任的目录。Dr. Claw 会提供该目录树下的文件内容。
+3. **`WORKSPACES_ROOT`** — 在平台模式下，确保此路径指向你信任的目录。Lingzhi Lab 会提供该目录树下的文件内容。
 4. **`.gitignore`** — 确认 `.env` 已列入 `.gitignore`（默认已包含），防止密钥被提交。
-5. **HTTPS** — 将 Dr. Claw 暴露到公网时，请将其放在反向代理（如 Nginx、Caddy）后面，并启用 TLS。
+5. **HTTPS** — 将 Lingzhi Lab 暴露到公网时，请将其放在反向代理（如 Nginx、Caddy）后面，并启用 TLS。
 
 ---
 

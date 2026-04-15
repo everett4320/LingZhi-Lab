@@ -1,7 +1,7 @@
 {
-  "name": "Dr. Claw",
-  "short_name": "Dr. Claw",
-  "description": "Dr. Claw web application",
+  "name": "Lingzhi Lab",
+  "short_name": "Lingzhi Lab",
+  "description": "Lingzhi Lab web application",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1e3048",

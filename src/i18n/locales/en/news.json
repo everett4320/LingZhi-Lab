@@ -74,7 +74,7 @@
     },
     "xiaohongshu": {
       "steps": [
-        "If you use browser cookies, make sure a browser on the machine running the dr-claw service is logged into xiaohongshu.com",
+        "If you use browser cookies, make sure a browser on the machine running the lingzhi-lab service is logged into xiaohongshu.com",
         "For remote deployments, prefer \"Login via QR Code\"",
         "Configure your search keywords in Settings",
         "Click \"Start Search\" to fetch the latest posts"
@@ -93,8 +93,8 @@
     "authentication": "Authentication",
     "xAuthDescription": "twitter-cli automatically extracts cookies from your browser (Chrome, Arc, Edge, Firefox). Make sure you are logged into X/Twitter in your browser. No API key needed.",
     "browserCookieAuth": "Browser Cookie Authentication",
-    "browserCookieDescription": "Extract cookies from a browser on the machine running the dr-claw service. Make sure Chrome, Arc, Edge, or Firefox on that machine is logged into xiaohongshu.com.",
-    "serviceMachineHint": "This reads browser cookies from the machine hosting the dr-claw service, not from the device where this page is open. If you are using a remote server, prefer QR login.",
+    "browserCookieDescription": "Extract cookies from a browser on the machine running the lingzhi-lab service. Make sure Chrome, Arc, Edge, or Firefox on that machine is logged into xiaohongshu.com.",
+    "serviceMachineHint": "This reads browser cookies from the machine hosting the lingzhi-lab service, not from the device where this page is open. If you are using a remote server, prefer QR login.",
     "cookieSource": "Browser Source",
     "cookieSourceDescription": "If auto-detect fails, choose the browser that is actually installed on the service machine.",
     "extractBrowserCookie": "Extract Browser Cookie",

@@ -1,12 +1,12 @@
 {
-  "name": "dr-claw",
+  "name": "lingzhi-lab",
   "version": "1.1.4",
-  "description": "Dr. Claw — Desktop and mobile UI for Claude Code, Cursor CLI, Codex, and OpenRouter with Research Lab",
+  "description": "Lingzhi Lab — Desktop and mobile UI for Claude Code, Cursor CLI, Codex, and OpenRouter with Research Lab",
   "type": "module",
   "main": "server/index.js",
   "bin": {
     "vibelab": "server/cli.js",
-    "dr-claw": "server/cli.js"
+    "lingzhi-lab": "server/cli.js"
   },
   "files": [
     "server/",
@@ -18,13 +18,13 @@
     "NOTICE",
     "LICENSE"
   ],
-  "homepage": "https://github.com/OpenLAIR/dr-claw",
+  "homepage": "https://github.com/OpenLAIR/lingzhi-lab",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OpenLAIR/dr-claw.git"
+    "url": "git+https://github.com/OpenLAIR/lingzhi-lab.git"
   },
   "bugs": {
-    "url": "https://github.com/OpenLAIR/dr-claw/issues"
+    "url": "https://github.com/OpenLAIR/lingzhi-lab/issues"
   },
   "scripts": {
     "predev": "node scripts/check-deps.js",
@@ -45,12 +45,15 @@
     "release": "./release.sh",
     "prepublishOnly": "npm run build",
     "postinstall": "node scripts/fix-node-pty.js",
-    "test": "vitest run",
+    "test": "npm run native:node && vitest run",
     "test:watch": "vitest",
     "desktop:pack:mac": "node electron/cli.mjs pack --mac",
     "desktop:pack:win": "node electron/cli.mjs pack --win",
     "desktop:dist:mac": "node electron/cli.mjs dist --mac dmg --publish never",
-    "desktop:dist:win": "node electron/cli.mjs dist --win nsis --publish never"
+    "desktop:dist:win": "node electron/cli.mjs dist --win nsis --publish never",
+    "desktop:prune:unpacked": "node packaging/prune-windows-unpacked.mjs",
+    "desktop:audit:artifact": "node packaging/audit-desktop-artifact.mjs",
+    "desktop:ci:gate": "npm run test -- packaging/__tests__/desktop-package-config.test.mjs packaging/__tests__/desktop-runtime-robustness.test.mjs packaging/__tests__/desktop-security-hardening.test.mjs packaging/__tests__/desktop-workflow-contract.test.mjs && npm run desktop:audit:artifact"
   },
   "keywords": [
     "claude code",
@@ -60,7 +63,7 @@
     "ui",
     "mobile"
   ],
-  "author": "Dr. Claw Contributors",
+  "author": "Lingzhi Lab Contributors",
   "license": "(GPL-3.0-only AND AGPL-3.0-only)",
   "engines": {
     "node": "20.x || 22.x || 24.x"
@@ -148,12 +151,23 @@
     "vitest": "^4.1.0"
   },
   "build": {
-    "appId": "io.openlair.drclaw",
-    "productName": "Dr. Claw",
+    "appId": "io.openlair.lingzhilab",
+    "productName": "Lingzhi Lab",
+    "toolsets": {
+      "winCodeSign": "1.1.0"
+    },
     "directories": {
       "output": "release"
     },
-    "asar": false,
+    "asar": true,
+    "electronFuses": {
+      "runAsNode": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "enableCookieEncryption": true
+    },
     "extraMetadata": {
       "main": "electron/main.mjs"
     },
@@ -179,6 +193,14 @@
       "target": [
         "nsis"
       ],
+      "signAndEditExecutable": false,
+      "signtoolOptions": {
+        "timeStampServer": "http://timestamp.digicert.com",
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com",
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      },
       "artifactName": "${productName}-${version}-win-${arch}.${ext}"
     },
     "nsis": {

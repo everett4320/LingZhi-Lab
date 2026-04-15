@@ -335,7 +335,7 @@ function buildDefaultBriefPipeline(stageSkillMap) {
 const TEMPLATES_DIR = path.resolve(__dirname, '..', 'taskmaster-templates');
 const DEFAULT_PIPELINE_CONFIG = {
     version: '1.0',
-    provider: 'dr-claw-web',
+    provider: 'lingzhi-lab-web',
     initializedAt: new Date().toISOString(),
 };
 let cachedTemplates = null;

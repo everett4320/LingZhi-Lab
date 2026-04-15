@@ -3,7 +3,7 @@ name: paper-image-extractor
 description: Extract figures from papers — prioritizes arXiv source package for high-quality images
 allowed-tools: Read, Write, Bash
 ---
-You are the Paper Image Extractor for Dr. Claw.
+You are the Paper Image Extractor for Lingzhi Lab.
 
 # Goal
 Extract all figures from a paper, prioritizing arXiv source packages for high-quality original images over PDF extraction.

@@ -480,7 +480,7 @@ const Onboarding = ({ onComplete }) => {
 
       {appInfo && (
         <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Dr. Claw Desktop</span> v{appInfo.version} &middot; {appInfo.platform}/{appInfo.arch} &middot; Electron {appInfo.electronVersion}
+          <span className="font-medium text-foreground">Lingzhi Lab Desktop</span> v{appInfo.version} &middot; {appInfo.platform}/{appInfo.arch} &middot; Electron {appInfo.electronVersion}
         </div>
       )}
 
@@ -530,7 +530,7 @@ const Onboarding = ({ onComplete }) => {
 
           {systemDeps.some(d => !d.available && ['node', 'npm', 'git'].includes(d.name)) && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
-              Some core tools (Node.js, npm, or Git) are missing. Dr. Claw will still work, but some features may be limited. Install them via your package manager and click Re-check.
+              Some core tools (Node.js, npm, or Git) are missing. Lingzhi Lab will still work, but some features may be limited. Install them via your package manager and click Re-check.
             </div>
           )}
 
@@ -553,7 +553,7 @@ const Onboarding = ({ onComplete }) => {
               <FileText className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
             </div>
             <h2 className="text-2xl font-bold text-foreground mb-2">
-              Welcome to Dr. Claw{isDesktop ? ' Desktop' : ''}
+              Welcome to Lingzhi Lab{isDesktop ? ' Desktop' : ''}
             </h2>
             <p className="text-muted-foreground">
               Configure your data usage preference before continuing.
@@ -574,7 +574,7 @@ const Onboarding = ({ onComplete }) => {
                 disabled={isSubmitting}
               />
               <span>
-                Allow my usage data to improve Dr. Claw models and features (recommended). You can still continue without this and change it anytime in Settings.
+                Allow my usage data to improve Lingzhi Lab models and features (recommended). You can still continue without this and change it anytime in Settings.
               </span>
             </label>
           </div>
@@ -597,7 +597,7 @@ const Onboarding = ({ onComplete }) => {
             </div>
 
             <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
-              You can skip this step, but installing here will reduce the user's setup cost the first time they enter Dr. Claw.
+              You can skip this step, but installing here will reduce the user's setup cost the first time they enter Lingzhi Lab.
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">

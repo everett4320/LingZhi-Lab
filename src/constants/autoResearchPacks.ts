@@ -35,7 +35,7 @@ export type PackDef = {
 
 export const AUTO_RESEARCH_PACKS: PackDef[] = [
   {
-    name: 'Dr. Claw',
+    name: 'Lingzhi Lab',
     description: {
       zh: '自研全流程研究工具包，覆盖完整研究生命周期的 16 个技能：从课题规划、文献调研、实验开发到论文撰写与投稿。',
       en: '16 in-house skills covering the full research lifecycle: from project planning, literature survey, experiment development to paper writing and submission.',

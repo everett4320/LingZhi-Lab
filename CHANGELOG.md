@@ -40,7 +40,7 @@
 - Passed: `node --check server/gemini-cli.js`
 - Not runnable in current environment (missing local dev dependencies): `vitest`, `tsc`
 
-## Dr. Claw v1.1.1 - 2026-03-30
+## Lingzhi Lab v1.1.1 - 2026-03-30
 
 ### Highlights
 - Added OpenRouter as a full agentic provider with restored tool-use history, persisted permissions, and corrected Codex token accounting in mixed-provider workflows.
@@ -64,12 +64,12 @@
 - `npm run build` passed.
 - Version metadata updated in `package.json` and `package-lock.json`.
 
-## Dr. Claw v1.0.0 - 2026-03-17
+## Lingzhi Lab v1.0.0 - 2026-03-17
 
 ### Highlights
-- Marked the first stable `1.0.0` release for Dr. Claw across desktop and mobile experiences.
+- Marked the first stable `1.0.0` release for Lingzhi Lab across desktop and mobile experiences.
 - Consolidated the recent major product additions including Codex support, Gemini workflows, Research Lab expansion, and skill discovery improvements.
-- Established `Dr. Claw v1.0.0` as the named release milestone for the current product line.
+- Established `Lingzhi Lab v1.0.0` as the named release milestone for the current product line.
 
 ### Commit Report
 #### Product, Dashboard, and UX
@@ -134,20 +134,20 @@
 - `49fa5be` Update image source in README.md
 - `e963538` Adjust image height for VibeLab logo
 - `f8386c8` Adjust image height in README
-- `a540603` Rename project from VibeLab to Dr.Claw
+- `a540603` Rename project from VibeLab to Lingzhi Lab
 - `2938f67` Update README.md
 - `662cf74` Update project description in README.md
 - `c1d30e3` strengthen beta user agreement restrictions
 - `530c5a0` Stop storing telemetry dialogue content
-- `149442e` rebrand user-facing product naming to Dr. Claw
-- `98ad0d8` rename package cli and workspace defaults to dr-claw
+- `149442e` rebrand user-facing product naming to Lingzhi Lab
+- `98ad0d8` rename package cli and workspace defaults to lingzhi-lab
 - `cec4bed` Update WeChat group QR code
 - `830107b` fix: update .gitignore to exclude __pycache__ and ensure *_results.json is ignored
-- `81fbbbb` add dr-claw compatibility migrations
-- `346b40a` migrate legacy dr-claw projects and internal identifiers
-- `1539ced` clean up remaining Dr. Claw branding references
+- `81fbbbb` add lingzhi-lab compatibility migrations
+- `346b40a` migrate legacy lingzhi-lab projects and internal identifiers
+- `1539ced` clean up remaining Lingzhi Lab branding references
 - `2e8764b` fix remaining skills taxonomy branding references
-- `ec08d7f` update repo links and migration guidance for dr-claw
+- `ec08d7f` update repo links and migration guidance for lingzhi-lab
 - `2c9c195` remove internal rename plan from branch
 - `2a8bc6d` fold long README sections by topic
 - `fc28a90` refresh logo assets across README and PWA
@@ -166,8 +166,8 @@
 - `42978ec` Merge remote-tracking branch 'origin/main' into feat/news-dashboard
 - `404f422` Merge pull request #31 from OpenLAIR/feat/news-dashboard
 - `2ac3abf` Merge pull request #28 from OpenLAIR/fix/workspace-root-filter-claimed-projects
-- `dee91ce` Merge branch 'main' of github.com:OpenLAIR/VibeLab into dr-claw-phase-1-branding
-- `5a3a2dd` Merge pull request #34 from OpenLAIR/dr-claw-phase-1-branding
+- `dee91ce` Merge branch 'main' of github.com:OpenLAIR/VibeLab into lingzhi-lab-phase-1-branding
+- `5a3a2dd` Merge pull request #34 from OpenLAIR/lingzhi-lab-phase-1-branding
 - `cce6e90` Merge pull request #35: feat(compute): add SSH port field for Direct GPU nodes
 - `289b11b` Merge pull request #40 from liuyixin-louis/fix/gemini-chat-placeholder
 - `0fbbb9b` Merge pull request #37 from OpenLAIR/feat/chat-file-preview

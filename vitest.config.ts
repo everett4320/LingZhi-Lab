@@ -5,6 +5,9 @@ export default defineConfig({
     exclude: [
       'node_modules/**',
       'test/**',
+      'release/**',
+      'build/**',
+      'dist/**',
     ],
   },
 });

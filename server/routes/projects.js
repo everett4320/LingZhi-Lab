@@ -14,11 +14,11 @@ function sanitizeGitError(message, token) {
   return message.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '***');
 }
 
-// Default workspace root: ~/dr-claw
-const DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'dr-claw');
+// Default workspace root: ~/lingzhi-lab
+const DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'lingzhi-lab');
 const LEGACY_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'vibelab');
 
-// Dynamic workspace root: config file > env var > ~/dr-claw
+// Dynamic workspace root: config file > env var > ~/lingzhi-lab
 export async function getWorkspacesRoot() {
   const configRoot = await getWorkspaceRootFromConfig();
   return configRoot || process.env.WORKSPACES_ROOT || DEFAULT_WORKSPACES_ROOT;
@@ -123,7 +123,7 @@ export async function validateWorkspacePath(requestedPath) {
     }
 
     // In OSS mode, custom paths under the user's home directory remain valid even if
-    // the default suggested storage root is narrower (for example ~/dr-claw).
+    // the default suggested storage root is narrower (for example ~/lingzhi-lab).
     const currentWorkspacesRoot = await getWorkspacesRoot();
     const resolvedWorkspaceRoot = await fs.realpath(currentWorkspacesRoot);
     const resolvedUserHome = await fs.realpath(os.homedir());

@@ -70,7 +70,7 @@ function createTestUser(database, username = 'testuser') {
 
 describe('project sync and dedup (PR #89)', () => {
   beforeEach(async () => {
-    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'dr-claw-project-dedup-'));
+    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'lingzhi-lab-project-dedup-'));
     process.env.HOME = tempRoot;
     process.env.USERPROFILE = tempRoot;
     process.env.DATABASE_PATH = path.join(tempRoot, 'db', 'auth.db');
@@ -198,7 +198,7 @@ describe('project sync and dedup (PR #89)', () => {
       const { projects, database } = await loadTestModules();
 
       // Set up minimal directory structure so getProjects doesn't error
-      await mkdir(path.join(tempRoot, 'dr-claw'), { recursive: true });
+      await mkdir(path.join(tempRoot, 'lingzhi-lab'), { recursive: true });
       await mkdir(path.join(tempRoot, '.claude', 'projects'), { recursive: true });
 
       // Spy on bootstrapProjectsIndexFromLegacySources via upsertProject call count
@@ -237,12 +237,12 @@ describe('project sync and dedup (PR #89)', () => {
       createTestUser(database, 'multi-user-1');
       createTestUser(database, 'multi-user-2');
 
-      const workspaceRoot = path.join(tempRoot, 'dr-claw');
+      const workspaceRoot = path.join(tempRoot, 'lingzhi-lab');
       const projectDir = path.join(workspaceRoot, 'ownerless-bootstrap-project');
       await mkdir(projectDir, { recursive: true });
 
       const projectName = projects.encodeProjectPath(projectDir);
-      const configDir = path.join(tempRoot, '.dr-claw');
+      const configDir = path.join(tempRoot, '.lingzhi-lab');
       await mkdir(configDir, { recursive: true });
       await writeFile(
         path.join(configDir, 'project-config.json'),

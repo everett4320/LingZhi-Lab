@@ -8,7 +8,7 @@ import { checkCodexCredentials } from '../server/routes/cli-auth.js';
 import { collectCodexProjectCandidates, encodeProjectPath } from '../server/projects.js';
 
 async function withTempHome(t, fn) {
-  const tempHome = await mkdtemp(path.join(os.tmpdir(), 'dr-claw-codex-test-'));
+  const tempHome = await mkdtemp(path.join(os.tmpdir(), 'lingzhi-lab-codex-test-'));
   const originalEnv = {
     CODEX_CLI_PATH: process.env.CODEX_CLI_PATH,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,

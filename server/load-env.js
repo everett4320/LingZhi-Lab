@@ -13,7 +13,7 @@ function resolveDefaultDatabasePath() {
   const legacyDbPath = path.join(legacyDir, 'auth.db');
   const legacySidecars = [`${legacyDbPath}-shm`, `${legacyDbPath}-wal`];
 
-  const currentDir = path.join(os.homedir(), '.dr-claw');
+  const currentDir = path.join(os.homedir(), '.lingzhi-lab');
   const currentDbPath = path.join(currentDir, 'auth.db');
   const currentSidecars = [`${currentDbPath}-shm`, `${currentDbPath}-wal`];
 

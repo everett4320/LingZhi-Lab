@@ -1,6 +1,6 @@
 ---
 name: inno-grant-proposal
-source: dr-claw
+source: lingzhi-lab
 description: >
   Help professors and researchers write, revise, adapt, and polish grant proposals
   for US agencies (NSF, NIH, DOE, DARPA, NASA) and Chinese agencies (NSFC 国自然).

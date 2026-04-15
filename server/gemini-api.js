@@ -398,7 +398,7 @@ async function executeTool(name, rawArgs, workingDir) {
           return 'Error: URL points to a private/internal network address (blocked)';
         }
         const response = await fetch(fetchUrl.href, {
-          headers: { 'User-Agent': 'Dr. Claw Gemini API Agent' },
+          headers: { 'User-Agent': 'Lingzhi Lab Gemini API Agent' },
           signal: AbortSignal.timeout(30_000),
           redirect: 'manual',
         });
@@ -409,7 +409,7 @@ async function executeTool(name, rawArgs, workingDir) {
         const encodedQuery = encodeURIComponent(String(args.query || ''));
         try {
           const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodedQuery}`, {
-            headers: { 'User-Agent': 'Dr. Claw Gemini API Agent' },
+            headers: { 'User-Agent': 'Lingzhi Lab Gemini API Agent' },
             signal: AbortSignal.timeout(15_000),
           });
           const html = await response.text();

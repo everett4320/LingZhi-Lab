@@ -1,4 +1,4 @@
-const DIAGRAM_STORAGE_PREFIX = 'dr-claw-survey-diagram:';
+const DIAGRAM_STORAGE_PREFIX = 'lingzhi-lab-survey-diagram:';
 const LEGACY_DIAGRAM_STORAGE_PREFIX = 'vibelab-survey-diagram:';
 
 export function saveSurveyDiagramSource(source: string) {

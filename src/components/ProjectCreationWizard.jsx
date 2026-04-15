@@ -30,7 +30,7 @@ const ProjectCreationWizard = ({ onClose, onProjectCreated }) => {
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [newFolderName, setNewFolderName] = useState(generateWorkspaceName());
   const [creatingFolder, setCreatingFolder] = useState(false);
-  const [workspaceRoot, setWorkspaceRoot] = useState('~/dr-claw');
+  const [workspaceRoot, setWorkspaceRoot] = useState('~/lingzhi-lab');
 
   const appendPathSegment = (basePath, segment) => {
     const separator = basePath.includes('\\') ? '\\' : '/';
@@ -70,12 +70,12 @@ const ProjectCreationWizard = ({ onClose, onProjectCreated }) => {
     try {
       const response = await api.getWorkspaceRoot();
       const data = await response.json();
-      const resolvedRoot = data.path || data.defaultPath || '~/dr-claw';
+      const resolvedRoot = data.path || data.defaultPath || '~/lingzhi-lab';
       setWorkspaceRoot(resolvedRoot);
       return resolvedRoot;
     } catch (error) {
       console.error('Error loading workspace root:', error);
-      return workspaceRoot || '~/dr-claw';
+      return workspaceRoot || '~/lingzhi-lab';
     }
   };
 
@@ -94,7 +94,7 @@ const ProjectCreationWizard = ({ onClose, onProjectCreated }) => {
         setProjectName((currentName) => (currentName.trim() ? currentName : suggestedName));
       } catch (error) {
         console.error('Error auto-filling workspace path:', error);
-        const fallbackPath = appendPathSegment(workspaceRoot || '~/dr-claw', suggestedName);
+        const fallbackPath = appendPathSegment(workspaceRoot || '~/lingzhi-lab', suggestedName);
         setWorkspacePath((currentPath) => (currentPath.trim() ? currentPath : fallbackPath));
         setProjectName((currentName) => (currentName.trim() ? currentName : suggestedName));
       }

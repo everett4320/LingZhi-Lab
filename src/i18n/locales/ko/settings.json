@@ -259,7 +259,7 @@
     },
     "gemini": {
       "title": "Gemini API 키",
-      "description": "Google Gemini API 키를 추가해 이미지 생성 시 서버 기본 설정을 덮어쓸 수 있습니다. 사용자 키가 없으면 Dr. Claw는 서버 환경 변수 설정으로 자동 폴백합니다.",
+      "description": "Google Gemini API 키를 추가해 이미지 생성 시 서버 기본 설정을 덮어쓸 수 있습니다. 사용자 키가 없으면 Lingzhi Lab는 서버 환경 변수 설정으로 자동 폴백합니다.",
       "addButton": "키 추가",
       "form": {
         "namePlaceholder": "키 이름 (예: 연구 프로젝트)",

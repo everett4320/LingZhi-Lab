@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * dr-claw chat — Interactive terminal chat using OpenRouter
+ * lingzhi-lab chat — Interactive terminal chat using OpenRouter
  *
  * Usage:
- *   dr-claw chat                              # Use defaults from .env
- *   dr-claw chat --model deepseek/deepseek-r1 # Override model
- *   dr-claw chat --key sk-or-...              # Override API key
+ *   lingzhi-lab chat                              # Use defaults from .env
+ *   lingzhi-lab chat --model deepseek/deepseek-r1 # Override model
+ *   lingzhi-lab chat --key sk-or-...              # Override API key
  */
 
 import readline from 'readline';
@@ -252,7 +252,7 @@ async function executeTool(name, args, workingDir) {
         const encoded = encodeURIComponent(args.query);
         try {
           const resp = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
-            headers: { 'User-Agent': 'Dr. Claw CLI' }, signal: AbortSignal.timeout(15_000),
+            headers: { 'User-Agent': 'Lingzhi Lab CLI' }, signal: AbortSignal.timeout(15_000),
           });
           const html = await resp.text();
           const results = [];
@@ -289,8 +289,8 @@ async function streamApiCall(apiKey, model, messages, tools) {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://github.com/OpenLAIR/dr-claw',
-      'X-Title': 'Dr. Claw CLI',
+      'HTTP-Referer': 'https://github.com/OpenLAIR/lingzhi-lab',
+      'X-Title': 'Lingzhi Lab CLI',
     },
     body: JSON.stringify(body),
   });
@@ -363,7 +363,7 @@ export async function startChat(options = {}) {
   const modelShort = model.includes('/') ? model.split('/').pop() : model;
 
   console.log('');
-  console.log(styled(c.bold, `  Dr. Claw Chat — ${modelShort}`));
+  console.log(styled(c.bold, `  Lingzhi Lab Chat — ${modelShort}`));
   console.log(styled(c.dim, `  ─────────────────────────────────────`));
   console.log(styled(c.gray, `  Model:     ${model}`));
   console.log(styled(c.gray, `  Directory: ${workingDir}`));

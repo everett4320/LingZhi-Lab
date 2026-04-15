@@ -11,14 +11,14 @@ const LoadingScreen = () => (
       <div className="flex justify-center mb-4">
         <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-sm ring-1 ring-border/40 bg-background">
           <img
-            src="/dr-claw.png"
-            alt="Dr. Claw"
+            src="/lingzhi-lab.png"
+            alt="Lingzhi Lab"
             className="w-full h-full object-cover"
             loading="eager"
           />
         </div>
       </div>
-      <h1 className="text-2xl font-bold text-foreground mb-2">Dr. Claw</h1>
+      <h1 className="text-2xl font-bold text-foreground mb-2">Lingzhi Lab</h1>
       <div className="flex items-center justify-center space-x-2">
         <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
         <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>

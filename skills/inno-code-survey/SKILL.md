@@ -43,7 +43,7 @@ These are aligned with outputs from **inno-idea-generation** and **inno-prepare-
 | `download_res` | `inno-prepare-resources` output | Result log from downloading arXiv paper sources |
 | `prepare_res` | `inno-prepare-resources` output (JSON) | Contains `reference_codebases` and `reference_paths` |
 | `context_variables` | Shared context dict | Accumulated pipeline context |
-| `instance.json` | `<project_path>/instance.json` | Paths are **absolute** when created by Dr. Claw (`Experiment.code_references`, `Ideation.references`); use as-is or resolve with `path.join(project_path, value)` if relative. Also `date_limit` from context. |
+| `instance.json` | `<project_path>/instance.json` | Paths are **absolute** when created by Lingzhi Lab (`Experiment.code_references`, `Ideation.references`); use as-is or resolve with `path.join(project_path, value)` if relative. Also `date_limit` from context. |
 
 ## Outputs
 
@@ -130,8 +130,8 @@ For each cloned repo:
    ```json
    {
      "context_variables": {
-       "code_references_path": "<instance.Experiment.code_references if absolute (Dr. Claw), else path.join(project_path, ...)>",
-       "references_path": "<instance.Ideation.references if absolute (Dr. Claw), else path.join(project_path, ...)>",
+       "code_references_path": "<instance.Experiment.code_references if absolute (Lingzhi Lab), else path.join(project_path, ...)>",
+       "references_path": "<instance.Ideation.references if absolute (Lingzhi Lab), else path.join(project_path, ...)>",
        "date_limit": "YYYY-MM-DD",
        "prepare_result": { ... },
        "acquired_code_repos": {
@@ -217,8 +217,8 @@ Write `Experiment/code_references/logs/code_survey_agent.json`:
 ```json
 {
   "context_variables": {
-    "code_references_path": "<instance.Experiment.code_references if absolute (Dr. Claw), else path.join(project_path, ...)>",
-    "references_path": "<instance.Ideation.references if absolute (Dr. Claw), else path.join(project_path, ...)>",
+    "code_references_path": "<instance.Experiment.code_references if absolute (Lingzhi Lab), else path.join(project_path, ...)>",
+    "references_path": "<instance.Ideation.references if absolute (Lingzhi Lab), else path.join(project_path, ...)>",
     "date_limit": "YYYY-MM-DD",
     "prepare_result": { ... },
     "acquired_code_repos": { ... },

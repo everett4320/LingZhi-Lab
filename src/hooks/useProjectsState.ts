@@ -41,7 +41,7 @@ declare global {
   }
 }
 
-const SESSION_MODE_STORAGE_KEY = 'dr-claw-new-session-mode';
+const SESSION_MODE_STORAGE_KEY = 'lingzhi-lab-new-session-mode';
 
 const isSessionMode = (value: string | null | undefined): value is SessionMode =>
   value === 'research' || value === 'workspace_qa';

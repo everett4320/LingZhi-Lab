@@ -36,7 +36,7 @@ skills/inno-idea-eval/
 
 ## Inputs
 
-Paths for `Ideation/ideas` and `Ideation/references` come from **`instance.json`** (`instance.Ideation.ideas`, `instance.Ideation.references`). They are **absolute** in Dr. Claw-created projects; use as-is. If relative, resolve with `path.join(project_path, value)`.
+Paths for `Ideation/ideas` and `Ideation/references` come from **`instance.json`** (`instance.Ideation.ideas`, `instance.Ideation.references`). They are **absolute** in Lingzhi Lab-created projects; use as-is. If relative, resolve with `path.join(project_path, value)`.
 
 | Parameter            | Required | Description |
 |----------------------|----------|-------------|

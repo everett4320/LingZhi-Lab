@@ -1,6 +1,6 @@
 # Electron Desktop Shell
 
-This directory contains the Electron wrapper for Dr. Claw.
+This directory contains the Electron wrapper for Lingzhi Lab.
 
 ## Architecture
 
@@ -65,8 +65,8 @@ All `window.open` calls in the renderer are intercepted and opened in the system
 
 - Native modules (`node-pty`, `better-sqlite3`, `sqlite3`) are rebuilt for Electron via `scripts/native-runtime.mjs`.
 - Electron rebuild caches live in `.electron-gyp/` and `.electron-cache/` inside the repo.
-- Window state, logs, and runtime data are stored under `app.getPath('userData')` (e.g., `~/Library/Application Support/Dr. Claw/` on macOS).
-- The `DR_CLAW_DESKTOP=1` environment variable distinguishes desktop from web/npm server mode.
+- Window state, logs, and runtime data are stored under `app.getPath('userData')` (e.g., `~/Library/Application Support/Lingzhi Lab/` on macOS).
+- The `LINGZHI_LAB_DESKTOP=1` environment variable distinguishes desktop from web/npm server mode.
 
 ## CI/CD
 

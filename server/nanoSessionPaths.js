@@ -1,31 +1,31 @@
 /**
- * Central Nano Claude Code session JSON location (~/.dr-claw/nano-sessions).
- * Matches file watcher PROVIDER_WATCH_PATHS and avoids cwd-scattered drclaw-nano-*.json.
+ * Central Nano Claude Code session JSON location (~/.lingzhi-lab/nano-sessions).
+ * Matches file watcher PROVIDER_WATCH_PATHS and avoids cwd-scattered lingzhilab-nano-*.json.
  */
 
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-export function getNanoDrClawSessionsRoot() {
-  return path.join(os.homedir(), '.dr-claw', 'nano-sessions');
+export function getNanoLingzhiLabSessionsRoot() {
+  return path.join(os.homedir(), '.lingzhi-lab', 'nano-sessions');
 }
 
-export async function ensureNanoDrClawSessionsRoot() {
-  const root = getNanoDrClawSessionsRoot();
+export async function ensureNanoLingzhiLabSessionsRoot() {
+  const root = getNanoLingzhiLabSessionsRoot();
   await fs.mkdir(root, { recursive: true });
   return root;
 }
 
 /**
- * Plain filename only: drclaw-nano-<sanitizedId>.json — no path segments / traversal.
+ * Plain filename only: lingzhilab-nano-<sanitizedId>.json — no path segments / traversal.
  */
 export function safeNanoSessionFilename(sessionId) {
   const safe = String(sessionId || '').replace(/[^a-zA-Z0-9._-]/g, '');
   if (!safe || safe.includes('..')) {
     return null;
   }
-  const filename = `drclaw-nano-${safe}.json`;
+  const filename = `lingzhilab-nano-${safe}.json`;
   if (path.basename(filename) !== filename) {
     return null;
   }
@@ -37,5 +37,5 @@ export function resolveNanoSessionAbsPath(sessionId) {
   if (!filename) {
     return null;
   }
-  return path.join(getNanoDrClawSessionsRoot(), filename);
+  return path.join(getNanoLingzhiLabSessionsRoot(), filename);
 }

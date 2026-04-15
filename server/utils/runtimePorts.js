@@ -16,11 +16,11 @@ function getProjectRoot() {
 }
 
 function getRuntimePortsPath() {
-    if (process.env.DR_CLAW_RUNTIME_FILE) {
-        return process.env.DR_CLAW_RUNTIME_FILE;
+    if (process.env.LINGZHI_LAB_RUNTIME_FILE) {
+        return process.env.LINGZHI_LAB_RUNTIME_FILE;
     }
 
-    const runtimeDir = process.env.DR_CLAW_RUNTIME_DIR || path.join(getProjectRoot(), '.runtime');
+    const runtimeDir = process.env.LINGZHI_LAB_RUNTIME_DIR || path.join(getProjectRoot(), '.runtime');
     return path.join(runtimeDir, 'ports.json');
 }
 

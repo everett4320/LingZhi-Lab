@@ -373,7 +373,7 @@ const FACET_PREFIX_PATTERN = /^(Domain|Stage|Category|Source|领域|阶段|类�
 const SOURCE_PLATFORM_PATTERN = /^(来源: 平台自研|Source: Dr\. Claw)$/i;
 
 function normalizeSourceKey(value: string) {
-  return value === 'vibelab' ? 'dr-claw' : value;
+  return value === 'vibelab' ? 'lingzhi-lab' : value;
 }
 
 const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
@@ -396,7 +396,7 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     fallbackNoSkillMd: 'No SKILL.md detected at the root. Contains {{count}} files (likely script- or workflow-based skill).',
     defaultDomain: '领域: 通用',
     sourcePlatform: '来源: 平台自研',
-    sourcePlatformShort: 'Dr. Claw',
+    sourcePlatformShort: 'Lingzhi Lab',
     sourceImportedShort: '导入',
     headerCount: '{{shown}}/{{total}} skills',
     summaryIntents: '{{count}} 个主意图',
@@ -501,8 +501,8 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     fallbackDesc: 'Skill available, but description could not be extracted from SKILL.md.',
     fallbackNoSkillMd: 'No SKILL.md detected at the root. Contains {{count}} files (likely script- or workflow-based skill).',
     defaultDomain: 'Domain: General',
-    sourcePlatform: 'Source: Dr. Claw',
-    sourcePlatformShort: 'Dr. Claw',
+    sourcePlatform: 'Source: Lingzhi Lab',
+    sourcePlatformShort: 'Lingzhi Lab',
     sourceImportedShort: 'Imported',
     headerCount: '{{shown}}/{{total}} skills',
     summaryIntents: '{{count}} primary intents',
@@ -511,7 +511,7 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     summaryVerified: '{{count}} verified skills',
     quickViews: 'Quick Views',
     allSkills: 'All Skills',
-    nativeSkills: 'Dr. Claw',
+    nativeSkills: 'Lingzhi Lab',
     communitySkills: 'Imported',
     verifiedSkills: 'Verified',
     intents: 'Primary Intent',
@@ -607,8 +607,8 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     fallbackDesc: 'Skill available, but description could not be extracted from SKILL.md.',
     fallbackNoSkillMd: 'No SKILL.md detected at the root. Contains {{count}} files (likely script- or workflow-based skill).',
     defaultDomain: 'Domain: General',
-    sourcePlatform: 'Source: Dr. Claw',
-    sourcePlatformShort: 'Dr. Claw',
+    sourcePlatform: 'Source: Lingzhi Lab',
+    sourcePlatformShort: 'Lingzhi Lab',
     sourceImportedShort: 'Imported',
     headerCount: '{{shown}}/{{total}} skills',
     summaryIntents: '{{count}} primary intents',
@@ -617,7 +617,7 @@ const UI_TEXT: Record<LocaleKey, Record<string, string>> = {
     summaryVerified: '{{count}} verified skills',
     quickViews: 'Quick Views',
     allSkills: 'All Skills',
-    nativeSkills: 'Dr. Claw',
+    nativeSkills: 'Lingzhi Lab',
     communitySkills: 'Imported',
     verifiedSkills: 'Verified',
     intents: 'Primary Intent',
@@ -815,7 +815,7 @@ function parseSkillCatalogV2(payload: unknown, localeKey: LocaleKey, text: Recor
       keywords: Array.isArray(record.keywords) ? record.keywords.map((value) => compactText(String(value))).filter(Boolean) : [],
       source: {
         key: normalizeSourceKey(record.source),
-        label: (record.source === 'vibelab' || record.source === 'dr-claw') ? text.sourcePlatformShort : text.sourceImportedShort,
+        label: (record.source === 'vibelab' || record.source === 'lingzhi-lab') ? text.sourcePlatformShort : text.sourceImportedShort,
       },
       status: {
         key: record.status,
@@ -1272,14 +1272,14 @@ function buildExplorerSkills(
     const collectionLabel = stripFacetPrefix(primaryStageTag?.label ?? topLevelGroup.label);
     const primaryDomainLabel = stripFacetPrefix(primaryDomainTag?.label ?? options.defaultDomainLabel);
     const taxonomy = skill.taxonomy;
-    const fallbackSourceKey = fallbackTags.some((tag) => isSourcePlatformTag(tag.label)) ? 'dr-claw' : 'imported';
+    const fallbackSourceKey = fallbackTags.some((tag) => isSourcePlatformTag(tag.label)) ? 'lingzhi-lab' : 'imported';
     const fallbackDomainKey = primaryDomainTag ? `domain:${normalizeSkillKey(primaryDomainLabel)}` : 'domain:general';
     const fallbackCapabilities = topLevelGroup.key === 'standalone'
       ? []
       : [{ key: `legacy:${topLevelGroup.key}`, label: topLevelGroup.label }];
     const intentLabel = taxonomy?.primaryIntent.label ?? collectionLabel;
-    const sourceLabel = taxonomy?.source.label ?? (fallbackSourceKey === 'dr-claw' ? options.sourcePlatformShort : options.sourceImportedShort);
-    const statusKey = taxonomy?.status.key ?? (fallbackSourceKey === 'dr-claw' ? 'verified' : 'candidate');
+    const sourceLabel = taxonomy?.source.label ?? (fallbackSourceKey === 'lingzhi-lab' ? options.sourcePlatformShort : options.sourceImportedShort);
+    const statusKey = taxonomy?.status.key ?? (fallbackSourceKey === 'lingzhi-lab' ? 'verified' : 'candidate');
     const statusLabel = taxonomy?.status.label ?? humanizeSlug(statusKey);
     const domains = taxonomy?.domains ?? [{ key: fallbackDomainKey, label: primaryDomainLabel }];
     const capabilities = taxonomy?.capabilities ?? fallbackCapabilities;
@@ -1490,7 +1490,7 @@ export default function SkillsDashboard({ onSendToChat }: SkillsDashboardProps =
   const [activeIntent, setActiveIntent] = useState('all');
   const [activeCapability, setActiveCapability] = useState('all');
   const [activeDomain, setActiveDomain] = useState('all');
-  const [activeSource, setActiveSource] = useState<'all' | 'dr-claw' | 'imported'>('all');
+  const [activeSource, setActiveSource] = useState<'all' | 'lingzhi-lab' | 'imported'>('all');
   const [activeStatus, setActiveStatus] = useState('all');
   const [viewMode, setViewMode] = useState<'platform' | 'community'>('platform');
   const [expandedPacks, setExpandedPacks] = useState<Set<string>>(new Set());
@@ -2061,7 +2061,7 @@ export default function SkillsDashboard({ onSendToChat }: SkillsDashboardProps =
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
 
-    if (activeSource === 'dr-claw') {
+    if (activeSource === 'lingzhi-lab') {
       labels.push(`${text.sourceField}: ${text.sourcePlatformShort}`);
     }
     if (activeSource === 'imported') {
@@ -2737,10 +2737,10 @@ export default function SkillsDashboard({ onSendToChat }: SkillsDashboardProps =
                     {
                       key: 'native',
                       label: text.nativeSkills,
-                      count: searchFilteredSkills.filter((skill) => skill.sourceKey === 'dr-claw' || skill.sourceKey === 'vibelab').length,
-                      active: activeSource === 'dr-claw' && activeIntent === 'all' && activeCapability === 'all' && activeDomain === 'all' && activeStatus === 'all',
+                      count: searchFilteredSkills.filter((skill) => skill.sourceKey === 'lingzhi-lab' || skill.sourceKey === 'vibelab').length,
+                      active: activeSource === 'lingzhi-lab' && activeIntent === 'all' && activeCapability === 'all' && activeDomain === 'all' && activeStatus === 'all',
                       onClick: () => {
-                        setActiveSource('dr-claw');
+                        setActiveSource('lingzhi-lab');
                         setActiveIntent('all');
                         setActiveCapability('all');
                         setActiveDomain('all');

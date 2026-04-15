@@ -110,12 +110,12 @@ Examples:
 
 Allowed values:
 
-- `dr-claw`
+- `lingzhi-lab`
 - `imported`
 
 Legacy compatibility:
 
-- `vibelab` may still appear in migrated data and should be normalized to `dr-claw` on read.
+- `vibelab` may still appear in migrated data and should be normalized to `lingzhi-lab` on read.
 
 `status` is single-value and identifies curation state.
 

@@ -22,8 +22,8 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const productName = 'Dr. Claw';
-const appId = 'io.openlair.drclaw';
+const productName = 'Lingzhi Lab';
+const appId = 'io.openlair.lingzhilab';
 const isMac = process.platform === 'darwin';
 const isDev = !app.isPackaged;
 
@@ -213,7 +213,7 @@ function resolveSharedDatabasePath() {
   const legacyDbPath = path.join(legacyDir, 'auth.db');
   const legacySidecars = [`${legacyDbPath}-shm`, `${legacyDbPath}-wal`];
 
-  const currentDir = path.join(homeDir, '.dr-claw');
+  const currentDir = path.join(homeDir, '.lingzhi-lab');
   const currentDbPath = path.join(currentDir, 'auth.db');
   const currentSidecars = [`${currentDbPath}-shm`, `${currentDbPath}-wal`];
 
@@ -244,7 +244,7 @@ function resolveSharedDatabasePath() {
 
 function resolveSharedWorkspacesRoot() {
   const homeDir = app.getPath('home');
-  const currentRoot = path.join(homeDir, 'dr-claw');
+  const currentRoot = path.join(homeDir, 'lingzhi-lab');
   const legacyRoot = path.join(homeDir, 'vibelab');
 
   if (fs.existsSync(currentRoot)) {
@@ -275,9 +275,9 @@ function buildServerEnv(appRoot) {
   return {
     ...process.env,
     ELECTRON_RUN_AS_NODE: '1',
-    DR_CLAW_DESKTOP: '1',
+    LINGZHI_LAB_DESKTOP: '1',
     DATABASE_PATH: process.env.DATABASE_PATH || databasePath,
-    DR_CLAW_RUNTIME_DIR: process.env.DR_CLAW_RUNTIME_DIR || runtimeDir,
+    LINGZHI_LAB_RUNTIME_DIR: process.env.LINGZHI_LAB_RUNTIME_DIR || runtimeDir,
     WORKSPACES_ROOT: process.env.WORKSPACES_ROOT || workspacesRoot,
     NODE_ENV: process.env.NODE_ENV || (isDev ? 'development' : 'production'),
     PORT: process.env.PORT || '3001',
@@ -345,7 +345,7 @@ async function startServer() {
 
     if (!quitting) {
       dialog.showErrorBox(
-        'Dr. Claw server exited',
+        'Lingzhi Lab server exited',
         `The local server stopped unexpectedly${signal ? ` (${signal})` : ''}${typeof code === 'number' ? ` (exit code ${code})` : ''}.\n\nSee desktop.log in the app data directory for details.`,
       );
       app.quit();
@@ -517,15 +517,15 @@ function buildAppMenu() {
     label: 'Help',
     submenu: [
       {
-        label: 'Dr. Claw Documentation',
+        label: 'Lingzhi Lab Documentation',
         click: () => {
-          shell.openExternal('https://github.com/OpenLAIR/dr-claw');
+          shell.openExternal('https://github.com/OpenLAIR/lingzhi-lab');
         },
       },
       {
         label: 'Report an Issue',
         click: () => {
-          shell.openExternal('https://github.com/OpenLAIR/dr-claw/issues');
+          shell.openExternal('https://github.com/OpenLAIR/lingzhi-lab/issues');
         },
       },
       { type: 'separator' },
@@ -862,7 +862,7 @@ async function boot() {
     createWindow(baseUrl);
   } catch (error) {
     logDesktop('boot failed', error instanceof Error ? { message: error.message, stack: error.stack } : String(error));
-    dialog.showErrorBox('Failed to start Dr. Claw', error instanceof Error ? error.message : String(error));
+    dialog.showErrorBox('Failed to start Lingzhi Lab', error instanceof Error ? error.message : String(error));
     app.quit();
   }
 }
@@ -958,6 +958,6 @@ app.whenReady()
       message: error.message,
       stack: error.stack,
     } : String(error));
-    dialog.showErrorBox('Failed to start Dr. Claw', error instanceof Error ? error.message : String(error));
+    dialog.showErrorBox('Failed to start Lingzhi Lab', error instanceof Error ? error.message : String(error));
     app.quit();
   });

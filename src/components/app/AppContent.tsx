@@ -179,7 +179,7 @@ export default function AppContent() {
   const SIDEBAR_MAX = 480;
   const SIDEBAR_DEFAULT = 288; // w-72
   const SIDEBAR_COLLAPSED_WIDTH = 48; // matches SidebarCollapsed w-12
-  const STORAGE_KEY = 'dr-claw-sidebar-width';
+  const STORAGE_KEY = 'lingzhi-lab-sidebar-width';
   const LEGACY_STORAGE_KEY = 'vibelab-sidebar-width';
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {

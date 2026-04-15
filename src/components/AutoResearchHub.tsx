@@ -483,7 +483,7 @@ export default function AutoResearchHub() {
 
           {/* CTA placeholder card */}
           <a
-            href="https://github.com/OpenLAIR/dr-claw/issues/new?labels=auto-research-pack&template=pack_submission.md"
+            href="https://github.com/OpenLAIR/lingzhi-lab/issues/new?labels=auto-research-pack&template=pack_submission.md"
             target="_blank"
             rel="noopener noreferrer"
             className="group flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-border/60 bg-muted/20 p-8 text-center transition-all hover:border-purple-300 hover:bg-purple-50/30 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"

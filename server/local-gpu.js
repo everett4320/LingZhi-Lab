@@ -526,7 +526,7 @@ async function checkToolPermission(
 // ---------------------------------------------------------------------------
 
 async function sessionsDir() {
-  const dir = path.join(os.homedir(), '.dr-claw', SESSIONS_DIR_NAME);
+  const dir = path.join(os.homedir(), '.lingzhi-lab', SESSIONS_DIR_NAME);
   await fs.mkdir(dir, { recursive: true });
   return dir;
 }

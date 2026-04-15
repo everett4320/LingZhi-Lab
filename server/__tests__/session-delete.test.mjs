@@ -109,7 +109,7 @@ async function writeCodexSessionFile({
 
 describe('session deletion fallbacks', () => {
   beforeEach(async () => {
-    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'dr-claw-session-delete-'));
+    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'lingzhi-lab-session-delete-'));
     process.env.HOME = tempRoot;
     process.env.USERPROFILE = tempRoot;
     process.env.DATABASE_PATH = path.join(tempRoot, 'db', 'auth.db');

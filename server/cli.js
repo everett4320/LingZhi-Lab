@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Dr. Claw CLI
+ * Lingzhi Lab CLI
  *
- * Provides command-line utilities for managing Dr. Claw
+ * Provides command-line utilities for managing Lingzhi Lab
  *
  * Commands:
  *   (no args)     - Start the server (default)
@@ -101,7 +101,7 @@ function getInstallDir() {
 
 // Show status command
 function showStatus() {
-    console.log(`\n${c.bright('Dr. Claw - Status')}\n`);
+    console.log(`\n${c.bright('Lingzhi Lab - Status')}\n`);
     console.log(c.dim('═'.repeat(60)));
 
     // Version info
@@ -148,9 +148,9 @@ function showStatus() {
 
     console.log('\n' + c.dim('═'.repeat(60)));
     console.log(`\n${c.tip('[TIP]')} Hints:`);
-    console.log(`      ${c.dim('>')} Use ${c.bright('dr-claw --port 8080')} to run on a custom port`);
-    console.log(`      ${c.dim('>')} Use ${c.bright('dr-claw --database-path /path/to/db')} for custom database`);
-    console.log(`      ${c.dim('>')} Run ${c.bright('dr-claw help')} for all options`);
+    console.log(`      ${c.dim('>')} Use ${c.bright('lingzhi-lab --port 8080')} to run on a custom port`);
+    console.log(`      ${c.dim('>')} Use ${c.bright('lingzhi-lab --database-path /path/to/db')} for custom database`);
+    console.log(`      ${c.dim('>')} Run ${c.bright('lingzhi-lab help')} for all options`);
     console.log(`      ${c.dim('>')} Legacy alias ${c.bright('vibelab')} is still supported during transition (Deprecation: V2.0, Q3 2026)`);
     console.log(`      ${c.dim('>')} Access the UI at http://localhost:${process.env.PORT || '3001'}\n`);
 }
@@ -159,17 +159,17 @@ function showStatus() {
 function showHelp() {
     console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
-║              Dr. Claw - Command Line Tool               ║
+║              Lingzhi Lab - Command Line Tool               ║
 ╚═══════════════════════════════════════════════════════════════╝
 
 Usage:
-  dr-claw [command] [options]
+  lingzhi-lab [command] [options]
 
 Legacy alias:
   vibelab [command] [options]
 
 Commands:
-  start          Start the Dr. Claw server (default)
+  start          Start the Lingzhi Lab server (default)
   chat           Interactive terminal chat via OpenRouter
   status         Show configuration and data locations
   update         Update to the latest version
@@ -185,13 +185,13 @@ Options:
   -v, --version               Show version information
 
 Examples:
-  $ dr-claw                        # Start with defaults
-  $ dr-claw chat                   # Terminal chat with OpenRouter
-  $ dr-claw chat --model deepseek/deepseek-r1
-  $ dr-claw --port 8080            # Start on port 8080
-  $ dr-claw -p 3000                # Short form for port
-  $ dr-claw start --port 4000      # Explicit start command
-  $ dr-claw status                 # Show configuration
+  $ lingzhi-lab                        # Start with defaults
+  $ lingzhi-lab chat                   # Terminal chat with OpenRouter
+  $ lingzhi-lab chat --model deepseek/deepseek-r1
+  $ lingzhi-lab --port 8080            # Start on port 8080
+  $ lingzhi-lab -p 3000                # Short form for port
+  $ lingzhi-lab start --port 4000      # Explicit start command
+  $ lingzhi-lab status                 # Show configuration
   $ vibelab status                 # Legacy alias still works
 
 Environment Variables:
@@ -201,10 +201,10 @@ Environment Variables:
   CONTEXT_WINDOW      Set context window size (default: 160000)
 
 Documentation:
-  ${packageJson.homepage || 'https://github.com/OpenLAIR/dr-claw'}
+  ${packageJson.homepage || 'https://github.com/OpenLAIR/lingzhi-lab'}
 
 Report Issues:
-  ${packageJson.bugs?.url || 'https://github.com/OpenLAIR/dr-claw/issues'}
+  ${packageJson.bugs?.url || 'https://github.com/OpenLAIR/lingzhi-lab/issues'}
 `);
 }
 
@@ -238,7 +238,7 @@ async function checkForUpdates(silent = false) {
         const { exec } = await import('child_process');
         const { promisify } = await import('util');
         const execAsync = promisify(exec);
-        const { stdout } = await execAsync('npm show dr-claw version', { timeout: 10000 });
+        const { stdout } = await execAsync('npm show lingzhi-lab version', { timeout: 10000 });
         const latestVersion = stdout.trim();
         const currentVersion = packageJson.version;
         const mode = getInstallMode();
@@ -246,9 +246,9 @@ async function checkForUpdates(silent = false) {
         if (isNewerVersion(latestVersion, currentVersion)) {
             console.log(`\n${c.warn('[UPDATE]')} New version available: ${c.bright(latestVersion)} (current: ${currentVersion})`);
             if (mode === 'npx') {
-                console.log(`         Run ${c.bright('npx dr-claw@latest')} to use the new version\n`);
+                console.log(`         Run ${c.bright('npx lingzhi-lab@latest')} to use the new version\n`);
             } else {
-                console.log(`         Run ${c.bright('dr-claw update')} to update\n`);
+                console.log(`         Run ${c.bright('lingzhi-lab update')} to update\n`);
             }
             return { hasUpdate: true, latestVersion, currentVersion };
         } else if (!silent) {
@@ -269,7 +269,7 @@ async function updatePackage() {
         const mode = getInstallMode();
 
         if (mode === 'npx') {
-            console.log(`${c.info('[INFO]')} You're running via npx. Run ${c.bright('npx dr-claw@latest')} to get the latest version.`);
+            console.log(`${c.info('[INFO]')} You're running via npx. Run ${c.bright('npx lingzhi-lab@latest')} to get the latest version.`);
             return;
         }
 
@@ -285,11 +285,11 @@ async function updatePackage() {
         const { exec } = await import('child_process');
         const { promisify } = await import('util');
         const execAsync = promisify(exec);
-        await execAsync('npm update -g dr-claw', { timeout: 120000 });
-        console.log(`${c.ok('[OK]')} Update complete! Restart dr-claw to use the new version.`);
+        await execAsync('npm update -g lingzhi-lab', { timeout: 120000 });
+        console.log(`${c.ok('[OK]')} Update complete! Restart lingzhi-lab to use the new version.`);
     } catch (e) {
         console.error(`${c.error('[ERROR]')} Update failed: ${e.message}`);
-        console.log(`${c.tip('[TIP]')} Try running manually: npm install -g dr-claw@latest`);
+        console.log(`${c.tip('[TIP]')} Try running manually: npm install -g lingzhi-lab@latest`);
     }
 }
 
@@ -379,7 +379,7 @@ async function main() {
             break;
         default:
             console.error(`\n❌ Unknown command: ${command}`);
-            console.log('   Run "dr-claw help" for usage information.\n');
+            console.log('   Run "lingzhi-lab help" for usage information.\n');
             process.exit(1);
     }
 }

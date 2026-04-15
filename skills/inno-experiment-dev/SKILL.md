@@ -16,8 +16,8 @@ Merges the former `inno-implementation-plan`, `inno-ml-dev-iteration`, and the s
 | `updated_prepare_res` | inno-prepare-resources | JSON with `reference_codebases` and `reference_paths` |
 | `code_survey_res` | inno-code-survey | Comprehensive implementation report / model survey notes |
 | `dataset_description` | from prepare step / context | Description of available datasets (not in instance.json) |
-| `core_code` | instance.json `Experiment.core_code` | Absolute path when created by Dr. Claw (e.g. `<project_path>/Experiment/core_code`); use as-is or resolve with `path.join(project_path, value)` if relative |
-| `code_references` | instance.json `Experiment.code_references` | Absolute path when created by Dr. Claw (e.g. `<project_path>/Experiment/code_references`); use as-is or resolve if relative |
+| `core_code` | instance.json `Experiment.core_code` | Absolute path when created by Lingzhi Lab (e.g. `<project_path>/Experiment/core_code`); use as-is or resolve with `path.join(project_path, value)` if relative |
+| `code_references` | instance.json `Experiment.code_references` | Absolute path when created by Lingzhi Lab (e.g. `<project_path>/Experiment/code_references`); use as-is or resolve if relative |
 | `max_iter_times` | pipeline config | Max judge-iteration rounds (default 2) |
 | `context_variables` | shared state | Mutable dict carrying state across agents |
 
@@ -67,14 +67,14 @@ Mirrors `_create_implementation_plan`.
 
 Mirrors `_implement_and_iterate`.
 
-5. **Initial implementation**: Build `ml_dev_query = build_ml_dev_query(survey_res, prepare_res, code_survey_res, plan_res, dataset_description, core_code, code_references)` (see `prompts/build_ml_dev_query.md`). Use paths from `instance.json`: `Experiment.core_code`, `Experiment.code_references` (absolute in Dr. Claw–created projects; use as-is or resolve with project path if relative). Call **ML Agent** with `messages = [{"role": "user", "content": ml_dev_query}]`. Set `ml_dev_res = ml_messages[-1]["content"]`.
+5. **Initial implementation**: Build `ml_dev_query = build_ml_dev_query(survey_res, prepare_res, code_survey_res, plan_res, dataset_description, core_code, code_references)` (see `prompts/build_ml_dev_query.md`). Use paths from `instance.json`: `Experiment.core_code`, `Experiment.code_references` (absolute in Lingzhi Lab–created projects; use as-is or resolve with project path if relative). Call **ML Agent** with `messages = [{"role": "user", "content": ml_dev_query}]`. Set `ml_dev_res = ml_messages[-1]["content"]`.
    - See `references/ml_agent_instructions.md` for agent details.
 
 6. **Initial judge evaluation**: Build `judge_query = build_judge_query(survey_res, prepare_res, plan_res, ml_dev_res)` (see `prompts/build_judge_query.md`). Call **Judge Agent** with `input_messages = [{"role": "user", "content": judge_query}]`. Set `judge_res = judge_messages[-1]["content"]`.
    - See `references/judge_agent_instructions.md` for agent details.
 
 7. **Iteration loop** (for i in 0..max_iter_times - 1):
-   a. Build `iteration_query = build_iteration_query(survey_res, prepare_res, code_survey_res, plan_res, ml_dev_res, judge_res, core_code, code_references)` (see `prompts/build_iteration_query.md`). Use paths from instance.json (absolute in Dr. Claw–created projects; use as-is or resolve if relative). Plan mode uses `build_iteration_query_for_plan`.
+   a. Build `iteration_query = build_iteration_query(survey_res, prepare_res, code_survey_res, plan_res, ml_dev_res, judge_res, core_code, code_references)` (see `prompts/build_iteration_query.md`). Use paths from instance.json (absolute in Lingzhi Lab–created projects; use as-is or resolve if relative). Plan mode uses `build_iteration_query_for_plan`.
    b. Append as user message to `judge_messages`. Call **ML Agent** with `iter_times=i+1`. Update `ml_dev_res`.
    c. Build `judge_simple_query = build_judge_simple_query(survey_res, prepare_res, plan_res, ml_dev_res)` (see `prompts/build_judge_simple_query.md`). Plan mode uses `build_judge_simple_query_for_plan`.
    d. Append as user message to `judge_messages`. Call **Judge Agent** with `iter_times=i+1`. Update `judge_res`.

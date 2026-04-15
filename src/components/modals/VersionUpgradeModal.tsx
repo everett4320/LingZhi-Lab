@@ -25,7 +25,7 @@ export default function VersionUpgradeModal({
 }: VersionUpgradeModalProps) {
     const { t } = useTranslation('common');
     const upgradeCommand = installMode === 'desktop'
-        ? 'Install the latest Dr. Claw desktop package for your platform.'
+        ? 'Install the latest Lingzhi Lab desktop package for your platform.'
         : installMode === 'npm'
             ? t('versionUpdate.npmUpgradeCommand')
             : 'git stash && git checkout main && git pull && npm install';

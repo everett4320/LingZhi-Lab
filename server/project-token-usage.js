@@ -18,7 +18,7 @@ function createEmptyUsageTotals() {
 }
 
 const LEGACY_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'vibelab');
-const CURRENT_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'dr-claw');
+const CURRENT_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'lingzhi-lab');
 
 function normalizeProjectRefs(projectRefs = []) {
   return projectRefs

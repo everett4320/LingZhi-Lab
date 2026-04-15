@@ -48,12 +48,12 @@ function Sidebar({
   onImportedProjectCreated,
   newSessionMode,
 }: SidebarProps) {
-  const versionReminderStorageKey = 'dr-claw.versionReminder';
+  const versionReminderStorageKey = 'lingzhi-lab.versionReminder';
   const { t } = useTranslation(['sidebar', 'common']);
   const { isPWA } = useDeviceSettings({ trackMobile: false });
   const { updateAvailable, latestVersion, currentVersion, releaseInfo, installMode } = useVersionCheck(
     'OpenLAIR',
-    'dr-claw',
+    'lingzhi-lab',
   );
   const { preferences, setPreference } = useUiPreferences();
   const { sidebarVisible } = preferences;

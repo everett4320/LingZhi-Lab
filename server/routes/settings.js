@@ -256,7 +256,7 @@ router.get('/openrouter-models', async (_req, res) => {
 
     const response = await fetch(
       'https://openrouter.ai/api/v1/models?output_modalities=text&supported_parameters=tools',
-      { headers: { 'HTTP-Referer': 'https://github.com/OpenLAIR/dr-claw', 'X-Title': 'Dr. Claw' } }
+      { headers: { 'HTTP-Referer': 'https://github.com/OpenLAIR/lingzhi-lab', 'X-Title': 'Lingzhi Lab' } }
     );
     if (!response.ok) throw new Error(`OpenRouter API returned ${response.status}`);
 

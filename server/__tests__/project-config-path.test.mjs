@@ -62,7 +62,7 @@ async function loadProjectsModule() {
 
 describe('project config path migration', () => {
   beforeEach(async () => {
-    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'dr-claw-project-config-'));
+    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'lingzhi-lab-project-config-'));
     process.env.HOME = tempRoot;
     process.env.USERPROFILE = tempRoot;
     process.env.DATABASE_PATH = path.join(tempRoot, 'db', 'auth.db');
@@ -87,25 +87,25 @@ describe('project config path migration', () => {
     }
   });
 
-  it('prefers ~/.dr-claw/project-config.json when both current and legacy files exist', async () => {
-    const currentConfigPath = path.join(tempRoot, '.dr-claw', 'project-config.json');
+  it('prefers ~/.lingzhi-lab/project-config.json when both current and legacy files exist', async () => {
+    const currentConfigPath = path.join(tempRoot, '.lingzhi-lab', 'project-config.json');
     const legacyConfigPath = path.join(tempRoot, '.claude', 'project-config.json');
 
     await mkdir(path.dirname(currentConfigPath), { recursive: true });
     await mkdir(path.dirname(legacyConfigPath), { recursive: true });
 
-    await writeFile(currentConfigPath, JSON.stringify({ marker: 'current', _workspacesRoot: path.join(tempRoot, 'dr-claw') }, null, 2), 'utf8');
+    await writeFile(currentConfigPath, JSON.stringify({ marker: 'current', _workspacesRoot: path.join(tempRoot, 'lingzhi-lab') }, null, 2), 'utf8');
     await writeFile(legacyConfigPath, JSON.stringify({ marker: 'legacy', _workspacesRoot: path.join(tempRoot, 'legacy-root') }, null, 2), 'utf8');
 
     const projects = await loadProjectsModule();
     const config = await projects.loadProjectConfig();
 
     expect(config.marker).toBe('current');
-    expect(config._workspacesRoot).toBe(path.join(tempRoot, 'dr-claw'));
+    expect(config._workspacesRoot).toBe(path.join(tempRoot, 'lingzhi-lab'));
   });
 
-  it('migrates legacy ~/.claude/project-config.json into ~/.dr-claw/project-config.json once', async () => {
-    const currentConfigPath = path.join(tempRoot, '.dr-claw', 'project-config.json');
+  it('migrates legacy ~/.claude/project-config.json into ~/.lingzhi-lab/project-config.json once', async () => {
+    const currentConfigPath = path.join(tempRoot, '.lingzhi-lab', 'project-config.json');
     const legacyConfigPath = path.join(tempRoot, '.claude', 'project-config.json');
     const legacyConfig = {
       marker: 'legacy-only',

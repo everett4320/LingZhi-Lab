@@ -6,7 +6,7 @@ import pngToIco from 'png-to-ico';
 const projectRoot = process.cwd();
 const buildDir = path.join(projectRoot, 'build');
 const iconsetDir = path.join(buildDir, 'icon.iconset');
-const sourceIcon = path.join(projectRoot, 'public', 'dr-claw.png');
+const sourceIcon = path.join(projectRoot, 'public', 'lingzhi-lab.png');
 
 const macIconSizes = [
   16, 32, 64, 128, 256, 512, 1024,

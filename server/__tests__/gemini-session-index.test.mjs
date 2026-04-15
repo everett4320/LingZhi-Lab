@@ -64,7 +64,7 @@ async function loadTestModules() {
 
 describe('Gemini API session indexing', () => {
   beforeEach(async () => {
-    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'dr-claw-gemini-index-'));
+    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'lingzhi-lab-gemini-index-'));
     process.env.HOME = tempRoot;
     process.env.USERPROFILE = tempRoot;
     process.env.DATABASE_PATH = path.join(tempRoot, 'db', 'auth.db');

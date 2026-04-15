@@ -9,7 +9,7 @@
  * 1. **Claude Projects** (stored in ~/.claude/projects/)
  *    - Each project is a directory named with the project path encoded (/ replaced with -)
  *    - Contains .jsonl files with conversation history including 'cwd' field
- *    - Project metadata stored in ~/.dr-claw/project-config.json
+ *    - Project metadata stored in ~/.lingzhi-lab/project-config.json
  *      (with one-time fallback migration from ~/.claude/project-config.json)
  *
  * 2. **Cursor Projects** (stored in ~/.cursor/chats/)
@@ -33,7 +33,7 @@
  *
  * 3. **Manual Project Addition**:
  *    - Users can manually add project paths via UI
- *    - Stored in ~/.dr-claw/project-config.json with 'manuallyAdded' flag
+ *    - Stored in ~/.lingzhi-lab/project-config.json with 'manuallyAdded' flag
  *    - Allows discovering Cursor sessions for projects without Claude sessions
  *
  * ## Critical Limitations
@@ -88,14 +88,14 @@ import {
 import { resolveNanoSessionAbsPath, safeNanoSessionFilename } from './nanoSessionPaths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DRCLAW_SKILLS_DIR = path.join(__dirname, '..', 'skills');
+const LINGZHILAB_SKILLS_DIR = path.join(__dirname, '..', 'skills');
 const PROJECT_SKILL_FOLDERS = ['.claude', '.agents', '.cursor', '.gemini'];
 const PROJECT_PIPELINE_FOLDERS = ['Survey', 'Ideation', 'Experiment', 'Publication', 'Promotion'];
 const LEGACY_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'vibelab');
-const CURRENT_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'dr-claw');
+const CURRENT_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'lingzhi-lab');
 const DELETED_PROJECTS_CONFIG_KEY = '_deletedProjects';
 const PROJECT_CONFIG_FILENAME = 'project-config.json';
-const CURRENT_PROJECT_CONFIG_DIR = path.join(os.homedir(), '.dr-claw');
+const CURRENT_PROJECT_CONFIG_DIR = path.join(os.homedir(), '.lingzhi-lab');
 const LEGACY_PROJECT_CONFIG_DIR = path.join(os.homedir(), '.claude');
 const CURRENT_PROJECT_CONFIG_PATH = path.join(CURRENT_PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILENAME);
 const LEGACY_PROJECT_CONFIG_PATH = path.join(LEGACY_PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILENAME);
@@ -991,7 +991,7 @@ async function migrateLegacyProjects(config, projectDb) {
 async function saveProjectConfig(config) {
   const configPath = CURRENT_PROJECT_CONFIG_PATH;
 
-  // Ensure the .dr-claw directory exists
+  // Ensure the .lingzhi-lab directory exists
   try {
     await fs.mkdir(CURRENT_PROJECT_CONFIG_DIR, { recursive: true });
   } catch (error) {
@@ -1411,7 +1411,7 @@ async function reconcileOpenRouterSessionIndex(projectPath, options = {}) {
   const { sessionId = null, projectName = null } = options;
   if (!sessionId) return;
   const resolvedProjectName = projectName || encodeProjectPath(projectPath);
-  const sessionFile = path.join(os.homedir(), '.dr-claw', 'openrouter-sessions', `${sessionId}.jsonl`);
+  const sessionFile = path.join(os.homedir(), '.lingzhi-lab', 'openrouter-sessions', `${sessionId}.jsonl`);
   try {
     const raw = await fs.readFile(sessionFile, 'utf-8');
     const lines = raw.trim().split('\n').filter(Boolean);
@@ -1450,7 +1450,7 @@ async function reconcileLocalGPUSessionIndex(projectPath, options = {}) {
   const { sessionId = null, projectName = null } = options;
   if (!sessionId) return;
   const resolvedProjectName = projectName || encodeProjectPath(projectPath);
-  const sessionFile = path.join(os.homedir(), '.dr-claw', 'localgpu-sessions', `${sessionId}.jsonl`);
+  const sessionFile = path.join(os.homedir(), '.lingzhi-lab', 'localgpu-sessions', `${sessionId}.jsonl`);
   try {
     const raw = await fs.readFile(sessionFile, 'utf-8');
     const lines = raw.trim().split('\n').filter(Boolean);
@@ -2141,7 +2141,7 @@ async function resolveNanoProjectDirectory(projectName, sessionId) {
   return extractProjectDirectory(projectName);
 }
 
-/** Prefer ~/.dr-claw/nano-sessions; fall back to legacy <projectCwd>/drclaw-nano-*.json */
+/** Prefer ~/.lingzhi-lab/nano-sessions; fall back to legacy <projectCwd>/lingzhilab-nano-*.json */
 async function findNanoSessionStoragePath(projectName, sessionId) {
   const central = resolveNanoSessionAbsPath(sessionId);
   if (central) {
@@ -2195,7 +2195,7 @@ async function unlinkNanoSessionFilesEverywhere(projectName, sessionId) {
   return deleted;
 }
 
-/** Maps nano-claude-code session.json (title, messages[]) to Dr. Claw chat message shape. */
+/** Maps nano-claude-code session.json (title, messages[]) to Lingzhi Lab chat message shape. */
 function nanoSessionJsonToMessages(data) {
   const rawMessages = Array.isArray(data.messages) ? data.messages : [];
   const savedAt = data.saved_at || '';
@@ -2309,7 +2309,7 @@ async function getSessionMessages(projectName, sessionId, limit = null, offset =
   }
 
   if (provider === 'openrouter') {
-    const openrouterSessionFile = path.join(os.homedir(), '.dr-claw', 'openrouter-sessions', `${sessionId}.jsonl`);
+    const openrouterSessionFile = path.join(os.homedir(), '.lingzhi-lab', 'openrouter-sessions', `${sessionId}.jsonl`);
     console.log(`[DEBUG] Reading OpenRouter session file: ${openrouterSessionFile}`);
     try {
       await fs.access(openrouterSessionFile);
@@ -2383,7 +2383,7 @@ async function getSessionMessages(projectName, sessionId, limit = null, offset =
   }
 
   if (provider === 'local') {
-    const localSessionFile = path.join(os.homedir(), '.dr-claw', 'localgpu-sessions', `${sessionId}.jsonl`);
+    const localSessionFile = path.join(os.homedir(), '.lingzhi-lab', 'localgpu-sessions', `${sessionId}.jsonl`);
     console.log(`[DEBUG] Reading Local GPU session file: ${localSessionFile}`);
     try {
       await fs.access(localSessionFile);
@@ -2652,7 +2652,7 @@ async function deleteSession(projectName, sessionId, provider = 'claude') {
   }
 
   if (provider === 'openrouter') {
-    const openrouterSessionFile = path.join(os.homedir(), '.dr-claw', 'openrouter-sessions', `${sessionId}.jsonl`);
+    const openrouterSessionFile = path.join(os.homedir(), '.lingzhi-lab', 'openrouter-sessions', `${sessionId}.jsonl`);
     let deletedFile = false;
     try {
       await fs.unlink(openrouterSessionFile);
@@ -2678,7 +2678,7 @@ async function deleteSession(projectName, sessionId, provider = 'claude') {
   }
 
   if (provider === 'local') {
-    const localSessionFile = path.join(os.homedir(), '.dr-claw', 'localgpu-sessions', `${sessionId}.jsonl`);
+    const localSessionFile = path.join(os.homedir(), '.lingzhi-lab', 'localgpu-sessions', `${sessionId}.jsonl`);
     let deletedFile = false;
     try {
       await fs.unlink(localSessionFile);
@@ -3053,7 +3053,7 @@ async function deleteTrashedProject(projectName, mode = 'logical', userId = null
 
 /**
  * Create .claude, .agents, .cursor and their skills subdirs in the project,
- * and symlink each Dr. Claw skill directory into those skills subdirs.
+ * and symlink each Lingzhi Lab skill directory into those skills subdirs.
  * Also creates pipeline folders: Survey, Ideation, Experiment, Publication, Promotion.
  * Failures are logged but do not throw (project add still succeeds).
  */
@@ -3084,7 +3084,7 @@ async function collectSkillDirs(baseDir) {
  */
 function getCoreSkillNames() {
   try {
-    const mappingPath = path.join(DRCLAW_SKILLS_DIR, 'skill-tag-mapping.json');
+    const mappingPath = path.join(LINGZHILAB_SKILLS_DIR, 'skill-tag-mapping.json');
     const raw = fsSync.readFileSync(mappingPath, 'utf8');
     const mapping = JSON.parse(raw);
     const names = new Set(mapping.platformNativeSkills || []);
@@ -3250,18 +3250,18 @@ async function ensureProjectSkillLinks(projectPath) {
   }
 
   try {
-    await fs.access(DRCLAW_SKILLS_DIR);
+    await fs.access(LINGZHILAB_SKILLS_DIR);
   } catch (err) {
     if (err.code === 'ENOENT') {
-      console.warn('[projects] Dr. Claw skills dir not found, skipping skill symlinks:', DRCLAW_SKILLS_DIR);
+      console.warn('[projects] Lingzhi Lab skills dir not found, skipping skill symlinks:', LINGZHILAB_SKILLS_DIR);
       return;
     }
-    console.error('[projects] Cannot access Dr. Claw skills dir:', err.message);
+    console.error('[projects] Cannot access Lingzhi Lab skills dir:', err.message);
     return;
   }
 
   try {
-    const skillDirs = await collectSkillDirs(DRCLAW_SKILLS_DIR);
+    const skillDirs = await collectSkillDirs(LINGZHILAB_SKILLS_DIR);
     if (skillDirs.length === 0) return;
 
     // Warn about name collisions
@@ -3320,9 +3320,9 @@ async function ensureProjectSkillLinks(projectPath) {
         }
       }
 
-      // Symlink JSON config files from Dr. Claw root into each project skills folder
+      // Symlink JSON config files from Lingzhi Lab root into each project skills folder
       for (const jsonFile of ['skill-tag-mapping.json', 'stage-skill-map.json']) {
-        const srcJson = path.join(DRCLAW_SKILLS_DIR, jsonFile);
+        const srcJson = path.join(LINGZHILAB_SKILLS_DIR, jsonFile);
         const destJson = path.join(skillsSubdir, jsonFile);
         try {
           await fs.access(srcJson);
@@ -4500,7 +4500,7 @@ async function renameSession(projectName, sessionId, newSummary, provider = 'cla
       };
       await fs.appendFile(geminiSessionFile, JSON.stringify(summaryEntry) + '\n');
 
-      // Also update Dr. Claw's own index (source of truth)
+      // Also update Lingzhi Lab's own index (source of truth)
       sessionDb.updateSessionName(sessionId, trimmedSummary);
 
       console.log(`[Gemini] Renamed session ${sessionId} to "${trimmedSummary}"`);
@@ -4553,7 +4553,7 @@ async function renameSession(projectName, sessionId, newSummary, provider = 'cla
       await db.run("UPDATE meta SET value = ? WHERE key = 'title' OR key = 'sessionTitle'", [trimmedSummary]);
       await db.close();
 
-      // Update Dr. Claw's own index
+      // Update Lingzhi Lab's own index
       sessionDb.updateSessionName(sessionId, trimmedSummary);
 
       console.log(`[Cursor] Renamed session ${sessionId} to "${trimmedSummary}"`);
@@ -4608,7 +4608,7 @@ async function renameSession(projectName, sessionId, newSummary, provider = 'cla
           };
           await fs.appendFile(jsonlFile, JSON.stringify(summaryEntry) + '\n');
 
-          // Update Dr. Claw's own index
+          // Update Lingzhi Lab's own index
           sessionDb.updateSessionName(sessionId, trimmedSummary);
 
           console.log(`[Claude] Renamed session ${sessionId} to "${trimmedSummary}"`);

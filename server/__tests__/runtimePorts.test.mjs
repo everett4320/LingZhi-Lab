@@ -80,8 +80,8 @@ afterEach(async () => {
     await task();
   }
 
-  delete process.env.DR_CLAW_RUNTIME_DIR;
-  delete process.env.DR_CLAW_RUNTIME_FILE;
+  delete process.env.LINGZHI_LAB_RUNTIME_DIR;
+  delete process.env.LINGZHI_LAB_RUNTIME_FILE;
 });
 
 describe('runtimePorts', () => {
@@ -102,8 +102,8 @@ describe('runtimePorts', () => {
   });
 
   it('reads runtime ports from an override directory and ignores stale process entries', async () => {
-    const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dr-claw-runtime-'));
-    process.env.DR_CLAW_RUNTIME_DIR = runtimeDir;
+    const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lingzhi-lab-runtime-'));
+    process.env.LINGZHI_LAB_RUNTIME_DIR = runtimeDir;
     cleanupTasks.push(() => fs.rm(runtimeDir, { recursive: true, force: true }));
 
     setRuntimePortSync('backend', 4321);

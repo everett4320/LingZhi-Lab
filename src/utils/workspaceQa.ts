@@ -1,6 +1,6 @@
-const WORKSPACE_QA_DRAFT_PREFIX = 'dr-claw-workspace-qa-draft:';
+const WORKSPACE_QA_DRAFT_PREFIX = 'lingzhi-lab-workspace-qa-draft:';
 
-export const WORKSPACE_QA_DRAFT_EVENT = 'dr-claw:workspace-qa-draft';
+export const WORKSPACE_QA_DRAFT_EVENT = 'lingzhi-lab:workspace-qa-draft';
 
 const getDraftKey = (projectName: string) => `${WORKSPACE_QA_DRAFT_PREFIX}${projectName}`;
 

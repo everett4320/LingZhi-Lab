@@ -1,6 +1,6 @@
-const REFERENCE_CHAT_DRAFT_PREFIX = 'dr-claw-reference-chat-draft:';
+const REFERENCE_CHAT_DRAFT_PREFIX = 'lingzhi-lab-reference-chat-draft:';
 
-export const REFERENCE_CHAT_DRAFT_EVENT = 'dr-claw:reference-chat-draft';
+export const REFERENCE_CHAT_DRAFT_EVENT = 'lingzhi-lab:reference-chat-draft';
 
 export interface ReferenceChatDraft {
   text: string;

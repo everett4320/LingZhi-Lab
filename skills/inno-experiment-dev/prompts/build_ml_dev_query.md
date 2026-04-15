@@ -11,8 +11,8 @@ Constructs the prompt for the ML Agent to implement the project code.
 | `code_survey_res`     | string | Comprehensive code survey / model survey notes |
 | `plan_res`            | string | Detailed implementation plan from the Coding Plan Agent |
 | `dataset_description` | string | Description of available datasets (from prepare step) |
-| `core_code`          | string | Path to `Experiment/core_code/` — absolute from `instance.Experiment.core_code` when created by Dr. Claw; use as-is or resolve if relative |
-| `code_references`    | string | Path to `Experiment/code_references/` — absolute from `instance.Experiment.code_references` when created by Dr. Claw; use as-is or resolve if relative |
+| `core_code`          | string | Path to `Experiment/core_code/` — absolute from `instance.Experiment.core_code` when created by Lingzhi Lab; use as-is or resolve if relative |
+| `code_references`    | string | Path to `Experiment/code_references/` — absolute from `instance.Experiment.code_references` when created by Lingzhi Lab; use as-is or resolve if relative |
 
 ## Template (abbreviated — full template is extensive)
 

@@ -9,7 +9,7 @@ Constructs the prompt for the ML Agent to submit the final experiment run.
 | `survey_res`     | string | The finalized selected idea |
 | `ml_dev_res`     | string | The ML Agent's final implementation result |
 | `judge_res`      | string | The Judge Agent's last feedback |
-| `core_code` | string | Path to `Experiment/core_code/` — absolute from `instance.Experiment.core_code` when created by Dr. Claw; use as-is or resolve if relative |
+| `core_code` | string | Path to `Experiment/core_code/` — absolute from `instance.Experiment.core_code` when created by Lingzhi Lab; use as-is or resolve if relative |
 
 ## Template
 

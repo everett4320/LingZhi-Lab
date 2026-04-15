@@ -1,6 +1,6 @@
 # Pipeline Outputs
 
-Dr. Claw's research pipeline produces structured artifacts across five stages. Each stage writes to a dedicated directory created when the project is initialized.
+Lingzhi Lab's research pipeline produces structured artifacts across five stages. Each stage writes to a dedicated directory created when the project is initialized.
 
 ## Output Artifacts
 
@@ -23,7 +23,7 @@ Dr. Claw's research pipeline produces structured artifacts across five stages. E
 
 ## Project Directory Structure
 
-When a project is created, Dr. Claw initializes the following workspace:
+When a project is created, Lingzhi Lab initializes the following workspace:
 
 ```
 your-project/

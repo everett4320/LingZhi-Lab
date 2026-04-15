@@ -47,7 +47,7 @@ async function postEvents(events) {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      source: 'dr-claw',
+      source: 'lingzhi-lab',
       sentAt: new Date().toISOString(),
       events,
     }),

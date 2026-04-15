@@ -111,7 +111,7 @@ const PROVIDER_INSTALLERS = {
 function buildCliInstallHint(agent) {
   const installer = PROVIDER_INSTALLERS[agent];
   if (installer?.docsUrl) {
-    return `${installer.displayName} is not installed. Install it in Dr. Claw or open the official guide: ${installer.docsUrl}`;
+    return `${installer.displayName} is not installed. Install it in Lingzhi Lab or open the official guide: ${installer.docsUrl}`;
   }
 
   switch (agent) {

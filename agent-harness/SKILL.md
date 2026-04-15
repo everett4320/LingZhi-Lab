@@ -1,30 +1,30 @@
 ---
-name: drclaw
-description: Dr. Claw workspace skill for project lookup, session inspection, TaskMaster progress, OpenClaw structured schema, and event-driven reporting
+name: lingzhilab
+description: Lingzhi Lab workspace skill for project lookup, session inspection, TaskMaster progress, OpenClaw structured schema, and event-driven reporting
 ---
 
-# Dr. Claw Research Skill
+# Lingzhi Lab Research Skill
 
-Use this skill when the user asks about Dr. Claw projects, wants to inspect Claude/Cursor/Codex/Gemini sessions, needs task progress pushed to OpenClaw/mobile, or wants structured OpenClaw-ready JSON outputs.
+Use this skill when the user asks about Lingzhi Lab projects, wants to inspect Claude/Cursor/Codex/Gemini sessions, needs task progress pushed to OpenClaw/mobile, or wants structured OpenClaw-ready JSON outputs.
 
 ## Setup check
 
-Before using Dr. Claw, verify the server is reachable:
+Before using Lingzhi Lab, verify the server is reachable:
 
 ```bash
-drclaw server status
+lingzhilab server status
 ```
 
 If needed, start it:
 
 ```bash
-drclaw server on
+lingzhilab server on
 ```
 
 ## Project discovery
 
 ```bash
-drclaw --json projects list
+lingzhilab --json projects list
 ```
 
 Project references accepted by the CLI:
@@ -36,7 +36,7 @@ Project references accepted by the CLI:
 If a path exists locally but is not registered yet:
 
 ```bash
-drclaw projects add /absolute/path/to/project --name "Display Name"
+lingzhilab projects add /absolute/path/to/project --name "Display Name"
 ```
 
 ## Session workflows
@@ -44,32 +44,32 @@ drclaw projects add /absolute/path/to/project --name "Display Name"
 List sessions:
 
 ```bash
-drclaw --json sessions list <project-ref>
-drclaw --json sessions list <project-ref> --provider cursor
+lingzhilab --json sessions list <project-ref>
+lingzhilab --json sessions list <project-ref> --provider cursor
 ```
 
 Fetch messages:
 
 ```bash
-drclaw --json sessions messages <project-ref> <session-id> --provider claude --limit 100
+lingzhilab --json sessions messages <project-ref> <session-id> --provider claude --limit 100
 ```
 
 Send Claude a message:
 
 ```bash
-drclaw --json chat send --project <project-ref> --message "<user message>"
+lingzhilab --json chat send --project <project-ref> --message "<user message>"
 ```
 
 Reply to an existing session with structured OpenClaw output:
 
 ```bash
-drclaw --json chat reply --project <project-ref> --session <session-id> -m "<user message>"
+lingzhilab --json chat reply --project <project-ref> --session <session-id> -m "<user message>"
 ```
 
 List active sessions across projects:
 
 ```bash
-drclaw --json chat sessions
+lingzhilab --json chat sessions
 ```
 
 ## TaskMaster workflows
@@ -77,20 +77,20 @@ drclaw --json chat sessions
 Check whether TaskMaster is present:
 
 ```bash
-drclaw --json taskmaster detect <project-ref>
+lingzhilab --json taskmaster detect <project-ref>
 ```
 
 Get progress and next action:
 
 ```bash
-drclaw --json taskmaster summary <project-ref>
-drclaw --json taskmaster next-guidance <project-ref>
+lingzhilab --json taskmaster summary <project-ref>
+lingzhilab --json taskmaster next-guidance <project-ref>
 ```
 
 Initialize `.pipeline` for a project if needed:
 
 ```bash
-drclaw taskmaster init <project-ref>
+lingzhilab taskmaster init <project-ref>
 ```
 
 ## OpenClaw / mobile reporting
@@ -98,31 +98,31 @@ drclaw taskmaster init <project-ref>
 Configure the default push channel once:
 
 ```bash
-drclaw openclaw configure --push-channel feishu:<chat_id>
+lingzhilab openclaw configure --push-channel feishu:<chat_id>
 ```
 
 Preview a mobile report:
 
 ```bash
-drclaw --json openclaw report --project <project-ref> --dry-run
+lingzhilab --json openclaw report --project <project-ref> --dry-run
 ```
 
 Send it:
 
 ```bash
-drclaw openclaw report --project <project-ref>
+lingzhilab openclaw report --project <project-ref>
 ```
 
 Start the event-driven watcher daemon:
 
 ```bash
-drclaw --json openclaw-watch on --to feishu:<chat_id>
-drclaw --json openclaw-watch status
-drclaw --json openclaw-watch off
+lingzhilab --json openclaw-watch on --to feishu:<chat_id>
+lingzhilab --json openclaw-watch status
+lingzhilab --json openclaw-watch off
 ```
 
 The watcher is now a useful notification pipeline rather than raw websocket forwarding. It:
-- subscribes to Dr. Claw WebSocket events
+- subscribes to Lingzhi Lab WebSocket events
 - resolves the concrete project when possible
 - compares workflow snapshots to derive higher-level signals
 - deduplicates repeated notifications with a stable signature and 6-hour TTL
@@ -140,8 +140,8 @@ Current attention-worthy signals include:
 - `session_aborted`
 
 Watcher runtime files:
-- state: `~/.drclaw/openclaw-watcher-state.json`
-- log: `~/.drclaw/logs/openclaw-watcher.log`
+- state: `~/.lingzhilab/openclaw-watcher-state.json`
+- log: `~/.lingzhilab/logs/openclaw-watcher.log`
 
 ## Structured OpenClaw schema
 
@@ -165,7 +165,7 @@ Practical client rules:
 Formal contract:
 
 ```bash
-cat agent-harness/cli_anything/drclaw/SCHEMA.md
+cat agent-harness/cli_anything/lingzhilab/SCHEMA.md
 ```
 
 ## Recommended operating flow

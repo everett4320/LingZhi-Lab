@@ -13,7 +13,7 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // PDF cache directory
-const PDF_CACHE_DIR = path.join(os.homedir(), '.dr-claw', 'references', 'pdfs');
+const PDF_CACHE_DIR = path.join(os.homedir(), '.lingzhi-lab', 'references', 'pdfs');
 
 function ensurePdfCacheDir() {
   if (!fs.existsSync(PDF_CACHE_DIR)) {

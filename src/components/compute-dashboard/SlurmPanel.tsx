@@ -73,13 +73,13 @@ export default function SlurmPanel({
     account: s.defaultAccount || '',
     command: '',
     script: `#!/bin/bash
-#SBATCH --job-name=dr-claw-job
+#SBATCH --job-name=lingzhi-lab-job
 #SBATCH --partition=${s.defaultPartition || 'GPU-small'}
 #SBATCH --time=${s.defaultTime || '00:30:00'}
 #SBATCH --gres=gpu:${s.defaultGpus ?? 1}
 ${s.defaultAccount ? `#SBATCH -A ${s.defaultAccount}` : '# #SBATCH -A your-account'}
-#SBATCH --output=dr-claw-job-%j.out
-#SBATCH --error=dr-claw-job-%j.err
+#SBATCH --output=lingzhi-lab-job-%j.out
+#SBATCH --error=lingzhi-lab-job-%j.err
 
 # Your commands below
 cd ${node.workDir || '~'}

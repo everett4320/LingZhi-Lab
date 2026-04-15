@@ -4,7 +4,7 @@ import { buildCodexSessionCreatedEvent } from '../utils/codexSessionEvents.js';
 
 describe('codex session event payloads', () => {
   it('includes projectName when provided', () => {
-    const projectName = 'C--Users-test-user-dr-claw-project';
+    const projectName = 'C--Users-test-user-lingzhi-lab-project';
     const event = buildCodexSessionCreatedEvent({
       sessionId: '019d82e8-1ee3-7860-baa1-24603f424ade',
       sessionMode: 'research',

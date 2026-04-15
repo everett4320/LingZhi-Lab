@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# install.sh - one-command setup for the Dr. Claw CLI
+# install.sh - one-command setup for the Lingzhi Lab CLI
 # Creates a symlink in /usr/local/bin so the CLI is available system-wide.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BIN_NAME="drclaw"
+BIN_NAME="lingzhilab"
 
 echo "==> Installing Python package (editable)..."
 pip3 install -e "$SCRIPT_DIR" -q 2>/dev/null || true
@@ -19,7 +19,7 @@ if [ ! -f "$INSTALLED_BIN" ]; then
   exit 1
 fi
 
-for LINK_NAME in drclaw dr-claw vibelab; do
+for LINK_NAME in lingzhilab lingzhi-lab vibelab; do
   SYMLINK_TARGET="/usr/local/bin/$LINK_NAME"
   echo "==> Symlinking $LINK_NAME → /usr/local/bin/"
   ln -sf "$INSTALLED_BIN" "$SYMLINK_TARGET" 2>/dev/null \
@@ -28,9 +28,9 @@ done
 
 echo ""
 echo "✓  Installed!  Try:"
-echo "   drclaw --help"
-echo "   drclaw server on"
-echo "   drclaw server status"
+echo "   lingzhilab --help"
+echo "   lingzhilab server on"
+echo "   lingzhilab server status"
 echo "   # compatibility aliases still work:"
-echo "   dr-claw --help"
+echo "   lingzhi-lab --help"
 echo "   vibelab --help"

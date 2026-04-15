@@ -11,6 +11,14 @@ on:
         options:
           - 'false'
           - 'true'
+      release_channel:
+        description: Which build channel to publish from
+        required: false
+        default: 'unsigned'
+        type: choice
+        options:
+          - 'unsigned'
+          - 'signed'
   push:
     tags:
       - 'v*'
@@ -18,6 +26,12 @@ on:
 jobs:
   build-desktop:
     name: Build Desktop (${{ matrix.platform_label }})
+    if: |
+      (matrix.release_channel == 'unsigned' &&
+       !startsWith(github.ref, 'refs/tags/v') &&
+       github.event.inputs.release_channel != 'signed') ||
+      (matrix.release_channel == 'signed' &&
+       (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_channel == 'signed'))
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -25,14 +39,28 @@ jobs:
         include:
           - os: macos-latest
             platform_args: --mac dmg
-            artifact_name: desktop-macos
+            artifact_name: desktop-macos-unsigned
             artifact_glob: release/*.dmg
             platform_label: macos
+            release_channel: unsigned
+          - os: macos-latest
+            platform_args: --mac dmg
+            artifact_name: desktop-macos-signed
+            artifact_glob: release/*.dmg
+            platform_label: macos
+            release_channel: signed
           - os: windows-latest
             platform_args: --win nsis
-            artifact_name: desktop-windows
+            artifact_name: desktop-windows-unsigned
             artifact_glob: release/*.exe
             platform_label: windows
+            release_channel: unsigned
+          - os: windows-latest
+            platform_args: --win nsis
+            artifact_name: desktop-windows-signed
+            artifact_glob: release/*.exe
+            platform_label: windows
+            release_channel: signed
     steps:
       - uses: actions/checkout@v4
 
@@ -45,16 +73,42 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Packaging contract gate
+        run: npm run test -- packaging/__tests__/desktop-package-config.test.mjs packaging/__tests__/desktop-runtime-robustness.test.mjs packaging/__tests__/desktop-security-hardening.test.mjs packaging/__tests__/desktop-workflow-contract.test.mjs
+
       # CSC_IDENTITY_AUTO_DISCOVERY=false skips Apple code signing / notarization so CI can build
       # without a Developer ID certificate. macOS Gatekeeper will warn on downloaded DMGs.
       # For production releases, configure signing (e.g. CSC_LINK + CSC_KEY_PASSWORD, APPLE_ID,
       # APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID) and set CSC_IDENTITY_AUTO_DISCOVERY=true or
       # remove this override so electron-builder can discover the signing identity.
-      - name: Build desktop distributables
+      - name: Build desktop distributables (unsigned channel)
+        if: matrix.release_channel == 'unsigned'
         shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run desktop:dist -- ${{ matrix.platform_args }} --publish never
+
+      - name: Require signing prerequisites for signed channel
+        if: matrix.release_channel == 'signed'
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform_label }}" == "windows" ]]; then
+            test -n "${WIN_CSC_LINK}" && test -n "${WIN_CSC_KEY_PASSWORD}"
+          fi
+          if [[ "${{ matrix.platform_label }}" == "macos" ]]; then
+            test -n "${CSC_LINK}" && test -n "${CSC_KEY_PASSWORD}" && test -n "${APPLE_ID}" && test -n "${APPLE_APP_SPECIFIC_PASSWORD}" && test -n "${APPLE_TEAM_ID}"
+          fi
+
+      - name: Build desktop distributables (signed channel)
+        if: matrix.release_channel == 'signed'
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'true'
+        run: npm run desktop:dist -- ${{ matrix.platform_args }} --publish never
+
+      - name: Artifact audit gate
+        if: matrix.platform_label == 'windows'
+        run: npm run desktop:audit:artifact
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -67,7 +121,9 @@ jobs:
     name: Publish GitHub Release
     needs: build-desktop
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_release == 'true'
+    if: |
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event.inputs.publish_release == 'true' && github.event.inputs.release_channel == 'signed')
     permissions:
       contents: write
     steps:
@@ -80,5 +136,5 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            release-artifacts/desktop-macos/*.dmg
-            release-artifacts/desktop-windows/*.exe
+            release-artifacts/desktop-macos-signed/*.dmg
+            release-artifacts/desktop-windows-signed/*.exe

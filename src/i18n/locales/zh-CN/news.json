@@ -74,7 +74,7 @@
     },
     "xiaohongshu": {
       "steps": [
-        "如果使用浏览器 Cookie，请确保运行 dr-claw 服务的那台机器上的浏览器已登录 xiaohongshu.com",
+        "如果使用浏览器 Cookie，请确保运行 lingzhi-lab 服务的那台机器上的浏览器已登录 xiaohongshu.com",
         "远程部署请优先使用「二维码登录」",
         "在设置中配置搜索关键词",
         "点击「开始搜索」获取最新帖子"
@@ -93,8 +93,8 @@
     "authentication": "认证",
     "xAuthDescription": "twitter-cli 自动从浏览器提取 Cookie（Chrome、Arc、Edge、Firefox）。请确保已在浏览器中登录 X/Twitter。无需 API 密钥。",
     "browserCookieAuth": "浏览器 Cookie 认证",
-    "browserCookieDescription": "从运行 dr-claw 服务的那台机器上的浏览器提取 Cookie。请确保该机器上的 Chrome、Arc、Edge 或 Firefox 已登录 xiaohongshu.com。",
-    "serviceMachineHint": "此操作读取的是运行 dr-claw 服务那台机器上的浏览器 Cookie，不是当前打开页面这台设备上的浏览器。如果你是远程部署，请优先使用二维码登录。",
+    "browserCookieDescription": "从运行 lingzhi-lab 服务的那台机器上的浏览器提取 Cookie。请确保该机器上的 Chrome、Arc、Edge 或 Firefox 已登录 xiaohongshu.com。",
+    "serviceMachineHint": "此操作读取的是运行 lingzhi-lab 服务那台机器上的浏览器 Cookie，不是当前打开页面这台设备上的浏览器。如果你是远程部署，请优先使用二维码登录。",
     "cookieSource": "浏览器来源",
     "cookieSourceDescription": "如果自动检测失败，请显式选择服务端实际在用的浏览器。",
     "extractBrowserCookie": "提取浏览器 Cookie",
@@ -109,7 +109,7 @@
     "qrLoggingIn": "等待二维码登录...",
     "qrSuccess": "二维码登录成功！",
     "qrFailure": "二维码登录失败，请重试。",
-    "qrRecommendedHint": "检测到你当前更像是在远程访问 dr-claw，已默认推荐二维码登录。这个方式不依赖服务端读取本机浏览器 Cookie，远程部署更稳定。",
+    "qrRecommendedHint": "检测到你当前更像是在远程访问 lingzhi-lab，已默认推荐二维码登录。这个方式不依赖服务端读取本机浏览器 Cookie，远程部署更稳定。",
     "recommendedTag": "推荐",
     "searchQueries": "搜索查询（逗号分隔）",
     "searchQueriesPlaceholder": "LLM, AI agents, foundation model...",

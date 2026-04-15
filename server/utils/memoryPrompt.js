@@ -53,13 +53,13 @@ export async function syncMemoryFiles(userId) {
   const lines = [
     '# User Memories',
     '',
-    '> This file is a read-only reference synced by Dr. Claw.',
-    '> To manage memories: use Dr. Claw Settings > Memory tab.',
+    '> This file is a read-only reference synced by Lingzhi Lab.',
+    '> To manage memories: use Lingzhi Lab Settings > Memory tab.',
     '',
   ];
 
   if (!memories || memories.length === 0) {
-    lines.push('_No memories saved yet. Add them in Dr. Claw Settings > Memory._');
+    lines.push('_No memories saved yet. Add them in Lingzhi Lab Settings > Memory._');
   } else {
     for (const m of memories) {
       const tag = m.category && m.category !== 'general' ? ` [${m.category}]` : '';

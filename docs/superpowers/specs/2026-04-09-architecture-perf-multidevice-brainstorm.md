@@ -260,7 +260,7 @@ hooks/
 
 **B. Plugin Marketplace / Registry**:
 - 当前 skills 全部本地
-- 扩展：支持 `npm install @drclaw/skill-<name>` 或 git clone
+- 扩展：支持 `npm install @lingzhilab/skill-<name>` 或 git clone
 - 社区 skill 发现 + 评分系统
 
 **C. Plugin 沙箱隔离**:
@@ -289,7 +289,7 @@ hooks/
 
 **A. Session 持久化 workaround**:
 - 在上游支持 `--resume` 之前，server 端维护对话历史
-- 每轮结束时保存 messages 到 `~/.dr-claw/nano-sessions/{sessionId}.json`
+- 每轮结束时保存 messages 到 `~/.lingzhi-lab/nano-sessions/{sessionId}.json`
 - 下轮开始时读取历史，注入到 prompt 中（类似 OpenRouter 的做法）
 
 **B. Provider fallback 链**:

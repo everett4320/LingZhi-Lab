@@ -408,7 +408,7 @@ export const ComputeNode = {
       const t = time || defaults.defaultTime || '02:00:00';
       const g = gpus ?? defaults.defaultGpus ?? 1;
       const a = account || defaults.defaultAccount;
-      const name = jobName || 'dr-claw-job';
+      const name = jobName || 'lingzhi-lab-job';
 
       sbatchScript = '#!/bin/bash\n';
       sbatchScript += `#SBATCH --job-name=${name}\n`;
@@ -424,7 +424,7 @@ export const ComputeNode = {
 
     // Write script to remote via base64 to preserve newlines and special chars
     const workDir = config.workDir || '~';
-    const scriptPath = `${workDir}/.dr-claw-sbatch-${Date.now()}.sh`;
+    const scriptPath = `${workDir}/.lingzhi-lab-sbatch-${Date.now()}.sh`;
     const b64 = Buffer.from(sbatchScript).toString('base64');
     const remoteCmd = `echo '${b64}' | base64 -d > ${scriptPath} && chmod +x ${scriptPath} && sbatch ${scriptPath} && rm -f ${scriptPath}`;
     return await execSsh(config, remoteCmd);

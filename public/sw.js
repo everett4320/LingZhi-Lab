@@ -1,5 +1,5 @@
-// Service Worker for Dr. Claw PWA
-const CACHE_NAME = 'dr-claw-ui-v3';
+// Service Worker for Lingzhi Lab PWA
+const CACHE_NAME = 'lingzhi-lab-ui-v3';
 const urlsToCache = [
   '/',
   '/index.html',

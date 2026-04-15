@@ -9,7 +9,7 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const installMode = fs.existsSync(path.join(__dirname, '..', '.git')) ? 'git' : 'npm';
-const npmPackageName = process.env.NPM_PACKAGE_NAME || 'dr-claw';
+const npmPackageName = process.env.NPM_PACKAGE_NAME || 'lingzhi-lab';
 
 // ANSI color codes for terminal output
 const colors = {
@@ -93,7 +93,7 @@ import {
     setRuntimePortSync,
 } from './utils/runtimePorts.js';
 import { buildCodexTokenUsageFromJsonl } from './utils/sessionTokenUsage.js';
-import { getNanoDrClawSessionsRoot } from './nanoSessionPaths.js';
+import { getNanoLingzhiLabSessionsRoot } from './nanoSessionPaths.js';
 
 // File system watchers for provider project/session folders
 const PROVIDER_WATCH_PATHS = [
@@ -101,7 +101,7 @@ const PROVIDER_WATCH_PATHS = [
     { provider: 'cursor', rootPath: path.join(os.homedir(), '.cursor', 'chats') },
     { provider: 'codex', rootPath: path.join(os.homedir(), '.codex', 'sessions') },
     { provider: 'gemini', rootPath: path.join(os.homedir(), '.gemini', 'sessions') },
-    { provider: 'nano', rootPath: getNanoDrClawSessionsRoot() },
+    { provider: 'nano', rootPath: getNanoLingzhiLabSessionsRoot() },
 ];
 const WATCHER_IGNORED_PATTERNS = [
     '**/node_modules/**',
@@ -143,7 +143,7 @@ function shouldProcessProjectsWatcherEvent(eventType, filePath, provider) {
 
     if (provider === 'nano') {
         const base = path.basename(String(filePath || '').replace(/\\/g, '/')).toLowerCase();
-        return base.endsWith('.json') && base.startsWith('drclaw-nano-');
+        return base.endsWith('.json') && base.startsWith('lingzhilab-nano-');
     }
 
     return true;
@@ -438,8 +438,8 @@ app.locals.wss = wss;
 // Parse VITE_PORT early so CORS reflects the actual frontend port.
 const CORS_VITE_PORT = parsePortNumber(process.env.VITE_PORT, DEFAULT_FRONTEND_PORT);
 app.use(cors({
-  origin: process.env.DR_CLAW_CORS_ORIGINS
-    ? process.env.DR_CLAW_CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  origin: process.env.LINGZHI_LAB_CORS_ORIGINS
+    ? process.env.LINGZHI_LAB_CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
     : [`http://localhost:${getFrontendPortSync(CORS_VITE_PORT)}`, `http://127.0.0.1:${getFrontendPortSync(CORS_VITE_PORT)}`],
   credentials: true,
 }));
@@ -458,7 +458,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Public health check endpoint (no authentication required)
 app.get('/health', (req, res) => {
-  const isDesktop = process.env.DR_CLAW_DESKTOP === '1';
+  const isDesktop = process.env.LINGZHI_LAB_DESKTOP === '1';
   const response = {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -700,7 +700,7 @@ app.use(express.static(path.join(__dirname, '../dist'), {
 // System update endpoint
 app.post('/api/system/update', authenticateToken, async (req, res) => {
     try {
-        if (process.env.DR_CLAW_DESKTOP === '1') {
+        if (process.env.LINGZHI_LAB_DESKTOP === '1') {
             return res.status(400).json({
                 success: false,
                 error: 'Desktop builds do not support in-app self-update yet. Install a newer desktop package instead.'
@@ -3442,7 +3442,7 @@ async function getFileTree(dirPath, maxDepth = 3, currentDepth = 0, showHidden =
 const REQUESTED_PORT = parsePortNumber(process.env.PORT, DEFAULT_BACKEND_PORT);
 const REQUESTED_VITE_PORT = parsePortNumber(process.env.VITE_PORT, DEFAULT_FRONTEND_PORT);
 const HOST = process.env.HOST || '0.0.0.0';
-const IS_DESKTOP = process.env.DR_CLAW_DESKTOP === '1';
+const IS_DESKTOP = process.env.LINGZHI_LAB_DESKTOP === '1';
 // Show localhost when binding to all interfaces; 0.0.0.0 is not directly connectable.
 const DISPLAY_HOST = HOST === '0.0.0.0' ? 'localhost' : HOST;
 
@@ -3482,7 +3482,7 @@ async function startServer() {
 
         console.log('');
         console.log(c.dim('═'.repeat(63)));
-        console.log(`  ${c.bright('Dr. Claw Server - Ready')}`);
+        console.log(`  ${c.bright('Lingzhi Lab Server - Ready')}`);
         console.log(c.dim('═'.repeat(63)));
         console.log('');
 
@@ -3494,7 +3494,7 @@ async function startServer() {
         }
 
         console.log(`${c.info('[INFO]')} Installed at: ${c.dim(appInstallPath)}`);
-        console.log(`${c.tip('[TIP]')}  Run "dr-claw status" for full configuration details`);
+        console.log(`${c.tip('[TIP]')}  Run "lingzhi-lab status" for full configuration details`);
         console.log('');
 
         // Ensure the workspaces root directory exists

@@ -5,8 +5,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'claude-ui-dev-secret-change-in-pro
 const MAX_USER_ID_SCAN = Number(process.env.PLAYWRIGHT_MAX_USER_ID_SCAN || 10);
 const LOGIN_USERNAME = process.env.PLAYWRIGHT_USERNAME;
 const LOGIN_PASSWORD = process.env.PLAYWRIGHT_PASSWORD;
-const RELEASE_API_URL = /https:\/\/api\.github\.com\/repos\/OpenLAIR\/dr-claw\/releases\/latest/;
-const REMINDER_STORAGE_KEY = 'dr-claw.versionReminder';
+const RELEASE_API_URL = /https:\/\/api\.github\.com\/repos\/OpenLAIR\/lingzhi-lab\/releases\/latest/;
+const REMINDER_STORAGE_KEY = 'lingzhi-lab.versionReminder';
 
 async function findValidTokenForExistingUser(request: APIRequestContext): Promise<string | null> {
   for (let userId = 1; userId <= MAX_USER_ID_SCAN; userId += 1) {
@@ -87,7 +87,7 @@ async function mockLatestRelease(page: Page, version = '1.0.1') {
         tag_name: `v${version}`,
         name: `Release ${version}`,
         body: 'Bug fixes and improvements',
-        html_url: `https://github.com/OpenLAIR/dr-claw/releases/tag/v${version}`,
+        html_url: `https://github.com/OpenLAIR/lingzhi-lab/releases/tag/v${version}`,
         published_at: '2026-03-20T12:00:00.000Z',
       }),
     });

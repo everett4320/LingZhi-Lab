@@ -33,7 +33,7 @@
     "autoResearch": "Auto Research"
   },
   "researchLabGuide": {
-    "title": "How to Use Dr. Claw",
+    "title": "How to Use Lingzhi Lab",
     "description": "Use the inno-pipeline-planner skill in Chat to start a 5-stage research pipeline, then review tasks and artifacts here in Research Lab.",
     "step1": "Go to Chat and ask the agent to use the inno-pipeline-planner skill for your research topic, goal, or paper idea.",
     "step2": "Answer the clarifying questions so the agent can define your research brief and pipeline correctly.",
@@ -180,7 +180,7 @@
     "openInEditor": "Open in Editor"
   },
   "mainContent": {
-    "loading": "Loading Dr. Claw",
+    "loading": "Loading Lingzhi Lab",
     "settingUpWorkspace": "Setting up your workspace...",
     "chooseProject": "Choose Your Project",
     "selectProjectDescription": "Select a project from the sidebar to start coding with Claude. Each project contains your chat sessions and file history.",
@@ -375,7 +375,7 @@
     "viewFullRelease": "View full release",
     "updateProgress": "Update Progress:",
     "manualUpgrade": "Manual upgrade:",
-    "npmUpgradeCommand": "npm install -g dr-claw@latest",
+    "npmUpgradeCommand": "npm install -g lingzhi-lab@latest",
     "manualUpgradeHint": "Or click \"Update Now\" to run the update automatically.",
     "updateCompleted": "Update completed successfully!",
     "restartServer": "Please restart the server to apply changes.",

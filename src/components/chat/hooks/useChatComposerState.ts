@@ -196,7 +196,7 @@ const CODEX_QUEUE_DISPATCH_AFTER_SETTLE_MS = 800;
 const CODEX_QUEUE_DISPATCH_ACK_TIMEOUT_MS = 6000;
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
-const CODEX_ATTACHMENT_DIR = ".dr-claw/chat-attachments";
+const CODEX_ATTACHMENT_DIR = ".lingzhi-lab/chat-attachments";
 const CLOSED_BTW_OVERLAY: BtwOverlayState = {
   open: false,
   question: "",
@@ -2155,7 +2155,7 @@ export function useChatComposerState({
             timestamp: new Date(),
           },
         ]);
-        messageContent = `[Context: You have already greeted me as Dr. Claw's research assistant and asked about my research project. Continue the intake conversation without re-greeting.]\n\n${messageContent}`;
+        messageContent = `[Context: You have already greeted me as Lingzhi Lab's research assistant and asked about my research project. Continue the intake conversation without re-greeting.]\n\n${messageContent}`;
         setIntakeGreeting(null);
       }
 

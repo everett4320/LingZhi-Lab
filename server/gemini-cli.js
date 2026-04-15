@@ -462,7 +462,7 @@ async function prepareGeminiThinkingSettings(model, thinkingMode, env = {}) {
     return null;
   }
 
-  const aliasName = '__dr_claw_session_model';
+  const aliasName = '__lingzhi_lab_session_model';
   const overrideSettings = {
     modelConfigs: {
       customAliases: {
@@ -491,7 +491,7 @@ async function prepareGeminiThinkingSettings(model, thinkingMode, env = {}) {
     }
   }
 
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dr-claw-gemini-settings-'));
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lingzhi-lab-gemini-settings-'));
   const settingsPath = path.join(tempDir, 'settings.json');
   await fs.writeFile(settingsPath, JSON.stringify(mergedSettings, null, 2), 'utf8');
 
@@ -504,7 +504,7 @@ async function prepareGeminiThinkingSettings(model, thinkingMode, env = {}) {
 
 /**
  * Ensures a session directory exists and creates a basic JSONL metadata file if it doesn't.
- * This helps Dr. Claw discover the session even if the CLI hasn't written to it yet.
+ * This helps Lingzhi Lab discover the session even if the CLI hasn't written to it yet.
  */
 async function syncSessionMetadata(sessionId, projectPath, sessionMode = 'research') {
   if (!sessionId || !projectPath) return;
@@ -899,7 +899,7 @@ export async function spawnGemini(command, options = {}, ws) {
               const oldKey = capturedSessionId || initialKey;
               capturedSessionId = sid;
               
-              // Persist metadata to filesystem so Dr. Claw can discover it on refresh
+              // Persist metadata to filesystem so Lingzhi Lab can discover it on refresh
               await syncSessionMetadata(capturedSessionId, workingDir, sessionMode);
               await persistGeminiSessionMetadata(capturedSessionId, workingDir, sessionMode);
               

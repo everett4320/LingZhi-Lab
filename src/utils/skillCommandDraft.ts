@@ -3,8 +3,8 @@
  * to the Chat interface. Uses sessionStorage + CustomEvent pattern.
  */
 
-const STORAGE_KEY = 'dr-claw-skill-command-draft';
-export const SKILL_COMMAND_DRAFT_EVENT = 'dr-claw-skill-command-draft';
+const STORAGE_KEY = 'lingzhi-lab-skill-command-draft';
+export const SKILL_COMMAND_DRAFT_EVENT = 'lingzhi-lab-skill-command-draft';
 
 export function queueSkillCommandDraft(command: string): void {
   window.sessionStorage.setItem(STORAGE_KEY, command);

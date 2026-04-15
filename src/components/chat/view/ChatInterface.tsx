@@ -40,7 +40,7 @@ const DEFAULT_PROVIDER_AVAILABILITY: Record<Provider, ProviderAvailability> = {
   nano: { cliAvailable: true, cliCommand: 'nano-claude-code', installHint: null },
 };
 
-const INTAKE_GREETING = `Hello! I'm your Dr. Claw research assistant, here to help you set up your research pipeline.\n\nTo get started, could you tell me about your research field or topic?`;
+const INTAKE_GREETING = `Hello! I'm your Lingzhi Lab research assistant, here to help you set up your research pipeline.\n\nTo get started, could you tell me about your research field or topic?`;
 
 const getAutoIntakePrompt = (pendingAutoIntake?: PendingAutoIntake | null) => {
   const prompt = pendingAutoIntake?.prompt?.trim();

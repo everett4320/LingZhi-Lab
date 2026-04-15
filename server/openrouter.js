@@ -321,7 +321,7 @@ async function executeTool(name, args, workingDir) {
 
       case 'WebFetch': {
         const resp = await fetch(args.url, {
-          headers: { 'User-Agent': 'Dr. Claw Research Agent' },
+          headers: { 'User-Agent': 'Lingzhi Lab Research Agent' },
           signal: AbortSignal.timeout(30_000),
         });
         return trunc(await resp.text());
@@ -332,7 +332,7 @@ async function executeTool(name, args, workingDir) {
         try {
           const resp = await fetch(
             `https://html.duckduckgo.com/html/?q=${encoded}`,
-            { headers: { 'User-Agent': 'Dr. Claw Research Agent' }, signal: AbortSignal.timeout(15_000) },
+            { headers: { 'User-Agent': 'Lingzhi Lab Research Agent' }, signal: AbortSignal.timeout(15_000) },
           );
           const html = await resp.text();
           const results = [];
@@ -451,7 +451,7 @@ async function buildSystemPrompt(workingDir) {
 // ---------------------------------------------------------------------------
 
 async function sessionsDir() {
-  const dir = path.join(os.homedir(), '.dr-claw', SESSIONS_DIR_NAME);
+  const dir = path.join(os.homedir(), '.lingzhi-lab', SESSIONS_DIR_NAME);
   await fs.mkdir(dir, { recursive: true });
   return dir;
 }
@@ -504,8 +504,8 @@ async function streamApiCall(apiKey, model, messages, tools, signal) {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://github.com/OpenLAIR/dr-claw',
-      'X-Title': 'Dr. Claw',
+      'HTTP-Referer': 'https://github.com/OpenLAIR/lingzhi-lab',
+      'X-Title': 'Lingzhi Lab',
     },
     body: JSON.stringify(body),
     signal,

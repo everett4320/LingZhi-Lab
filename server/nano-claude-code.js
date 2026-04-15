@@ -4,7 +4,7 @@
  *
  * Requires a nano-claude-code build that supports:
  *   --output-format stream-json -p "..." --dangerously-skip-permissions
- *   --session-file <path.json> and --resume <path.json> for multi-turn persistence (absolute path under ~/.dr-claw/nano-sessions)
+ *   --session-file <path.json> and --resume <path.json> for multi-turn persistence (absolute path under ~/.lingzhi-lab/nano-sessions)
  *   result lines may include nano_session_file (optional)
  * Install: https://github.com/OpenLAIR/nano-claude-code — pip install from that repo or use the published CLI name on PATH.
  */
@@ -15,7 +15,7 @@ import crypto from 'crypto';
 import { encodeProjectPath, ensureProjectSkillLinks } from './projects.js';
 import { writeProjectTemplates } from './templates/index.js';
 import { applyStageTagsToSession, recordIndexedSession } from './utils/sessionIndex.js';
-import { ensureNanoDrClawSessionsRoot, resolveNanoSessionAbsPath } from './nanoSessionPaths.js';
+import { ensureNanoLingzhiLabSessionsRoot, resolveNanoSessionAbsPath } from './nanoSessionPaths.js';
 
 const spawnFunction = process.platform === 'win32' ? crossSpawn : spawn;
 
@@ -106,7 +106,7 @@ export async function spawnNanoClaudeCode(command, options = {}, ws) {
 
   const capturedSessionId = isPlaceholderSession ? crypto.randomUUID() : String(sessionId);
 
-  await ensureNanoDrClawSessionsRoot();
+  await ensureNanoLingzhiLabSessionsRoot();
   const sessionAbsPath = resolveNanoSessionAbsPath(capturedSessionId);
   if (!sessionAbsPath) {
     const err = 'Invalid Nano Claude Code session id';

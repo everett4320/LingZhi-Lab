@@ -10,7 +10,7 @@ import path from 'path';
  * path.join(os.homedir(), 'vibelab'), which previously restricted all
  * workspace operations to the legacy default root only.
  *
- * Current expected default root after the rename pass: ~/dr-claw.
+ * Current expected default root after the rename pass: ~/lingzhi-lab.
  *
  * Fix: revert WORKSPACES_ROOT default back to os.homedir().
  */
@@ -71,9 +71,9 @@ async function getAuthToken(request: APIRequestContext): Promise<string> {
 test.describe('Workspace Path Customization', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test('API accepts workspace creation under ~/Documents (outside ~/dr-claw)', async ({ request }) => {
+  test('API accepts workspace creation under ~/Documents (outside ~/lingzhi-lab)', async ({ request }) => {
     const token = await getAuthToken(request);
-    const customPath = path.join(os.homedir(), 'Documents', `dr-claw-test-${Date.now()}`);
+    const customPath = path.join(os.homedir(), 'Documents', `lingzhi-lab-test-${Date.now()}`);
 
     const response = await request.post('/api/projects/create-workspace', {
       headers: { Authorization: `Bearer ${token}` },
@@ -92,9 +92,9 @@ test.describe('Workspace Path Customization', () => {
     fs.rmSync(customPath, { recursive: true, force: true });
   });
 
-  test('API accepts workspace creation under ~/dr-claw (still works)', async ({ request }) => {
+  test('API accepts workspace creation under ~/lingzhi-lab (still works)', async ({ request }) => {
     const token = await getAuthToken(request);
-    const validPath = path.join(os.homedir(), 'dr-claw', `pw-test-${Date.now()}`);
+    const validPath = path.join(os.homedir(), 'lingzhi-lab', `pw-test-${Date.now()}`);
 
     const response = await request.post('/api/projects/create-workspace', {
       headers: { Authorization: `Bearer ${token}` },
@@ -112,7 +112,7 @@ test.describe('Workspace Path Customization', () => {
 
   test('new project initializes Promotion directories and canonical instance.json paths', async ({ request }) => {
     const token = await getAuthToken(request);
-    const projectPath = path.join(os.homedir(), 'dr-claw', `pw-promotion-${Date.now()}`);
+    const projectPath = path.join(os.homedir(), 'lingzhi-lab', `pw-promotion-${Date.now()}`);
     const fs = await import('fs/promises');
 
     try {
@@ -187,7 +187,7 @@ test.describe('Workspace Path Customization', () => {
 
     const response = await request.post('/api/projects/create-workspace', {
       headers: { Authorization: `Bearer ${token}` },
-      data: { workspaceType: 'new', path: '/etc/dr-claw-test' },
+      data: { workspaceType: 'new', path: '/etc/lingzhi-lab-test' },
     });
 
     expect(response.ok()).toBe(false);
