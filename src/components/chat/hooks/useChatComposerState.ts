@@ -72,6 +72,7 @@ import {
 } from "../../../utils/sessionScope";
 import {
   buildQueuedTurn,
+  demoteSteerTurnToNormal,
   enqueueSessionTurn,
   getNextDispatchableTurn,
   getSessionQueue,
@@ -79,6 +80,7 @@ import {
   reconcileSessionQueueId,
   reconcileSettledSessionQueue,
   removeQueuedTurn,
+  reorderSessionQueue,
   setSessionQueueStatus,
   type SessionQueueMap,
 } from "../utils/codexQueue";
@@ -1535,16 +1537,13 @@ export function useChatComposerState({
     [clearQueueDispatchAckTimer],
   );
 
+  // Simple dispatch: take the next queued turn, remove it from the queue,
+  // and send it as a normal codex turn. No locks, no timers, no ack.
+  // The auto-dispatch effect is the ONLY caller and it already guards
+  // against busy sessions via isLoading / hasProcessingSession.
   const dispatchNextQueuedCodexTurn = useCallback(
-    (sessionId: string, options?: { ignoreProcessingCheck?: boolean }) => {
+    (sessionId: string) => {
       if (!sessionId) {
-        return;
-      }
-
-      if (
-        queueDispatchLocksRef.current.has(sessionId) ||
-        pendingQueueDispatchesRef.current.has(sessionId)
-      ) {
         return;
       }
 
@@ -1554,40 +1553,20 @@ export function useChatComposerState({
         return;
       }
 
-      if (!options?.ignoreProcessingCheck) {
-        // Check both isLoading (local state, updates synchronously) and
-        // hasProcessingSession (parent state, may lag behind).
-        if (isLoading) {
-          return;
-        }
-        if (
-          hasProcessingSession(
-            sessionId,
-            "codex",
-            nextTurn.projectName || selectedProject?.name || currentProjectName,
-          )
-        ) {
-          return;
-        }
-      }
-
       const queuedProjectPath =
         nextTurn.projectPath ||
         selectedProject?.fullPath ||
         selectedProject?.path ||
         "";
       if (!queuedProjectPath) {
-        setChatMessages((previous) => [
-          ...previous,
-          {
-            type: "error",
-            content:
-              "Unable to execute queued message: project path is unavailable.",
-            timestamp: new Date(),
-          },
-        ]);
         return;
       }
+
+      // Remove the turn from the queue BEFORE sending to prevent
+      // the effect from picking it up again on re-render.
+      setQueuedTurnsBySession((prev) =>
+        removeQueuedTurn(prev, sessionId, nextTurn.id),
+      );
 
       const routedSessionId = getRouteSessionId();
       const currentViewSessionId =
@@ -1601,45 +1580,35 @@ export function useChatComposerState({
         (!currentViewSessionId &&
           lastSubmittedCodexSessionRef.current === sessionId);
 
-      queueDispatchLocksRef.current.add(sessionId);
-      pendingQueueDispatchesRef.current.set(sessionId, {
-        turn: nextTurn,
-        shouldUpdateForegroundState,
-      });
+      // For Claude provider, steer turns can be injected mid-turn.
+      const isClaudeSoftSteer =
+        nextTurn.kind === "steer" && normalizedProvider === "claude";
 
-      clearQueueDispatchAckTimer(sessionId);
-      const ackTimer = setTimeout(() => {
-        const pendingDispatch =
-          pendingQueueDispatchesRef.current.get(sessionId);
-        if (!pendingDispatch || pendingDispatch.turn.id !== nextTurn.id) {
-          return;
-        }
-
-        queueDispatchAckTimersRef.current.delete(sessionId);
-        queueDispatchLocksRef.current.delete(sessionId);
-        pendingQueueDispatchesRef.current.delete(sessionId);
-        requestSessionStatusCheck(sessionId, "codex");
-      }, CODEX_QUEUE_DISPATCH_ACK_TIMEOUT_MS);
-      queueDispatchAckTimersRef.current.set(sessionId, ackTimer);
-
-      sendCodexTurn({
-        text: nextTurn.text,
-        sessionId,
-        projectName: nextTurn.projectName || selectedProject?.name || currentProjectName,
-        projectPath: queuedProjectPath,
-        sessionMode:
-          nextTurn.sessionMode || selectedSession?.mode || newSessionMode,
-        updateForegroundState: shouldUpdateForegroundState,
-        appendLocalUserMessage: false,
-      });
+      if (isClaudeSoftSteer) {
+        sendMessage({
+          type: "steer-session",
+          sessionId,
+          text: nextTurn.text,
+          provider: "claude",
+        });
+      } else {
+        sendCodexTurn({
+          text: nextTurn.text,
+          sessionId,
+          projectName: nextTurn.projectName || selectedProject?.name || currentProjectName,
+          projectPath: queuedProjectPath,
+          sessionMode:
+            nextTurn.sessionMode || selectedSession?.mode || newSessionMode,
+          updateForegroundState: shouldUpdateForegroundState,
+          appendLocalUserMessage: false,
+        });
+      }
     },
     [
-      clearQueueDispatchAckTimer,
       currentSessionId,
-      isLoading,
       newSessionMode,
+      normalizedProvider,
       pendingViewSessionRef,
-      hasProcessingSession,
       selectedProject?.fullPath,
       selectedProject?.name,
       selectedProject?.path,
@@ -1648,39 +1617,15 @@ export function useChatComposerState({
       currentProjectName,
       sendCodexTurn,
       sendMessage,
-      setChatMessages,
+      setQueuedTurnsBySession,
     ],
   );
 
   const handleCodexTurnStarted = useCallback(
-    (sessionId?: string | null) => {
-      if (!sessionId) {
-        return;
-      }
-
-      codexBusyRejectedDispatchesRef.current.delete(sessionId);
-      const pendingDispatch = pendingQueueDispatchesRef.current.get(sessionId);
-      if (!pendingDispatch) {
-        return;
-      }
-
-      releasePendingQueueDispatch(sessionId);
-      setQueuedTurnsBySession((previous) =>
-        removeQueuedTurn(previous, sessionId, pendingDispatch.turn.id),
-      );
-
-      if (pendingDispatch.shouldUpdateForegroundState) {
-        setChatMessages((previous) => [
-          ...previous,
-          {
-            type: "user",
-            content: pendingDispatch.turn.text,
-            timestamp: new Date(),
-          },
-        ]);
-      }
+    (_sessionId?: string | null) => {
+      // No-op. The turn from the queue was already removed before sending.
     },
-    [releasePendingQueueDispatch, setChatMessages],
+    [],
   );
 
   const handleCodexTurnSettled = useCallback(
@@ -1692,9 +1637,6 @@ export function useChatComposerState({
         return;
       }
 
-      codexBusyRejectedDispatchesRef.current.delete(sessionId);
-      releasePendingQueueDispatch(sessionId);
-
       if (outcome === "aborted") {
         setQueuedTurnsBySession((previous) =>
           setSessionQueueStatus(previous, sessionId, "paused"),
@@ -1702,8 +1644,8 @@ export function useChatComposerState({
         return;
       }
 
+      // Reconcile temporary session IDs if needed
       const fallbackTemporarySessionId = lastSubmittedCodexSessionRef.current;
-      let dispatchSessionId = sessionId;
       if (fallbackTemporarySessionId) {
         const reconciled = reconcileSettledSessionQueue(
           queuedTurnsBySessionRef.current,
@@ -1713,28 +1655,13 @@ export function useChatComposerState({
         if (reconciled !== queuedTurnsBySessionRef.current) {
           queuedTurnsBySessionRef.current = reconciled;
           setQueuedTurnsBySession(reconciled);
-          dispatchSessionId = sessionId;
-        } else if (
-          fallbackTemporarySessionId !== sessionId &&
-          fallbackTemporarySessionId.startsWith('new-session-') &&
-          queuedTurnsBySessionRef.current[fallbackTemporarySessionId]?.length
-        ) {
-          dispatchSessionId = fallbackTemporarySessionId;
         }
       }
 
-      queueDispatchLocksRef.current.add(dispatchSessionId);
-      setTimeout(() => {
-        queueDispatchLocksRef.current.delete(dispatchSessionId);
-        requestSessionStatusCheck(dispatchSessionId, "codex");
-        dispatchNextQueuedCodexTurn(dispatchSessionId);
-      }, CODEX_QUEUE_DISPATCH_AFTER_SETTLE_MS);
+      // Auto-dispatch effect will pick up the next queued turn
+      // once isLoading flips to false.
     },
-    [
-      dispatchNextQueuedCodexTurn,
-      releasePendingQueueDispatch,
-      requestSessionStatusCheck,
-    ],
+    [],
   );
 
   const handleCodexSessionIdResolved = useCallback(
@@ -1751,52 +1678,7 @@ export function useChatComposerState({
         lastSubmittedCodexSessionRef.current = actualSessionId;
       }
 
-      if (codexBusyRejectedDispatchesRef.current.has(previousSessionId)) {
-        codexBusyRejectedDispatchesRef.current.delete(previousSessionId);
-        codexBusyRejectedDispatchesRef.current.add(actualSessionId);
-      }
-
-      if (queueDispatchLocksRef.current.has(previousSessionId)) {
-        queueDispatchLocksRef.current.delete(previousSessionId);
-        queueDispatchLocksRef.current.add(actualSessionId);
-      }
-
-      const pendingDispatch =
-        pendingQueueDispatchesRef.current.get(previousSessionId);
-      if (
-        pendingDispatch &&
-        !pendingQueueDispatchesRef.current.has(actualSessionId)
-      ) {
-        pendingQueueDispatchesRef.current.set(actualSessionId, {
-          ...pendingDispatch,
-          turn: {
-            ...pendingDispatch.turn,
-            sessionId: actualSessionId,
-          },
-        });
-      }
-      pendingQueueDispatchesRef.current.delete(previousSessionId);
-
-      clearQueueDispatchAckTimer(previousSessionId);
-      if (pendingDispatch) {
-        const ackTimer = setTimeout(() => {
-          const currentPending =
-            pendingQueueDispatchesRef.current.get(actualSessionId);
-          if (
-            !currentPending ||
-            currentPending.turn.id !== pendingDispatch.turn.id
-          ) {
-            return;
-          }
-
-          queueDispatchAckTimersRef.current.delete(actualSessionId);
-          queueDispatchLocksRef.current.delete(actualSessionId);
-          pendingQueueDispatchesRef.current.delete(actualSessionId);
-          requestSessionStatusCheck(actualSessionId, "codex");
-        }, CODEX_QUEUE_DISPATCH_ACK_TIMEOUT_MS);
-        queueDispatchAckTimersRef.current.set(actualSessionId, ackTimer);
-      }
-
+      // Move queued turns from the temporary session ID to the real one
       const reconciled = reconcileSessionQueueId(
         queuedTurnsBySessionRef.current,
         previousSessionId,
@@ -1809,68 +1691,28 @@ export function useChatComposerState({
       queuedTurnsBySessionRef.current = reconciled;
       setQueuedTurnsBySession(reconciled);
     },
-    [clearQueueDispatchAckTimer, requestSessionStatusCheck],
+    [],
   );
 
   const handleCodexSessionBusy = useCallback(
-    (sessionId?: string | null) => {
-      if (!sessionId) {
-        return;
-      }
-
-      codexBusyRejectedDispatchesRef.current.add(sessionId);
-      releasePendingQueueDispatch(sessionId);
-      queueDispatchLocksRef.current.delete(sessionId);
-
-      setTimeout(() => {
-        requestSessionStatusCheck(sessionId, "codex");
-        dispatchNextQueuedCodexTurn(sessionId);
-      }, CODEX_QUEUE_DISPATCH_AFTER_SETTLE_MS);
+    (_sessionId?: string | null) => {
+      // No-op. The queue turn was already removed before sending.
+      // Auto-dispatch effect won't re-send because the turn is gone.
     },
-    [
-      dispatchNextQueuedCodexTurn,
-      releasePendingQueueDispatch,
-      requestSessionStatusCheck,
-    ],
+    [],
   );
 
   const handleCodexSessionStatusUpdate = useCallback(
-    (sessionId?: string | null, isProcessing?: boolean) => {
-      if (!sessionId) {
-        return;
-      }
-
-      if (isProcessing) {
-        if (codexBusyRejectedDispatchesRef.current.has(sessionId)) {
-          codexBusyRejectedDispatchesRef.current.delete(sessionId);
-          return;
-        }
-        if (pendingQueueDispatchesRef.current.has(sessionId)) {
-          handleCodexTurnStarted(sessionId);
-        }
-        return;
-      }
-
-      releasePendingQueueDispatch(sessionId);
-      queueDispatchLocksRef.current.delete(sessionId);
-      dispatchNextQueuedCodexTurn(sessionId);
+    (_sessionId?: string | null, _isProcessing?: boolean) => {
+      // No-op. Auto-dispatch effect reacts to isLoading / processingSessions.
     },
-    [
-      dispatchNextQueuedCodexTurn,
-      handleCodexTurnStarted,
-      releasePendingQueueDispatch,
-    ],
+    [],
   );
 
   const removeQueuedCodexTurn = useCallback(
     (sessionId: string, turnId: string) => {
       if (!sessionId || !turnId) {
         return;
-      }
-
-      const pendingDispatch = pendingQueueDispatchesRef.current.get(sessionId);
-      if (pendingDispatch?.turn.id === turnId) {
-        releasePendingQueueDispatch(sessionId);
       }
 
       setQueuedTurnsBySession((previous) =>
@@ -1889,10 +1731,35 @@ export function useChatComposerState({
       setQueuedTurnsBySession((previous) =>
         promoteQueuedTurnToSteer(previous, sessionId, turnId),
       );
-      requestSessionStatusCheck(sessionId, "codex");
-      dispatchNextQueuedCodexTurn(sessionId);
+      // Auto-dispatch effect will pick this up if session is idle.
     },
-    [dispatchNextQueuedCodexTurn, requestSessionStatusCheck],
+    [],
+  );
+
+  const demoteQueuedCodexTurnToNormal = useCallback(
+    (sessionId: string, turnId: string) => {
+      if (!sessionId || !turnId) {
+        return;
+      }
+
+      setQueuedTurnsBySession((previous) =>
+        demoteSteerTurnToNormal(previous, sessionId, turnId),
+      );
+    },
+    [],
+  );
+
+  const reorderQueuedCodexTurns = useCallback(
+    (sessionId: string, orderedTurnIds: string[]) => {
+      if (!sessionId || orderedTurnIds.length === 0) {
+        return;
+      }
+
+      setQueuedTurnsBySession((previous) =>
+        reorderSessionQueue(previous, sessionId, orderedTurnIds),
+      );
+    },
+    [],
   );
 
   const resumeQueuedCodexTurns = useCallback(
@@ -1904,10 +1771,9 @@ export function useChatComposerState({
       setQueuedTurnsBySession((previous) =>
         setSessionQueueStatus(previous, sessionId, "queued"),
       );
-      requestSessionStatusCheck(sessionId, "codex");
-      dispatchNextQueuedCodexTurn(sessionId);
+      // Auto-dispatch effect will pick this up.
     },
-    [dispatchNextQueuedCodexTurn, requestSessionStatusCheck],
+    [],
   );
 
   useEffect(() => {
@@ -1920,25 +1786,30 @@ export function useChatComposerState({
         continue;
       }
 
-      if (
-        queueDispatchLocksRef.current.has(sessionId) ||
-        pendingQueueDispatchesRef.current.has(sessionId)
-      ) {
-        continue;
+      // For Claude provider, steer turns can be dispatched mid-turn via
+      // streamInput, so we skip the processing/loading guards for them.
+      const nextTurn = getNextDispatchableTurn(queue);
+      const isClaudeSoftSteer =
+        nextTurn?.kind === "steer" && normalizedProvider === "claude";
+
+      if (!isClaudeSoftSteer) {
+        // Guard: if the UI is still loading (local state), do not auto-dispatch.
+        // processingSessions (parent state) may lag behind isLoading, so we check both.
+        if (isLoading) {
+          continue;
+        }
+
+        const isProcessing = hasProcessingSession(sessionId, "codex", selectedProject?.name || currentProjectName);
+        if (isProcessing) {
+          continue;
+        }
       }
 
-      // Guard: if the UI is still loading (local state), do not auto-dispatch.
-      // processingSessions (parent state) may lag behind isLoading, so we check both.
-      if (isLoading) {
-        continue;
-      }
-
-      const isProcessing = hasProcessingSession(sessionId, "codex", selectedProject?.name || currentProjectName);
-      if (isProcessing) {
-        continue;
-      }
-
+      // Dispatch exactly one turn per effect run, then stop.
+      // The state update (removeQueuedTurn inside dispatch) will re-trigger
+      // this effect for the next turn.
       dispatchNextQueuedCodexTurn(sessionId);
+      break;
     }
   }, [
     dispatchNextQueuedCodexTurn,
@@ -1946,16 +1817,19 @@ export function useChatComposerState({
     currentProjectName,
     isLoading,
     isQueueBootstrapReady,
+    normalizedProvider,
     queuedTurnsBySession,
     selectedProject?.name,
   ]);
 
+  // Only show queue for the session currently visible in the UI.
+  // Do NOT fall through to lastSubmittedCodexSessionRef — that would leak
+  // queue items from a previous session into a newly opened empty session.
   const activeQueueSessionId =
     selectedSession?.id ||
     getRouteSessionId() ||
     currentSessionId ||
     pendingViewSessionRef.current?.sessionId ||
-    lastSubmittedCodexSessionRef.current ||
     null;
   const activeQueuedTurns = activeQueueSessionId
     ? getSessionQueue(queuedTurnsBySession, activeQueueSessionId)
@@ -2071,14 +1945,14 @@ export function useChatComposerState({
         currentSessionId === sessionToActivate ||
         lastSubmittedCodexSessionRef.current === sessionToActivate;
       const isCodexSessionBusy =
-        resolvedProvider === "codex" &&
+        (resolvedProvider === "codex" &&
         hasProcessingSession(
           sessionToActivate,
           resolvedProvider,
           selectedProject?.name || currentProjectName,
-        ) ||
+        )) ||
           (isLoading && isCurrentViewSession) ||
-          (isLoading && lastSubmittedCodexSessionRef.current != null));
+          (isLoading && lastSubmittedCodexSessionRef.current != null);
       const useSteerForThisSubmit =
         resolvedProvider === "codex" && (steerMode || forceSteerForSubmit);
 
@@ -3103,6 +2977,8 @@ export function useChatComposerState({
     isActiveQueuePaused,
     removeQueuedCodexTurn,
     promoteQueuedCodexTurnToSteer,
+    demoteQueuedCodexTurnToNormal,
+    reorderQueuedCodexTurns,
     resumeQueuedCodexTurns,
     handleCodexTurnStarted,
     handleCodexTurnSettled,

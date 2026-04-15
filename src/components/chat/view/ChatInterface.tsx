@@ -301,6 +301,8 @@ function ChatInterface({
     isActiveQueuePaused,
     removeQueuedCodexTurn,
     promoteQueuedCodexTurnToSteer,
+    demoteQueuedCodexTurnToNormal,
+    reorderQueuedCodexTurns,
     resumeQueuedCodexTurns,
     activeQueueSessionId,
     handleCodexTurnStarted,
@@ -869,7 +871,8 @@ function ChatInterface({
 
         {/* Queue indicator: show queued messages above the composer */}
         {activeQueuedTurns.length > 0 && (
-          <div className="mx-auto max-w-5xl px-4 pb-2 space-y-1.5">
+          <div className="px-2 sm:px-4 md:px-4 pb-2">
+          <div className="mx-auto max-w-5xl space-y-1.5">
             {isActiveQueuePaused && activeQueueSessionId && (
               <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
                 <span>Queue paused</span>
@@ -882,13 +885,41 @@ function ChatInterface({
                 </button>
               </div>
             )}
-            {activeQueuedTurns.map((turn) => (
+            {activeQueuedTurns.map((turn, index) => (
               <div
                 key={turn.id}
-                className="flex items-center gap-2 rounded-xl border border-border/40 bg-muted/40 px-3 py-2 text-sm"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', turn.id);
+                  (e.currentTarget as HTMLElement).style.opacity = '0.5';
+                }}
+                onDragEnd={(e) => {
+                  (e.currentTarget as HTMLElement).style.opacity = '1';
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const draggedId = e.dataTransfer.getData('text/plain');
+                  if (!draggedId || draggedId === turn.id || !activeQueueSessionId) return;
+                  const ids = activeQueuedTurns.map((t) => t.id);
+                  const fromIdx = ids.indexOf(draggedId);
+                  if (fromIdx === -1) return;
+                  ids.splice(fromIdx, 1);
+                  ids.splice(index, 0, draggedId);
+                  reorderQueuedCodexTurns(activeQueueSessionId, ids);
+                }}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                  turn.kind === 'steer'
+                    ? 'border-amber-500/30 bg-amber-500/10'
+                    : 'border-border/40 bg-muted/40'
+                }`}
               >
-                {/* Left icon */}
-                <svg className="shrink-0 w-4 h-4 text-muted-foreground/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                {/* Drag handle (clock icon) */}
+                <svg className="shrink-0 w-4 h-4 text-muted-foreground/60 cursor-grab active:cursor-grabbing" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
                   <polyline points="12 6 12 12 16 14" />
                 </svg>
@@ -896,22 +927,26 @@ function ChatInterface({
                 {/* Message text */}
                 <span className="truncate flex-1 text-foreground/80">{turn.text}</span>
 
-                {/* Steer button — only show for normal turns */}
-                {turn.kind === 'normal' && activeQueueSessionId && (
+                {/* Steer toggle button */}
+                {activeQueueSessionId && (
                   <button
                     type="button"
-                    onClick={() => promoteQueuedCodexTurnToSteer(activeQueueSessionId, turn.id)}
-                    className="shrink-0 rounded-md border border-border/50 bg-background/80 px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                    title="Promote to steer (insert ahead of queue)"
+                    onClick={() => {
+                      if (turn.kind === 'steer') {
+                        demoteQueuedCodexTurnToNormal(activeQueueSessionId, turn.id);
+                      } else {
+                        promoteQueuedCodexTurnToSteer(activeQueueSessionId, turn.id);
+                      }
+                    }}
+                    className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium transition-colors ${
+                      turn.kind === 'steer'
+                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
+                        : 'border-border/50 bg-background/80 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                    }`}
+                    title={turn.kind === 'steer' ? 'Demote back to normal queue' : 'Promote to steer (insert ahead of queue)'}
                   >
                     Steer
                   </button>
-                )}
-                {/* Already steer badge */}
-                {turn.kind === 'steer' && (
-                  <span className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-                    Steer
-                  </span>
                 )}
 
                 {/* Delete button */}
@@ -928,6 +963,7 @@ function ChatInterface({
                 </button>
               </div>
             ))}
+          </div>
           </div>
         )}
 

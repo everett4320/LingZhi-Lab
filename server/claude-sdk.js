@@ -848,6 +848,50 @@ async function abortClaudeSDKSession(sessionId) {
 }
 
 /**
+ * Injects a steer message into an active Claude SDK session via streamInput.
+ * The message is picked up at the next turn boundary (after the current tool
+ * call or thinking step completes) without interrupting the running turn.
+ *
+ * @param {string} sessionId - Session identifier
+ * @param {string} text - The steer message text
+ * @returns {Promise<boolean>} True if the steer was accepted
+ */
+async function steerClaudeSDKSession(sessionId, text) {
+  const session = getSession(sessionId);
+  if (!session || session.status !== 'active') {
+    console.log(`[steer] Session ${sessionId} not active, cannot steer`);
+    return false;
+  }
+
+  if (!session.instance || typeof session.instance.streamInput !== 'function') {
+    console.log(`[steer] Session ${sessionId} does not support streamInput`);
+    return false;
+  }
+
+  try {
+    console.log(`[steer] Injecting steer message into session ${sessionId}: "${text.substring(0, 80)}"`);
+
+    // Create a one-shot async iterable that yields a single user message
+    async function* singleMessage() {
+      yield {
+        type: 'user',
+        message: { role: 'user', content: text },
+        parent_tool_use_id: null,
+        isSynthetic: true,
+        session_id: sessionId,
+      };
+    }
+
+    await session.instance.streamInput(singleMessage());
+    console.log(`[steer] Steer message injected successfully for session ${sessionId}`);
+    return true;
+  } catch (error) {
+    console.error(`[steer] Error injecting steer message for session ${sessionId}:`, error);
+    return false;
+  }
+}
+
+/**
  * Checks if an SDK session is currently active
  * @param {string} sessionId - Session identifier
  * @returns {boolean} True if session is active
@@ -943,6 +987,7 @@ async function runClaudeBtw({ question, transcript, cwd, model, signal }) {
 export {
   queryClaudeSDK,
   abortClaudeSDKSession,
+  steerClaudeSDKSession,
   isClaudeSDKSessionActive,
   getClaudeSDKSessionStartTime,
   getActiveClaudeSDKSessions,

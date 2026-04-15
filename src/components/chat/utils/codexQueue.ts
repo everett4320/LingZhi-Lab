@@ -138,6 +138,61 @@ export function getNextDispatchableTurn(queue: QueuedTurn[]): QueuedTurn | null 
   return queue.find((turn) => turn.status === 'queued' && turn.kind === 'normal') || null;
 }
 
+export function demoteSteerTurnToNormal(
+  queueBySession: SessionQueueMap,
+  sessionId: string,
+  turnId: string,
+): SessionQueueMap {
+  const queue = getSessionQueue(queueBySession, sessionId);
+  if (queue.length === 0) {
+    return queueBySession;
+  }
+
+  const targetTurn = queue.find((turn) => turn.id === turnId);
+  if (!targetTurn || targetTurn.kind !== 'steer') {
+    return queueBySession;
+  }
+
+  const demotedTurn: QueuedTurn = { ...targetTurn, kind: 'normal' };
+  const remainingTurns = queue.filter((turn) => turn.id !== turnId);
+
+  // Append to end of queue (back to normal position)
+  return {
+    ...queueBySession,
+    [sessionId]: [...remainingTurns, demotedTurn],
+  };
+}
+
+export function reorderSessionQueue(
+  queueBySession: SessionQueueMap,
+  sessionId: string,
+  orderedTurnIds: string[],
+): SessionQueueMap {
+  const queue = getSessionQueue(queueBySession, sessionId);
+  if (queue.length <= 1) {
+    return queueBySession;
+  }
+
+  const turnMap = new Map(queue.map((turn) => [turn.id, turn]));
+  const reordered: QueuedTurn[] = [];
+  for (const id of orderedTurnIds) {
+    const turn = turnMap.get(id);
+    if (turn) {
+      reordered.push(turn);
+      turnMap.delete(id);
+    }
+  }
+  // Append any turns not in orderedTurnIds (safety net)
+  for (const turn of turnMap.values()) {
+    reordered.push(turn);
+  }
+
+  return {
+    ...queueBySession,
+    [sessionId]: reordered,
+  };
+}
+
 export function reconcileSessionQueueId(
   queueBySession: SessionQueueMap,
   fromSessionId?: string | null,

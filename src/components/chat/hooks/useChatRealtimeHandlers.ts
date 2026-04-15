@@ -491,6 +491,7 @@ export function useChatRealtimeHandlers({
       "session-accepted",
       "session-busy",
       "session-state-changed",
+      "steer-ack",
     ];
     const isGlobalMessage = globalMessageTypes.includes(
       String(latestMessage.type),
@@ -988,6 +989,9 @@ export function useChatRealtimeHandlers({
 
         if (latestMessage.provider === "codex") {
           onCodexSessionBusy?.(busySessionId);
+          // The queue system handles busy silently — do NOT show
+          // "Session is busy" in the chat when the queue is managing dispatch.
+          break;
         }
 
         if (isCurrentSession) {
@@ -1017,6 +1021,21 @@ export function useChatRealtimeHandlers({
             ];
           });
         }
+        break;
+      }
+
+      case "steer-ack": {
+        // Acknowledgement that a soft steer message was injected (or rejected).
+        // For now just log — the queue turn was already removed optimistically.
+        const ackSessionId =
+          typeof latestMessage.sessionId === "string"
+            ? latestMessage.sessionId
+            : null;
+        const ackSuccess = latestMessage.success === true;
+        console.log(
+          `[steer-ack] session=${ackSessionId} success=${ackSuccess}`,
+          latestMessage.reason || "",
+        );
         break;
       }
 

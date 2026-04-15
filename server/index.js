@@ -50,7 +50,7 @@ import {
     buildLifecycleMessageFromPayload as _buildLifecycleMessageFromPayload,
 } from './utils/sessionLifecycle.js';
 import { getProjectTokenUsageSummary } from './project-token-usage.js';
-import { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive, getClaudeSDKSessionStartTime, getActiveClaudeSDKSessions, resolveToolApproval } from './claude-sdk.js';
+import { queryClaudeSDK, abortClaudeSDKSession, steerClaudeSDKSession, isClaudeSDKSessionActive, getClaudeSDKSessionStartTime, getActiveClaudeSDKSessions, resolveToolApproval } from './claude-sdk.js';
 import { spawnCursor, abortCursorSession, isCursorSessionActive, getCursorSessionStartTime, getActiveCursorSessions } from './cursor-cli.js';
 import { queryCodex, abortCodexSession, isCodexSessionActive, getCodexSessionStartTime, getActiveCodexSessions } from './openai-codex.js';
 import { spawnGemini, abortGeminiSession, isGeminiSessionActive, getGeminiSessionStartTime, getActiveGeminiSessions } from './gemini-cli.js';
@@ -78,7 +78,7 @@ import computeRoutes from './routes/compute.js';
 import newsRoutes from './routes/news.js';
 import autoResearchRoutes from './routes/auto-research.js';
 import referencesRoutes from './routes/references.js';
-import { initializeDatabase, sessionDb, tagDb } from './database/db.js';
+import { initializeDatabase, sessionDb, tagDb, projectDb } from './database/db.js';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
 import { IS_PLATFORM } from './constants/config.js';
 import { enqueueTelemetryEvent } from './telemetry.js';
@@ -2047,6 +2047,35 @@ function handleChatConnection(ws, request) {
                     reason: success ? 'session-aborted' : 'abort-failed',
                     projectPath: data.options?.projectPath || data.options?.cwd || null,
                 });
+            } else if (data.type === 'steer-session') {
+                // Soft-inject a user message into an active Claude session.
+                // The message is picked up at the next turn boundary without
+                // interrupting the current tool call or thinking step.
+                const sessionId = data.sessionId;
+                const text = data.text;
+                const provider = data.provider || 'claude';
+                console.log(`[steer] Received steer request for ${provider} session ${sessionId}`);
+
+                if (provider === 'claude' && sessionId && text) {
+                    const success = await steerClaudeSDKSession(sessionId, text);
+                    writer.send({
+                        type: 'steer-ack',
+                        sessionId,
+                        provider,
+                        success,
+                    });
+                } else {
+                    // For non-Claude providers, steer is not supported mid-turn.
+                    // The frontend queue system handles this by waiting for turn
+                    // completion and dispatching as the next normal turn.
+                    writer.send({
+                        type: 'steer-ack',
+                        sessionId,
+                        provider,
+                        success: false,
+                        reason: 'provider-unsupported',
+                    });
+                }
             } else if (data.type === 'claude-permission-response') {
                 // Relay UI approval decisions back into the SDK control flow.
                 // This does not persist permissions; it only resolves the in-flight request,
