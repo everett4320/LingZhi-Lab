@@ -188,15 +188,7 @@ const PROJECT_TONES = [
 ] as const;
 
 function getProjectSessions(project: Project): ProjectSession[] {
-  return [
-    ...(project.sessions ?? []),
-    ...(project.cursorSessions ?? []),
-    ...(project.codexSessions ?? []),
-    ...(project.geminiSessions ?? []),
-    ...(project.openrouterSessions ?? []),
-    ...(project.localSessions ?? []),
-    ...(project.nanoSessions ?? []),
-  ];
+  return [...(project.codexSessions ?? [])];
 }
 
 function getLastActivity(project: Project) {

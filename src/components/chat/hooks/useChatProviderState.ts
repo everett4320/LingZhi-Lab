@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { authenticatedFetch } from '../../../utils/api';
-import { CLAUDE_MODELS, CODEX_MODELS, CURSOR_MODELS, GEMINI_MODELS, LOCAL_MODELS, NANO_CLAUDE_CODE_MODELS, OPENROUTER_MODELS } from '../../../../shared/modelConstants';
-import type { PendingPermissionRequest, PermissionMode, Provider } from '../types/types';
+import { CODEX_MODELS } from '../../../../shared/modelConstants';
+import type { PendingPermissionRequest, PermissionMode } from '../types/types';
 import type { ProjectSession, SessionProvider } from '../../../types/app';
 
 interface UseChatProviderStateArgs {
@@ -11,40 +10,15 @@ interface UseChatProviderStateArgs {
 export function useChatProviderState({ selectedSession }: UseChatProviderStateArgs) {
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
   const [pendingPermissionRequests, setPendingPermissionRequests] = useState<PendingPermissionRequest[]>([]);
-  const [provider, setProvider] = useState<SessionProvider>(() => {
-    return (localStorage.getItem('selected-provider') as SessionProvider) || 'claude';
-  });
-  const [cursorModel, setCursorModel] = useState<string>(() => {
-    return localStorage.getItem('cursor-model') || CURSOR_MODELS.DEFAULT;
-  });
-  const [claudeModel, setClaudeModel] = useState<string>(() => {
-    return localStorage.getItem('claude-model') || CLAUDE_MODELS.DEFAULT;
-  });
+  const [provider, setProvider] = useState<SessionProvider>('codex');
   const [codexModel, setCodexModel] = useState<string>(() => {
     return localStorage.getItem('codex-model') || CODEX_MODELS.DEFAULT;
-  });
-  const [geminiModel, setGeminiModel] = useState<string>(() => {
-    return localStorage.getItem('gemini-model') || GEMINI_MODELS.DEFAULT;
-  });
-  const [openrouterModel, setOpenrouterModel] = useState<string>(() => {
-    return localStorage.getItem('openrouter-model') || OPENROUTER_MODELS.DEFAULT;
-  });
-  const [localModel, setLocalModel] = useState<string>(() => {
-    return localStorage.getItem('local-model') || LOCAL_MODELS.DEFAULT;
-  });
-  const [nanoModel, setNanoModel] = useState<string>(() => {
-    return (
-      localStorage.getItem('nano-claude-code-model') ||
-      NANO_CLAUDE_CODE_MODELS.DEFAULT
-    );
   });
 
   const lastProviderRef = useRef(provider);
 
-  const getProviderPermissionModes = useCallback((p: SessionProvider): PermissionMode[] => {
-    return p === 'codex'
-      ? ['default', 'acceptEdits', 'bypassPermissions']
-      : ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
+  const getProviderPermissionModes = useCallback((_p: SessionProvider): PermissionMode[] => {
+    return ['default', 'acceptEdits', 'bypassPermissions'];
   }, []);
 
   const getProviderModeStorageKey = useCallback((p: SessionProvider) => `permissionMode-provider-${p}`, []);
@@ -73,9 +47,12 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
     if (!selectedSession?.__provider || selectedSession.__provider === provider) {
       return;
     }
-
-    setProvider(selectedSession.__provider);
-    localStorage.setItem('selected-provider', selectedSession.__provider);
+    // Codex-only runtime: hard-ignore non-codex sessions/providers.
+    if (selectedSession.__provider !== 'codex') {
+      return;
+    }
+    setProvider('codex');
+    localStorage.setItem('selected-provider', 'codex');
   }, [provider, selectedSession]);
 
   useEffect(() => {
@@ -93,26 +70,9 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
   }, [selectedSession?.id]);
 
   useEffect(() => {
-    if (provider !== 'cursor') {
-      return;
-    }
-
-    authenticatedFetch('/api/cursor/config')
-      .then((response) => response.json())
-      .then((data) => {
-        if (!data.success || !data.config?.model?.modelId) {
-          return;
-        }
-
-        const modelId = data.config.model.modelId as string;
-        if (!localStorage.getItem('cursor-model')) {
-          setCursorModel(modelId);
-        }
-      })
-      .catch((error) => {
-        console.error('Error loading Cursor config:', error);
-      });
-  }, [provider]);
+    // Codex-only runtime: force canonical provider in storage.
+    localStorage.setItem('selected-provider', 'codex');
+  }, []);
 
   const cyclePermissionMode = useCallback(() => {
     const modes = getProviderPermissionModes(provider);
@@ -131,20 +91,8 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
   return {
     provider,
     setProvider,
-    cursorModel,
-    setCursorModel,
-    claudeModel,
-    setClaudeModel,
     codexModel,
     setCodexModel,
-    geminiModel,
-    setGeminiModel,
-    openrouterModel,
-    setOpenrouterModel,
-    localModel,
-    setLocalModel,
-    nanoModel,
-    setNanoModel,
     permissionMode,
     setPermissionMode,
     pendingPermissionRequests,
@@ -152,3 +100,4 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
     cyclePermissionMode,
   };
 }
+

@@ -23,20 +23,15 @@ import type {
   TouchEvent,
 } from 'react';
 import type { CodexReasoningEffortId } from '../../constants/codexReasoningEfforts';
-import type { GeminiThinkingModeId } from '../../../../../shared/geminiThinkingSupport';
 import type { AttachedPrompt, PendingPermissionRequest, PermissionMode, Provider, TokenBudget } from '../../types/types';
-import type { ProviderAvailability } from '../../types/types';
 import type { SessionMode, SessionProvider } from '../../../../types/app';
-import { CLAUDE_MODELS, CURSOR_MODELS, CODEX_MODELS, GEMINI_MODELS, LOCAL_MODELS, NANO_CLAUDE_CODE_MODELS, OPENROUTER_MODELS } from '../../../../../shared/modelConstants';
-import { authenticatedFetch } from '../../../../utils/api';
+import { CODEX_MODELS } from '../../../../../shared/modelConstants';
 import { isAutoResearchScenario } from '../../utils/autoResearch';
 
 // New subcomponents
 import SkillDropdown from './SkillDropdown';
 import AutoResearchDropdown from './AutoResearchDropdown';
 import ModelSelector from './ModelSelector';
-import AgentSelector, { type ProviderDef } from './AgentSelector';
-import OpenRouterModelInput from './OpenRouterModelInput';
 import SessionModeSelector from './SessionModeSelector';
 
 interface MentionableFile {
@@ -58,33 +53,8 @@ interface SlashCommand {
   [key: string]: unknown;
 }
 
-const PROVIDERS: ProviderDef[] = [
-  { id: 'claude', name: 'Claude Code', accent: 'border-primary', ring: 'ring-primary/15', check: 'bg-primary text-primary-foreground' },
-  { id: 'gemini', name: 'Gemini CLI', accent: 'border-blue-500 dark:border-blue-400', ring: 'ring-blue-500/15', check: 'bg-blue-500 text-white' },
-  { id: 'codex', name: 'Codex', accent: 'border-emerald-600 dark:border-emerald-400', ring: 'ring-emerald-600/15', check: 'bg-emerald-600 dark:bg-emerald-500 text-white' },
-  { id: 'openrouter', name: 'OpenRouter', accent: 'border-violet-500 dark:border-violet-400', ring: 'ring-violet-500/15', check: 'bg-violet-500 text-white' },
-  { id: 'local', name: 'Local GPU', accent: 'border-emerald-500 dark:border-emerald-400', ring: 'ring-emerald-500/15', check: 'bg-emerald-500 text-white' },
-  // { id: 'nano', name: 'Nano Claude Code', accent: 'border-amber-600 dark:border-amber-400', ring: 'ring-amber-600/15', check: 'bg-amber-600 text-white' },
-];
-
-function getModelConfig(p: SessionProvider) {
-  if (p === 'claude') return CLAUDE_MODELS;
-  if (p === 'codex') return CODEX_MODELS;
-  if (p === 'gemini') return GEMINI_MODELS;
-  if (p === 'openrouter') return OPENROUTER_MODELS;
-  if (p === 'local') return LOCAL_MODELS;
-  if (p === 'nano') return NANO_CLAUDE_CODE_MODELS;
-  return CURSOR_MODELS;
-}
-
-function getModelValue(p: SessionProvider, c: string, cu: string, co: string, g: string, or: string, lo: string, na: string) {
-  if (p === 'claude') return c;
-  if (p === 'codex') return co;
-  if (p === 'gemini') return g;
-  if (p === 'openrouter') return or;
-  if (p === 'local') return lo;
-  if (p === 'nano') return na;
-  return cu;
+function getModelConfig(_p: SessionProvider) {
+  return CODEX_MODELS;
 }
 
 interface ChatComposerProps {
@@ -101,13 +71,8 @@ interface ChatComposerProps {
   permissionMode: PermissionMode | string;
   onModeSwitch: () => void;
   codexModel: string;
-  geminiModel: string;
-  thinkingMode: string;
-  setThinkingMode: Dispatch<SetStateAction<string>>;
   codexReasoningEffort: CodexReasoningEffortId;
   setCodexReasoningEffort: Dispatch<SetStateAction<CodexReasoningEffortId>>;
-  geminiThinkingMode: GeminiThinkingModeId;
-  setGeminiThinkingMode: Dispatch<SetStateAction<GeminiThinkingModeId>>;
   tokenBudget: TokenBudget | null;
   slashCommandsCount: number;
   onToggleCommandMenu: () => void;
@@ -159,20 +124,7 @@ interface ChatComposerProps {
   onUpdateAttachedPrompt: (promptText: string) => void;
   centered?: boolean;
   setAttachedPrompt?: (prompt: AttachedPrompt | null) => void;
-  setProvider?: (next: SessionProvider) => void;
-  claudeModel?: string;
-  setClaudeModel?: (model: string) => void;
-  cursorModel?: string;
-  setCursorModel?: (model: string) => void;
   setCodexModel?: (model: string) => void;
-  setGeminiModel?: (model: string) => void;
-  openrouterModel?: string;
-  setOpenrouterModel?: (model: string) => void;
-  localModel?: string;
-  setLocalModel?: (model: string) => void;
-  nanoModel?: string;
-  setNanoModel?: (model: string) => void;
-  providerAvailability?: Record<SessionProvider, ProviderAvailability>;
   newSessionMode?: SessionMode;
   onNewSessionModeChange?: (mode: SessionMode) => void;
 }
@@ -188,13 +140,8 @@ export default function ChatComposer({
   permissionMode,
   onModeSwitch,
   codexModel,
-  geminiModel,
-  thinkingMode,
-  setThinkingMode,
   codexReasoningEffort,
   setCodexReasoningEffort,
-  geminiThinkingMode,
-  setGeminiThinkingMode,
   tokenBudget,
   slashCommandsCount,
   onToggleCommandMenu,
@@ -246,20 +193,7 @@ export default function ChatComposer({
   onUpdateAttachedPrompt,
   centered,
   setAttachedPrompt,
-  setProvider,
-  claudeModel: claudeModelProp,
-  setClaudeModel,
-  cursorModel: cursorModelProp,
-  setCursorModel,
   setCodexModel,
-  setGeminiModel,
-  openrouterModel: openrouterModelProp,
-  setOpenrouterModel,
-  localModel: localModelProp,
-  setLocalModel,
-  nanoModel: nanoModelProp,
-  setNanoModel,
-  providerAvailability,
   newSessionMode,
   onNewSessionModeChange,
 }: ChatComposerProps) {
@@ -285,77 +219,12 @@ export default function ChatComposer({
 
   // Provider/model handling for centered mode
   const sessionProvider = provider as SessionProvider;
-  const currentModel = getModelValue(sessionProvider, claudeModelProp || '', cursorModelProp || '', codexModel, geminiModel, openrouterModelProp || '', localModelProp || '', nanoModelProp || '');
-
-  const [ollamaModels, setOllamaModels] = useState<Array<{ value: string; label: string }>>([]);
-  const [isLoadingOllamaModels, setIsLoadingOllamaModels] = useState(false);
-  const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (sessionProvider !== 'local') return;
-    let cancelled = false;
-    setIsLoadingOllamaModels(true);
-    setOllamaModelsError(null);
-    const serverUrl = localStorage.getItem('local-gpu-server-url') || 'http://localhost:11434';
-    authenticatedFetch(`/api/cli/local/models?serverUrl=${encodeURIComponent(serverUrl)}`)
-      .then(async (res) => ({ ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) }))
-      .then((data) => {
-        if (cancelled) return;
-        if (data.ok && data.data.models?.length) {
-          const opts = data.data.models.map((m: any) => ({
-            value: m.name,
-            label: `${m.displayName || m.name}${m.size ? ` (${m.size})` : ''}`,
-          }));
-          setOllamaModels(opts);
-          setOllamaModelsError(null);
-          if (!localModelProp && opts.length > 0) {
-            const small = data.data.models.find((m: any) => m.sizeB && m.sizeB <= 14);
-            const pick = small ? small.name : opts[0].value;
-            setLocalModel?.(pick);
-            localStorage.setItem('local-model', pick);
-          }
-          return;
-        }
-        setOllamaModels([]);
-        if (data.status === 503) {
-          setOllamaModelsError(t('localModels.notRunning'));
-          return;
-        }
-        setOllamaModelsError(data.data?.error || t('localModels.loadFailed'));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setOllamaModels([]);
-        setOllamaModelsError(t('localModels.networkError'));
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingOllamaModels(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionProvider, localModelProp, setLocalModel, t]);
-
-  const rawModelConfig = getModelConfig(sessionProvider);
-  const modelConfig = sessionProvider === 'local' && ollamaModels.length > 0
-    ? { ...rawModelConfig, OPTIONS: ollamaModels }
-    : rawModelConfig;
-
-  const selectProvider = (next: SessionProvider) => {
-    if (providerAvailability?.[next]?.cliAvailable === false) return;
-    setProvider?.(next);
-    localStorage.setItem('selected-provider', next);
-    setTimeout(() => textareaRef.current?.focus(), 100);
-  };
+  const currentModel = codexModel;
+  const modelConfig = getModelConfig(sessionProvider);
 
   const handleModelChange = (value: string) => {
-    if (sessionProvider === 'claude') { setClaudeModel?.(value); localStorage.setItem('claude-model', value); }
-    else if (sessionProvider === 'codex') { setCodexModel?.(value); localStorage.setItem('codex-model', value); }
-    else if (sessionProvider === 'gemini') { setGeminiModel?.(value); localStorage.setItem('gemini-model', value); }
-    else if (sessionProvider === 'openrouter') { setOpenrouterModel?.(value); localStorage.setItem('openrouter-model', value); }
-    else if (sessionProvider === 'local') { setLocalModel?.(value); localStorage.setItem('local-model', value); }
-    else if (sessionProvider === 'nano') { setNanoModel?.(value); localStorage.setItem('nano-claude-code-model', value); }
-    else { setCursorModel?.(value); localStorage.setItem('cursor-model', value); }
+    setCodexModel?.(value);
+    localStorage.setItem('codex-model', value);
   };
 
   const sessionModeChoices: Array<{ id: SessionMode; titleKey: string }> = [
@@ -604,38 +473,14 @@ export default function ChatComposer({
 
                 {/* Right side */}
                 <div className="flex items-center gap-1.5">
-                  {/* Agent selector — only in empty state */}
-                  {centered && providerAvailability && (
-                    <AgentSelector
-                      providers={PROVIDERS}
-                      activeProvider={sessionProvider}
-                      providerAvailability={providerAvailability}
-                      onSelect={selectProvider}
-                      t={t}
-                    />
-                  )}
-
                   {/* Model selector */}
                   {modelConfig && (
                     <>
-                      {(modelConfig as any).ALLOWS_CUSTOM ? (
-                        <OpenRouterModelInput value={currentModel} options={modelConfig.OPTIONS} onChange={handleModelChange} />
-                      ) : (modelConfig as any).IS_LOCAL && modelConfig.OPTIONS.length === 0 ? (
-                        <span
-                          className="text-[10px] text-muted-foreground/70 px-2 py-0.5 border border-border/50 rounded-lg"
-                          title={ollamaModelsError || undefined}
-                        >
-                          {isLoadingOllamaModels
-                            ? t('localModels.loading')
-                            : ollamaModelsError || t('localModels.empty')}
-                        </span>
-                      ) : (
-                        <ModelSelector
-                          value={currentModel}
-                          options={modelConfig.OPTIONS}
-                          onChange={handleModelChange}
-                        />
-                      )}
+                      <ModelSelector
+                        value={currentModel}
+                        options={modelConfig.OPTIONS}
+                        onChange={handleModelChange}
+                      />
                     </>
                   )}
 
@@ -655,13 +500,8 @@ export default function ChatComposer({
                     onModeSwitch={onModeSwitch}
                     provider={provider}
                     codexModel={codexModel}
-                    geminiModel={geminiModel}
-                    thinkingMode={thinkingMode}
-                    setThinkingMode={setThinkingMode}
                     codexReasoningEffort={codexReasoningEffort}
                     setCodexReasoningEffort={setCodexReasoningEffort}
-                    geminiThinkingMode={geminiThinkingMode}
-                    setGeminiThinkingMode={setGeminiThinkingMode}
                     tokenBudget={tokenBudget}
                     slashCommandsCount={slashCommandsCount}
                     onToggleCommandMenu={onToggleCommandMenu}

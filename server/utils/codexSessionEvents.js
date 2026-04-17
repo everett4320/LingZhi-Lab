@@ -2,6 +2,8 @@ export function buildCodexSessionCreatedEvent({
   sessionId,
   sessionMode = 'research',
   projectName = null,
+  provisionalSessionId = null,
+  clientTurnId = null,
 }) {
   return {
     type: 'session-created',
@@ -9,5 +11,7 @@ export function buildCodexSessionCreatedEvent({
     provider: 'codex',
     mode: sessionMode || 'research',
     ...(projectName ? { projectName } : {}),
+    ...(provisionalSessionId ? { provisionalSessionId } : {}),
+    ...(clientTurnId ? { clientTurnId } : {}),
   };
 }

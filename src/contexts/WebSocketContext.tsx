@@ -9,6 +9,31 @@ type WebSocketContextType = {
   isConnected: boolean;
 };
 
+const normalizeCodexChatEvent = (data: any): any | null => {
+  if (!data || typeof data !== 'object') {
+    return data;
+  }
+
+  const type = typeof data.type === 'string' ? data.type : '';
+  if (!type.startsWith('chat-')) {
+    return data;
+  }
+
+  const scope = data.scope && typeof data.scope === 'object' ? data.scope : null;
+  const provider = scope?.provider ?? data.provider;
+  if (provider && provider !== 'codex') {
+    console.warn('[ws] Ignored non-codex chat event:', type, provider);
+    return null;
+  }
+
+  return {
+    ...data,
+    provider: 'codex',
+    projectName: scope?.projectName ?? data.projectName ?? null,
+    sessionId: scope?.sessionId ?? data.sessionId ?? null,
+  };
+};
+
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
 
 export const useWebSocket = () => {
@@ -40,6 +65,8 @@ const useWebSocketProviderState = (): WebSocketContextType => {
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
+  const lastSentAtByTypeRef = useRef<Map<string, number>>(new Map());
+  const seenUnifiedSessionKeysRef = useRef<Set<string>>(new Set());
   const { token } = useAuth();
 
   // Message queue: ensures every WebSocket message is delivered to consumers
@@ -89,12 +116,77 @@ const useWebSocketProviderState = (): WebSocketContextType => {
         retryCountRef.current = 0;
         setIsConnected(true);
         wsRef.current = websocket;
+        // Reset migration dedup windows on reconnect.
+        seenUnifiedSessionKeysRef.current.clear();
+        lastSentAtByTypeRef.current.clear();
       };
 
       websocket.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          messageQueueRef.current.push(data);
+          const parsed = JSON.parse(event.data);
+          const parsedType = typeof parsed?.type === 'string' ? parsed.type : '';
+
+          // Codex-only hard guard for incoming messages.
+          const parsedProvider =
+            typeof parsed?.provider === 'string'
+              ? parsed.provider
+              : typeof parsed?.scope?.provider === 'string'
+                ? parsed.scope.provider
+                : null;
+          if (parsedProvider && parsedProvider !== 'codex') {
+            console.warn('[ws] Ignored non-codex websocket event:', parsedType, parsedProvider);
+            return;
+          }
+
+          // Ignore server ack-like responses for outbound commands blocked on client.
+          if (parsedType === 'command-ignored' && parsed?.reason === 'unsupported-provider') {
+            return;
+          }
+          if (parsedType === 'permission-response-ignored') {
+            return;
+          }
+
+          // Ignore periodic check responses when they clearly don't correspond to a
+          // locally initiated status check.
+          if (parsedType === 'session-status' && parsed?.ignored === true && parsed?.reason === 'unsupported-provider') {
+            const lastCheckAt = lastSentAtByTypeRef.current.get('check-session-status') || 0;
+            if (Date.now() - lastCheckAt > 8000) {
+              return;
+            }
+          }
+
+          if (parsedType === 'chat-session-created') {
+            const scope = parsed?.scope || {};
+            const key = `${scope.projectName || ''}::${scope.sessionId || ''}`;
+            if (key !== '::') {
+              seenUnifiedSessionKeysRef.current.add(key);
+            }
+          }
+
+          // During dual-send migration, ignore legacy codex events once unified
+          // session-created has been observed for the same scope.
+          if (parsedType.startsWith('codex-')) {
+            const projectName =
+              parsed?.projectName ||
+              parsed?.data?.projectName ||
+              null;
+            const sessionId =
+              parsed?.actualSessionId ||
+              parsed?.sessionId ||
+              null;
+            if (projectName && sessionId) {
+              const key = `${projectName}::${sessionId}`;
+              if (seenUnifiedSessionKeysRef.current.has(key)) {
+                return;
+              }
+            }
+          }
+
+          const normalized = normalizeCodexChatEvent(parsed);
+          if (!normalized) {
+            return;
+          }
+          messageQueueRef.current.push(normalized);
           if (!drainTimerRef.current) {
             drainTimerRef.current = setTimeout(drainQueue, 0);
           }
@@ -125,6 +217,24 @@ const useWebSocketProviderState = (): WebSocketContextType => {
   }, [token, drainQueue]);
 
   const sendMessage = useCallback((message: any) => {
+    const type = typeof message?.type === 'string' ? message.type : '';
+    if (type.endsWith('-command') && type !== 'codex-command') {
+      console.warn('[ws] Blocked non-codex outbound command:', type);
+      return;
+    }
+    if (
+      (type === 'abort-session' || type === 'check-session-status')
+      && message?.provider
+      && message.provider !== 'codex'
+    ) {
+      console.warn('[ws] Blocked non-codex outbound control message:', type, message.provider);
+      return;
+    }
+
+    if (type) {
+      lastSentAtByTypeRef.current.set(type, Date.now());
+    }
+
     const socket = wsRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(message));

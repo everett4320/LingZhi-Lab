@@ -17,7 +17,6 @@ describe('sessionMessageCache', () => {
     expect(keys).toEqual(
       expect.arrayContaining([
         'chat_messages_proj-a_codex_sess-1',
-        'chat_messages_proj-a_claude_sess-1',
         'chat_messages_proj-a_sess-1',
       ]),
     );

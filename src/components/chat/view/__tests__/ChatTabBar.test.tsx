@@ -18,4 +18,27 @@ describe('ChatTabBar', () => {
 
     expect(html).toContain('aria-hidden="true"');
   });
+
+  it('shows processing indicator when scoped processing key is present', () => {
+    const html = renderToStaticMarkup(
+      <ChatTabBar
+        tabs={[
+          {
+            id: 'tab-1',
+            sessionId: 'sess-1',
+            provider: 'codex',
+            projectName: 'proj-a',
+            title: 'Session A',
+            isActive: true,
+          },
+        ]}
+        processingSessions={new Set(['proj-a::codex::sess-1'])}
+        onSwitchTab={() => {}}
+        onCloseTab={() => {}}
+        onNewTab={() => {}}
+      />,
+    );
+
+    expect(html).toContain('animate-pulse');
+  });
 });

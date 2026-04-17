@@ -33,7 +33,7 @@ export function getPermissionSuggestion(
   message: ChatMessage | null | undefined,
   provider: string,
 ): PermissionSuggestion | null {
-  if (provider !== 'claude' && provider !== 'gemini') return null;
+  if (provider !== 'codex') return null;
   if (!message?.toolResult?.isError) return null;
 
   const toolName = message?.toolName;
@@ -62,3 +62,4 @@ export function grantToolPermission(entry: string | null, provider?: string): Pe
   safeLocalStorage.setItem(getProviderSettingsKey(provider), JSON.stringify(updatedSettings));
   return { success: true, alreadyAllowed, updatedSettings };
 }
+

@@ -13,59 +13,37 @@ function buildBaseProject(overrides: Partial<Project> = {}): Project {
     name: 'proj-a',
     displayName: 'proj-a',
     fullPath: 'C:\\proj-a',
-    sessions: [],
-    cursorSessions: [],
     codexSessions: [],
-    geminiSessions: [],
-    openrouterSessions: [],
-    localSessions: [],
-    nanoSessions: [],
     ...overrides,
   };
 }
 
 describe('projectsSessionSync', () => {
-  it('upserts sessions into the correct list for every supported provider', () => {
-    const providerCases = [
-      ['claude', 'sessions'],
-      ['cursor', 'cursorSessions'],
-      ['codex', 'codexSessions'],
-      ['gemini', 'geminiSessions'],
-      ['openrouter', 'openrouterSessions'],
-      ['local', 'localSessions'],
-      ['nano', 'nanoSessions'],
-    ] as const;
+  it('upserts codex sessions into codex session list', () => {
+    const project = buildBaseProject();
+    const next = upsertProjectSession(project, {
+      projectName: 'proj-a',
+      provider: 'codex',
+      sessionId: 'codex-session-1',
+      mode: 'research',
+      displayName: 'codex-session',
+      createdAt: '2026-04-12T15:00:00.000Z',
+    });
 
-    for (const [provider, targetKey] of providerCases) {
-      const project = buildBaseProject();
-      const next = upsertProjectSession(project, {
-        projectName: 'proj-a',
-        provider,
-        sessionId: `${provider}-session-1`,
-        mode: 'research',
-        displayName: `${provider}-session`,
-        createdAt: '2026-04-12T15:00:00.000Z',
-      });
-
-      expect(next[targetKey]).toHaveLength(1);
-      expect(next[targetKey]?.[0]).toEqual(
-        expect.objectContaining({
-          id: `${provider}-session-1`,
-          __provider: provider,
-          __projectName: 'proj-a',
-        }),
-      );
-    }
+    expect(next.codexSessions).toHaveLength(1);
+    expect(next.codexSessions?.[0]).toEqual(
+      expect.objectContaining({
+        id: 'codex-session-1',
+        __provider: 'codex',
+        __projectName: 'proj-a',
+      }),
+    );
   });
 
-  it('resolves project session array keys for all providers', () => {
-    expect(resolveProjectSessionArrayKey('claude')).toBe('sessions');
-    expect(resolveProjectSessionArrayKey('cursor')).toBe('cursorSessions');
+  it('resolves project session array key to codex list for all providers in codex-only runtime', () => {
     expect(resolveProjectSessionArrayKey('codex')).toBe('codexSessions');
-    expect(resolveProjectSessionArrayKey('gemini')).toBe('geminiSessions');
-    expect(resolveProjectSessionArrayKey('openrouter')).toBe('openrouterSessions');
-    expect(resolveProjectSessionArrayKey('local')).toBe('localSessions');
-    expect(resolveProjectSessionArrayKey('nano')).toBe('nanoSessions');
+    expect(resolveProjectSessionArrayKey('claude')).toBe('codexSessions');
+    expect(resolveProjectSessionArrayKey('gemini')).toBe('codexSessions');
   });
 
   it('injects optimistic sessions immediately into the matching provider list', () => {
@@ -117,7 +95,7 @@ describe('projectsSessionSync', () => {
     expect(next.codexSessions?.[0].summary).toBe('Settled Session');
   });
 
-  it('treats same session id under different providers as separate identities', () => {
+  it('normalizes non-codex provider to codex identity', () => {
     const project = buildBaseProject({
       codexSessions: [
         {
@@ -139,15 +117,14 @@ describe('projectsSessionSync', () => {
     });
 
     expect(next.codexSessions).toHaveLength(1);
-    expect(next.geminiSessions).toHaveLength(1);
+    expect(next.codexSessions?.[0].summary).toBe('Gemini');
     expect(next.codexSessions?.[0].id).toBe('sess-1');
-    expect(next.geminiSessions?.[0].id).toBe('sess-1');
   });
 
   it('matches active sessions from scoped tracking keys', () => {
     const activeSessions = new Set<string>([
       'proj-a::codex::sess-1',
-      'proj-b::gemini::sess-2',
+      'proj-b::codex::sess-2',
     ]);
 
     expect(
@@ -164,7 +141,7 @@ describe('projectsSessionSync', () => {
         provider: 'gemini',
         projectName: 'proj-a',
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('detects temporary sessions from both raw and scoped tracking keys', () => {

@@ -1,4 +1,4 @@
-export type SessionProvider = 'claude' | 'cursor' | 'codex' | 'gemini' | 'openrouter' | 'local' | 'nano';
+export type SessionProvider = 'codex';
 
 export type SessionMode = 'research' | 'workspace_qa';
 
@@ -35,7 +35,21 @@ export interface ProjectCreationOptions {
   importedProjectAnalysisPrompt?: ImportedProjectAnalysisPrompt | null;
 }
 
-export type AppTab = 'dashboard' | 'trash' | 'chat' | 'survey' | 'files' | 'shell' | 'git' | 'researchlab' | 'skills' | 'tasks' | 'preview' | 'compute' | 'news' | 'autoresearch';
+export type AppTab =
+  | 'dashboard'
+  | 'trash'
+  | 'chat'
+  | 'survey'
+  | 'files'
+  | 'shell'
+  | 'git'
+  | 'researchlab'
+  | 'skills'
+  | 'tasks'
+  | 'preview'
+  | 'compute'
+  | 'news'
+  | 'autoresearch';
 
 export interface ProjectSession {
   id: string;
@@ -73,13 +87,7 @@ export interface Project {
   fullPath: string;
   path?: string;
   createdAt?: string;
-  sessions?: ProjectSession[];
-  cursorSessions?: ProjectSession[];
   codexSessions?: ProjectSession[];
-  geminiSessions?: ProjectSession[];
-  openrouterSessions?: ProjectSession[];
-  localSessions?: ProjectSession[];
-  nanoSessions?: ProjectSession[];
   sessionMeta?: ProjectSessionMeta;
   taskmaster?: ProjectTaskmasterInfo;
   [key: string]: unknown;

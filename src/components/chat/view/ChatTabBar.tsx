@@ -1,5 +1,6 @@
 import { X, Plus } from 'lucide-react';
 import type { ChatTab } from '../../../hooks/useChatTabs';
+import { buildSessionScopeKey } from '../../../utils/sessionScope';
 
 interface ChatTabBarProps {
   tabs: ChatTab[];
@@ -19,7 +20,16 @@ export default function ChatTabBar({ tabs, processingSessions, onSwitchTab, onCl
   return (
     <div className="flex items-center border-b border-border/50 bg-background/80 px-1 h-9 shrink-0 overflow-x-auto" role="tablist">
       {tabs.map(tab => {
-        const isProcessing = tab.sessionId ? processingSessions.has(tab.sessionId) : false;
+        const scopedTrackingKey = tab.sessionId
+          ? buildSessionScopeKey(tab.projectName, tab.provider, tab.sessionId)
+          : '';
+        const isProcessing = Boolean(
+          tab.sessionId &&
+          (
+            processingSessions.has(tab.sessionId) ||
+            (scopedTrackingKey && processingSessions.has(scopedTrackingKey))
+          ),
+        );
         return (
           <div key={tab.id} className="flex items-center shrink-0 group">
             <button

@@ -1369,16 +1369,7 @@ function getSessionTagSourceMeta(source) {
 
 function getResearchLabSessionName(session) {
   if (!session) return 'Session';
-  if (session.__provider === 'cursor') {
-    return normalizeString(session.name) || 'Untitled Session';
-  }
-  if (session.__provider === 'codex') {
-    return normalizeString(session.summary || session.name) || 'Codex Session';
-  }
-  if (session.__provider === 'gemini') {
-    return normalizeString(session.summary || session.name) || 'Gemini Session';
-  }
-  return normalizeString(session.summary || session.name) || 'New Session';
+  return normalizeString(session.summary || session.name) || 'Codex Session';
 }
 
 function getResearchLabSessionTime(session) {
@@ -1504,7 +1495,7 @@ function SessionStageBoard({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">{sessionName}</span>
                     <span className="rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                      {session.__provider || 'claude'}
+                      {session.__provider || 'codex'}
                     </span>
                     {session.mode ? (
                       <span className="rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -2507,12 +2498,7 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false, onFil
       return [];
     }
 
-    const sessions = [
-      ...(selectedProject.sessions || []).map((session) => ({ ...session, __provider: 'claude' })),
-      ...(selectedProject.cursorSessions || []).map((session) => ({ ...session, __provider: 'cursor' })),
-      ...(selectedProject.codexSessions || []).map((session) => ({ ...session, __provider: 'codex' })),
-      ...(selectedProject.geminiSessions || []).map((session) => ({ ...session, __provider: 'gemini' })),
-    ];
+    const sessions = (selectedProject.codexSessions || []).map((session) => ({ ...session, __provider: 'codex' }));
 
     return sessions.sort((left, right) => {
       const leftTime = new Date(getResearchLabSessionTime(left) || 0).getTime();
@@ -2521,10 +2507,7 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false, onFil
     });
   }, [
     selectedProject,
-    selectedProject?.sessions,
-    selectedProject?.cursorSessions,
     selectedProject?.codexSessions,
-    selectedProject?.geminiSessions,
   ]);
 
   const prevProjectIdentityRef = useRef(projectIdentity);
@@ -2733,7 +2716,7 @@ function ResearchLab({ selectedProject, onNavigateToChat, compact = false, onFil
           detail: {
             projectName,
             sessionId: session.id,
-            provider: session.__provider || 'claude',
+            provider: session.__provider || 'codex',
             tags: nextTags,
           },
         }));

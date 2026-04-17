@@ -8,46 +8,17 @@ import { DEFAULT_PROVIDER, normalizeProvider } from '../utils/providerPolicy';
 import { parseSessionScopeKey } from '../utils/sessionScope';
 
 export type ProjectSessionArrayKey =
-  | 'sessions'
-  | 'cursorSessions'
-  | 'codexSessions'
-  | 'geminiSessions'
-  | 'openrouterSessions'
-  | 'localSessions'
-  | 'nanoSessions';
+  | 'codexSessions';
 
 export const FALLBACK_SESSION_NAME_BY_PROVIDER: Record<SessionProvider, string> = {
-  claude: 'New Session',
-  cursor: 'Untitled Session',
   codex: 'Codex Session',
-  gemini: 'Gemini Session',
-  openrouter: 'OpenRouter Session',
-  local: 'Local GPU Session',
-  nano: 'Nano Claude Code Session',
 };
 
 export function resolveProjectSessionArrayKey(
   provider: SessionProvider | string | null | undefined,
 ): ProjectSessionArrayKey | null {
   const normalizedProvider = normalizeProvider((provider || DEFAULT_PROVIDER) as SessionProvider);
-  switch (normalizedProvider) {
-    case 'claude':
-      return 'sessions';
-    case 'cursor':
-      return 'cursorSessions';
-    case 'codex':
-      return 'codexSessions';
-    case 'gemini':
-      return 'geminiSessions';
-    case 'openrouter':
-      return 'openrouterSessions';
-    case 'local':
-      return 'localSessions';
-    case 'nano':
-      return 'nanoSessions';
-    default:
-      return null;
-  }
+  return 'codexSessions';
 }
 
 function sessionsMatchIdentity(

@@ -24,20 +24,14 @@ import { readCliAvailability, writeCliAvailability } from '../../../utils/cliAva
 import { Button } from '../../ui/button';
 import type { PendingAutoIntake } from '../../../types/app';
 import type { EditingFile, DiffInfo } from '../../main-content/types/types';
-import { CLAUDE_MODELS, CURSOR_MODELS, CODEX_MODELS, GEMINI_MODELS, LOCAL_MODELS, NANO_CLAUDE_CODE_MODELS, OPENROUTER_MODELS } from '../../../../shared/modelConstants';
+import { CODEX_MODELS } from '../../../../shared/modelConstants';
 import { getProviderDisplayName } from '../utils/chatFormatting';
 import { buildEditableMessageDraft, buildReplayMessageDraft, getChatMessageId, getMessageReplayContent } from '../utils/chatMessages';
 import { normalizePath, toRelativePath, isSafePath, fileNameFromPath } from '../../../utils/pathUtils';
 import { useDeviceSettings } from '../../../hooks/useDeviceSettings';
 
 const DEFAULT_PROVIDER_AVAILABILITY: Record<Provider, ProviderAvailability> = {
-  claude: { cliAvailable: true, cliCommand: 'claude', installHint: null },
-  cursor: { cliAvailable: true, cliCommand: 'agent', installHint: null },
   codex: { cliAvailable: true, cliCommand: 'codex', installHint: null },
-  gemini: { cliAvailable: true, cliCommand: 'gemini', installHint: null },
-  openrouter: { cliAvailable: true, cliCommand: 'openrouter', installHint: null },
-  local: { cliAvailable: true, cliCommand: null, installHint: null },
-  nano: { cliAvailable: true, cliCommand: 'nano-claude-code', installHint: null },
 };
 
 const INTAKE_GREETING = `Hello! I'm your Lingzhi Lab research assistant, here to help you set up your research pipeline.\n\nTo get started, could you tell me about your research field or topic?`;
@@ -56,23 +50,6 @@ const getAutoIntakeStorageKey = (projectName: string, triggerId?: string | null)
   triggerId ? `intake_triggered_${projectName}_${triggerId}` : `intake_triggered_${projectName}`;
 
 const getImportedProjectAnalysisStorageKey = (projectName: string) => `imported_project_analysis_prompt_${projectName}`;
-
-const ANALYSIS_PROVIDERS: Array<{ id: Provider; label: string }> = [
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'gemini', label: 'Gemini CLI' },
-  { id: 'codex', label: 'Codex' },
-  { id: 'openrouter', label: 'OpenRouter' },
-];
-
-const getProviderModelConfig = (provider: Provider) => {
-  if (provider === 'claude') return CLAUDE_MODELS;
-  if (provider === 'codex') return CODEX_MODELS;
-  if (provider === 'gemini') return GEMINI_MODELS;
-  if (provider === 'openrouter') return OPENROUTER_MODELS;
-  if (provider === 'local') return LOCAL_MODELS;
-  if (provider === 'nano') return NANO_CLAUDE_CODE_MODELS;
-  return CURSOR_MODELS;
-};
 
 type PendingViewSession = {
   sessionId: string | null;
@@ -166,20 +143,8 @@ function ChatInterface({
   const {
     provider,
     setProvider,
-    cursorModel,
-    setCursorModel,
-    claudeModel,
-    setClaudeModel,
     codexModel,
     setCodexModel,
-    geminiModel,
-    setGeminiModel,
-    openrouterModel,
-    setOpenrouterModel,
-    localModel,
-    setLocalModel,
-    nanoModel,
-    setNanoModel,
     permissionMode,
     pendingPermissionRequests,
     setPendingPermissionRequests,
@@ -256,8 +221,6 @@ function ChatInterface({
     setThinkingMode,
     codexReasoningEffort,
     setCodexReasoningEffort,
-    geminiThinkingMode,
-    setGeminiThinkingMode,
     slashCommandsCount,
     filteredCommands,
     frequentCommands,
@@ -309,13 +272,7 @@ function ChatInterface({
     provider,
     permissionMode,
     cyclePermissionMode,
-    cursorModel,
-    claudeModel,
     codexModel,
-    geminiModel,
-    openrouterModel,
-    localModel,
-    nanoModel,
     isLoading,
     canAbortSession,
     tokenBudget,
@@ -418,7 +375,6 @@ function ChatInterface({
 
   const autoIntakeTriggeredRef = useRef(false);
   const lastAutoIntakeTriggerIdRef = useRef<string | null>(null);
-  const [importedProjectAnalysisProvider, setImportedProjectAnalysisProvider] = React.useState<Provider>('claude');
   const shouldShowImportedProjectAnalysisPrompt = useMemo(() => {
     if (!importedProjectAnalysisPrompt || !selectedProject || selectedSession || isLoading) {
       return false;
@@ -444,25 +400,11 @@ function ChatInterface({
     const cached = readCliAvailability();
 
     return {
-      claude: cached.claude ?? DEFAULT_PROVIDER_AVAILABILITY.claude,
-      cursor: cached.cursor ?? DEFAULT_PROVIDER_AVAILABILITY.cursor,
       codex: cached.codex ?? DEFAULT_PROVIDER_AVAILABILITY.codex,
-      gemini: cached.gemini ?? DEFAULT_PROVIDER_AVAILABILITY.gemini,
-      openrouter: cached.openrouter ?? DEFAULT_PROVIDER_AVAILABILITY.openrouter,
-      local: cached.local ?? DEFAULT_PROVIDER_AVAILABILITY.local,
-      nano: cached.nano ?? DEFAULT_PROVIDER_AVAILABILITY.nano,
     };
   });
 
-  const importedProjectAnalysisModel = useMemo(() => {
-    if (importedProjectAnalysisProvider === 'claude') return claudeModel;
-    if (importedProjectAnalysisProvider === 'codex') return codexModel;
-    if (importedProjectAnalysisProvider === 'gemini') return geminiModel;
-    if (importedProjectAnalysisProvider === 'openrouter') return openrouterModel;
-    if (importedProjectAnalysisProvider === 'local') return localModel;
-    if (importedProjectAnalysisProvider === 'nano') return nanoModel;
-    return cursorModel;
-  }, [claudeModel, codexModel, cursorModel, geminiModel, openrouterModel, localModel, nanoModel, importedProjectAnalysisProvider]);
+  const importedProjectAnalysisModel = useMemo(() => codexModel, [codexModel]);
 
   const handleStartTaskInChat = useCallback((prompt?: string, task?: { stage?: string } | null) => {
     const nextPrompt = prompt && prompt.trim()
@@ -478,12 +420,7 @@ function ChatInterface({
 
     const loadProviderAvailability = async () => {
       const checks: Array<{ provider: Provider; endpoint: string; fallbackCommand: string }> = [
-        { provider: 'claude', endpoint: '/api/cli/claude/status', fallbackCommand: 'claude' },
-        { provider: 'cursor', endpoint: '/api/cli/cursor/status', fallbackCommand: 'agent' },
         { provider: 'codex', endpoint: '/api/cli/codex/status', fallbackCommand: 'codex' },
-        { provider: 'gemini', endpoint: '/api/cli/gemini/status', fallbackCommand: 'gemini' },
-        { provider: 'openrouter', endpoint: '/api/cli/openrouter/status', fallbackCommand: 'openrouter' },
-        { provider: 'nano', endpoint: '/api/cli/nano/status', fallbackCommand: 'nano-claude-code' },
       ];
 
       const results = await Promise.all(checks.map(async ({ provider: nextProvider, endpoint, fallbackCommand }) => {
@@ -529,7 +466,7 @@ function ChatInterface({
 
   useEffect(() => {
     if (providerAvailability[provider]?.cliAvailable === false) {
-      const fallbackProvider = (['claude', 'cursor', 'codex', 'gemini', 'openrouter', 'local', 'nano'] as const).find(
+      const fallbackProvider = (['codex'] as const).find(
         (candidate) => providerAvailability[candidate]?.cliAvailable !== false,
       );
 
@@ -539,20 +476,6 @@ function ChatInterface({
       }
     }
   }, [provider, providerAvailability, setProvider]);
-
-  useEffect(() => {
-    if (providerAvailability[importedProjectAnalysisProvider]?.cliAvailable !== false) {
-      return;
-    }
-
-    const fallbackProvider = ANALYSIS_PROVIDERS.find(
-      ({ id }) => providerAvailability[id]?.cliAvailable !== false,
-    )?.id;
-
-    if (fallbackProvider && fallbackProvider !== importedProjectAnalysisProvider) {
-      setImportedProjectAnalysisProvider(fallbackProvider);
-    }
-  }, [importedProjectAnalysisProvider, providerAvailability]);
 
   useEffect(() => {
     const triggerId = getAutoIntakeTriggerId(pendingAutoIntake);
@@ -680,11 +603,7 @@ function ChatInterface({
       return;
     }
 
-    if (
-      latestMessage.type === 'claude-complete' ||
-      latestMessage.type === 'cursor-result' ||
-      latestMessage.type === 'codex-complete'
-    ) {
+    if (latestMessage.type === 'chat-turn-complete') {
       refreshTasks?.();
     }
   }, [latestMessage, refreshTasks]);
@@ -697,27 +616,9 @@ function ChatInterface({
   }, [clearImportedProjectAnalysisPrompt, selectedProject]);
 
   const handleImportedProjectAnalysisModelChange = useCallback((nextModel: string) => {
-    if (importedProjectAnalysisProvider === 'claude') {
-      setClaudeModel(nextModel);
-      localStorage.setItem('claude-model', nextModel);
-      return;
-    }
-
-    if (importedProjectAnalysisProvider === 'codex') {
-      setCodexModel(nextModel);
-      localStorage.setItem('codex-model', nextModel);
-      return;
-    }
-
-    if (importedProjectAnalysisProvider === 'gemini') {
-      setGeminiModel(nextModel);
-      localStorage.setItem('gemini-model', nextModel);
-      return;
-    }
-
-    setCursorModel(nextModel);
-    localStorage.setItem('cursor-model', nextModel);
-  }, [importedProjectAnalysisProvider, setClaudeModel, setCodexModel, setCursorModel, setGeminiModel]);
+    setCodexModel(nextModel);
+    localStorage.setItem('codex-model', nextModel);
+  }, [setCodexModel]);
 
   const handleImportedProjectAnalysisConfirm = useCallback(() => {
     const prompt = importedProjectAnalysisPrompt?.prompt?.trim();
@@ -730,15 +631,14 @@ function ChatInterface({
       sessionStorage.removeItem(getImportedProjectAnalysisStorageKey(selectedProject.name));
     }
 
-    setProvider(importedProjectAnalysisProvider);
-    localStorage.setItem('selected-provider', importedProjectAnalysisProvider);
+    setProvider('codex');
+    localStorage.setItem('selected-provider', 'codex');
 
     clearImportedProjectAnalysisPrompt?.();
     submitProgrammaticInput(prompt);
   }, [
     clearImportedProjectAnalysisPrompt,
     importedProjectAnalysisPrompt?.prompt,
-    importedProjectAnalysisProvider,
     selectedProject,
     setProvider,
     submitProgrammaticInput,
@@ -805,25 +705,7 @@ function ChatInterface({
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-                    <label className="flex flex-col gap-1.5">
-                      <span className="text-xs font-medium text-muted-foreground">Provider</span>
-                      <select
-                        value={importedProjectAnalysisProvider}
-                        onChange={(event) => setImportedProjectAnalysisProvider(event.target.value as Provider)}
-                        className="min-w-[180px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                      >
-                        {ANALYSIS_PROVIDERS.map(({ id, label }) => {
-                          const unavailable = providerAvailability[id]?.cliAvailable === false;
-                          return (
-                            <option key={id} value={id} disabled={unavailable}>
-                              {unavailable ? `${label} (Not installed)` : label}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </label>
-
+                  <div className="grid gap-3 sm:grid-cols-1 sm:gap-4">
                     <label className="flex flex-col gap-1.5">
                       <span className="text-xs font-medium text-muted-foreground">Model</span>
                       <select
@@ -831,7 +713,7 @@ function ChatInterface({
                         onChange={(event) => handleImportedProjectAnalysisModelChange(event.target.value)}
                         className="min-w-[220px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       >
-                        {getProviderModelConfig(importedProjectAnalysisProvider).OPTIONS.map(({ value, label }: { value: string; label: string }) => (
+                        {CODEX_MODELS.OPTIONS.map(({ value, label }: { value: string; label: string }) => (
                           <option key={value} value={value}>{label}</option>
                         ))}
                       </select>
@@ -848,9 +730,9 @@ function ChatInterface({
                   </div>
                 </div>
 
-                {providerAvailability[importedProjectAnalysisProvider]?.cliAvailable === false && (
+                {providerAvailability.codex?.cliAvailable === false && (
                   <p className="text-xs text-amber-700 dark:text-amber-300">
-                    {providerAvailability[importedProjectAnalysisProvider]?.installHint || 'Selected provider is not installed.'}
+                    {providerAvailability.codex?.installHint || 'Codex CLI is not installed.'}
                   </p>
                 )}
 
@@ -910,13 +792,8 @@ function ChatInterface({
           permissionMode={permissionMode}
           onModeSwitch={cyclePermissionMode}
           codexModel={codexModel}
-          geminiModel={geminiModel}
-          thinkingMode={thinkingMode}
-          setThinkingMode={setThinkingMode}
           codexReasoningEffort={codexReasoningEffort}
           setCodexReasoningEffort={setCodexReasoningEffort}
-          geminiThinkingMode={geminiThinkingMode}
-          setGeminiThinkingMode={setGeminiThinkingMode}
           tokenBudget={tokenBudget}
           slashCommandsCount={slashCommandsCount}
           onToggleCommandMenu={handleToggleCommandMenu}
@@ -976,20 +853,7 @@ function ChatInterface({
           }
           centered={isEmpty}
           setAttachedPrompt={setAttachedPrompt}
-          setProvider={(next) => setProvider(next as Provider)}
-          claudeModel={claudeModel}
-          setClaudeModel={setClaudeModel}
-          cursorModel={cursorModel}
-          setCursorModel={setCursorModel}
           setCodexModel={setCodexModel}
-          setGeminiModel={setGeminiModel}
-          openrouterModel={openrouterModel}
-          setOpenrouterModel={setOpenrouterModel}
-          localModel={localModel}
-          setLocalModel={setLocalModel}
-          nanoModel={nanoModel}
-          setNanoModel={setNanoModel}
-          providerAvailability={providerAvailability}
           newSessionMode={newSessionMode}
           onNewSessionModeChange={onNewSessionModeChange}
         />

@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -22,7 +22,8 @@ export default function App() {
                   <Router basename={window.__ROUTER_BASENAME__ || ''}>
                     <Routes>
                       <Route path="/" element={<AppContent />} />
-                      <Route path="/session/:sessionId" element={<AppContent />} />
+                      <Route path="/session/:projectName/:sessionId" element={<AppContent />} />
+                      <Route path="/session/:sessionId" element={<Navigate to="/" replace />} />
                       <Route path="/survey/diagram" element={<SurveyDiagramWindow />} />
                     </Routes>
                   </Router>

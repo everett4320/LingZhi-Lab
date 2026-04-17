@@ -51,9 +51,7 @@ function getTabTitle(activeTab: AppTab, shouldShowTasksTab: boolean, t: (key: st
 }
 
 function getSessionTitle(session: ProjectSession): string {
-  const name = session.__provider === 'cursor' 
-    ? (session.name as string) || 'Untitled Session'
-    : (session.summary as string) || 'New Session';
+  const name = (session.summary as string) || (session.name as string) || 'New Session';
     
   return stripInternalContextPrefix(name) || 'New Session';
 }

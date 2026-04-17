@@ -2622,6 +2622,12 @@ async function renameProject(projectName, newDisplayName, userId = null) {
 
 // Delete a session from a project
 async function deleteSession(projectName, sessionId, provider = 'claude') {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  if (normalizedProvider !== 'codex') {
+    console.warn(`[projects] Ignoring delete for non-codex provider: ${normalizedProvider || 'unknown'}`);
+    return false;
+  }
+
   const { sessionDb } = await import('./database/db.js');
   const indexedSession = sessionDb.getSessionById(sessionId);
 

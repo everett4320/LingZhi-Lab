@@ -31,10 +31,10 @@ const AnyGitPanel = GitPanel as any;
 
 import { cn } from '../../../../lib/utils';
 import { useDeviceSettings } from '../../../../hooks/useDeviceSettings';
-import { authenticatedFetch, api } from '../../../../utils/api';
+import { api } from '../../../../utils/api';
 import type { Project, ProjectSession, SessionMode, SessionProvider } from '../../../../types/app';
 import type { ChatMessage } from '../../types/types';
-import { convertCursorSessionMessages, convertSessionMessages } from '../../utils/messageTransforms';
+import { convertSessionMessages } from '../../utils/messageTransforms';
 import {
   deriveSessionContextSummary,
   mergeDistinctChatMessages,
@@ -236,7 +236,7 @@ const ItemButton = ({
           {thumbnail || <span className={cn('h-2 w-2 flex-shrink-0 rounded-full shadow-sm', unread ? 'bg-amber-500' : 'bg-emerald-500/80')} />}
           <div className="min-w-0 flex-1 truncate text-[12px] leading-5 text-foreground">
             <span className="font-semibold">{label}</span>
-            {secondaryLabel ? <span className="text-[10px] text-muted-foreground">{` · ${secondaryLabel}`}</span> : null}
+            {secondaryLabel ? <span className="text-[10px] text-muted-foreground">{` �?${secondaryLabel}`}</span> : null}
           </div>
           {meta ? <div className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap pl-1">{meta}</div> : null}
           {action ? <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>{action}</div> : null}
@@ -371,22 +371,6 @@ export default function ChatContextSidebar({
       setTraceError(null);
 
       try {
-        if (effectiveProvider === 'cursor') {
-          const response = await authenticatedFetch(
-            `/api/cursor/sessions/${encodeURIComponent(effectiveSessionId)}?projectPath=${encodeURIComponent(projectPath)}`,
-          );
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-
-          const data = await response.json();
-          const blobs = Array.isArray(data?.session?.messages) ? data.session.messages : [];
-          if (!cancelled) {
-            setFetchedMessages(convertCursorSessionMessages(blobs, projectPath));
-          }
-          return;
-        }
-
         const response = await api.sessionMessages(projectName, effectiveSessionId, null, 0, effectiveProvider);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -474,12 +458,7 @@ export default function ChatContextSidebar({
     const mode = selectedSession?.mode || newSessionMode;
     return mode === 'workspace_qa' ? t('session.mode.workspaceQa') : t('session.mode.research');
   }, [newSessionMode, selectedSession?.mode, t]);
-  const providerLabel = useMemo(() => {
-    if (effectiveProvider === 'codex') return t('messageTypes.codex');
-    if (effectiveProvider === 'cursor') return t('messageTypes.cursor');
-    if (effectiveProvider === 'gemini') return t('messageTypes.gemini');
-    return t('messageTypes.claude');
-  }, [effectiveProvider, t]);
+  const providerLabel = useMemo(() => t('messageTypes.codex'), [t]);
   const getTaskKindLabel = useCallback((kind: string) => {
     if (kind === 'todo') return t('sessionContext.kinds.todo');
     if (kind === 'skill') return t('sessionContext.kinds.skill');
@@ -684,7 +663,7 @@ export default function ChatContextSidebar({
     }
 
     const handleMouseMove = (event: globalThis.MouseEvent) => {
-      const rightEdge = asideRef.current?.getBoundingClientRect().right ?? window.innerWidth;
+      const rightEdge = (asideRef.current?.getBoundingClientRect().right ?? window.innerWidth) - window.innerWidth;
       const container = asideRef.current?.parentElement;
       const containerWidth = container?.clientWidth ?? window.innerWidth;
       const maxAvailable = Math.max(MIN_SIDEBAR_WIDTH, containerWidth - MIN_CHAT_AREA_WIDTH);
@@ -848,7 +827,7 @@ export default function ChatContextSidebar({
                 type="button"
                   onClick={() => {
                     onSidebarTabChange?.(tab.id);
-                    // Use the same state setter pattern as toggleCollapsed — the
+                    // Use the same state setter pattern as toggleCollapsed - the
                     // setter persists to localStorage so we avoid split writes.
                   setCollapsedState((current) => {
                       if (current && typeof window !== 'undefined') {
@@ -1168,3 +1147,6 @@ export default function ChatContextSidebar({
     </>
   );
 }
+
+
+

@@ -135,7 +135,7 @@ describe('session deletion fallbacks', () => {
     }
   });
 
-  it('deletes a Claude session from the index when the project directory is missing', async () => {
+  it('hard-ignores non-codex delete requests and keeps legacy rows untouched', async () => {
     const { projects, database } = await loadTestModules();
     const projectName = 'tmp-project';
     const sessionId = 'claude-session-missing-file';
@@ -143,11 +143,11 @@ describe('session deletion fallbacks', () => {
     database.sessionDb.upsertSessionPlaceholder(sessionId, projectName, 'claude');
     expect(database.sessionDb.getSessionById(sessionId)?.provider).toBe('claude');
 
-    await expect(projects.deleteSession(projectName, sessionId, 'claude')).resolves.toBe(true);
-    expect(database.sessionDb.getSessionById(sessionId)).toBeNull();
+    await expect(projects.deleteSession(projectName, sessionId, 'claude')).resolves.toBe(false);
+    expect(database.sessionDb.getSessionById(sessionId)?.provider).toBe('claude');
   });
 
-  it('deletes a Gemini session from the index when the jsonl file is missing', async () => {
+  it('hard-ignores non-codex gemini delete requests', async () => {
     const { projects, database } = await loadTestModules();
     const projectName = 'tmp-project';
     const sessionId = 'gemini-session-missing-file';
@@ -155,8 +155,8 @@ describe('session deletion fallbacks', () => {
     database.sessionDb.upsertSessionPlaceholder(sessionId, projectName, 'gemini');
     expect(database.sessionDb.getSessionById(sessionId)?.provider).toBe('gemini');
 
-    await expect(projects.deleteSession(projectName, sessionId, 'gemini')).resolves.toBe(true);
-    expect(database.sessionDb.getSessionById(sessionId)).toBeNull();
+    await expect(projects.deleteSession(projectName, sessionId, 'gemini')).resolves.toBe(false);
+    expect(database.sessionDb.getSessionById(sessionId)?.provider).toBe('gemini');
   });
 
   it('deletes a Codex session from the index when the jsonl file is missing', async () => {

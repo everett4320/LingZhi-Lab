@@ -47,15 +47,15 @@ describe("sessionScope", () => {
 
   it("treats same session id with different providers as different scopes", () => {
     const codexKey = buildSessionScopeKey("project-a", "codex", "shared-session");
-    const claudeKey = buildSessionScopeKey("project-a", "claude", "shared-session");
+    const ignoredProviderKey = buildSessionScopeKey("project-a", "claude", "shared-session");
 
-    expect(codexKey).not.toBe(claudeKey);
+    expect(codexKey).toBe(ignoredProviderKey);
     expect(
       scopeKeyMatchesScope(codexKey, "project-a", "codex", "shared-session"),
     ).toBe(true);
     expect(
       scopeKeyMatchesScope(codexKey, "project-a", "claude", "shared-session"),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("supports session ids containing the scope separator", () => {

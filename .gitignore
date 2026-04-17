@@ -115,6 +115,7 @@ temp/
 .serena/
 /CLAUDE.md
 .mcp.json
+openai-codex/
 
 
 # Database files

@@ -107,7 +107,7 @@ export function useSidebarController({
     if (projects.length > 0 && !isLoading) {
       const loadedProjects = new Set<string>();
       projects.forEach((project) => {
-        if (project.sessions && project.sessions.length >= 0) {
+        if (project.codexSessions && project.codexSessions.length >= 0) {
           loadedProjects.add(project.name);
         }
       });
@@ -270,7 +270,7 @@ export function useSidebarController({
       projectName: string,
       sessionId: string,
       sessionTitle: string,
-      provider: SessionDeleteConfirmation['provider'] = 'claude',
+      provider: SessionDeleteConfirmation['provider'] = 'codex',
     ) => {
       setSessionDeleteConfirmation({ projectName, sessionId, sessionTitle, provider });
     },
@@ -286,10 +286,7 @@ export function useSidebarController({
     setSessionDeleteConfirmation(null);
 
     try {
-      const response =
-        provider === 'codex'
-          ? await api.deleteCodexSession(sessionId)
-          : await api.deleteSession(projectName, sessionId, provider);
+      const response = await api.deleteCodexSession(sessionId);
 
       if (response.ok) {
         onSessionDelete?.(sessionId);
@@ -372,7 +369,7 @@ export function useSidebarController({
 
       try {
         const currentSessionCount =
-          (project.sessions?.length || 0) + (additionalSessions[project.name]?.length || 0);
+          (project.codexSessions?.length || 0) + (additionalSessions[project.name]?.length || 0);
         const response = await api.sessions(project.name, 5, currentSessionCount);
 
         if (!response.ok) {
@@ -420,7 +417,7 @@ export function useSidebarController({
   }, [onRefresh]);
 
   const updateSessionSummary = useCallback(
-    async (projectName: string, sessionId: string, summary: string, provider: SessionProvider = 'claude') => {
+    async (projectName: string, sessionId: string, summary: string, provider: SessionProvider = 'codex') => {
       try {
         const response = await api.renameSession(projectName, sessionId, summary, provider);
         if (response.ok) {
@@ -500,3 +497,4 @@ export function useSidebarController({
     setShowVersionModal,
   };
 }
+

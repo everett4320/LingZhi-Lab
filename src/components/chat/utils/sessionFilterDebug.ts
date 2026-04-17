@@ -16,6 +16,8 @@ export interface SessionFilterDebugPayload {
   isGlobalMessage?: boolean;
   isPendingViewSession?: boolean;
   shouldRebindTemporarySession?: boolean;
+  expectedTemporarySessionId?: string | null;
+  routedMessageProvisionalSessionId?: string | null;
   canUseActiveTemporarySessionForCodex?: boolean;
   isUnscopedError?: boolean;
   shouldBypassSessionFilter?: boolean;

@@ -6,18 +6,10 @@ import { promises as fs } from 'fs';
 import crypto from 'crypto';
 import { userDb, apiKeysDb, githubTokensDb } from '../database/db.js';
 import { addProjectManually } from '../projects.js';
-import { queryClaudeSDK } from '../claude-sdk.js';
-import { spawnCursor } from '../cursor-cli.js';
 import { queryCodex } from '../openai-codex.js';
-import { spawnGemini } from '../gemini-cli.js';
-import { queryGeminiApi } from '../gemini-api.js';
-import { queryOpenRouter } from '../openrouter.js';
-import { queryLocalGPU } from '../local-gpu.js';
-import { spawnNanoClaudeCode } from '../nano-claude-code.js';
 import { Octokit } from '@octokit/rest';
-import { CODEX_MODELS, GEMINI_MODELS, LOCAL_MODELS, NANO_CLAUDE_CODE_MODELS, OPENROUTER_MODELS } from '../../shared/modelConstants.js';
+import { CODEX_MODELS } from '../../shared/modelConstants.js';
 import { IS_PLATFORM } from '../constants/config.js';
-import { getGeminiApiKeyForUser, withGeminiApiKeyEnv } from '../utils/geminiApiKey.js';
 
 const router = express.Router();
 
@@ -290,7 +282,7 @@ async function createGitHubBranch(octokit, owner, repo, branchName, baseBranch =
       sha: baseSha
     });
 
-    console.log(`‚úÖ Created branch '${branchName}' on GitHub`);
+    console.log(`‚ú?Created branch '${branchName}' on GitHub`);
   } catch (error) {
     if (error.status === 422 && error.message.includes('Reference already exists')) {
       console.log(`‚ÑπÔ∏è Branch '${branchName}' already exists on GitHub`);
@@ -321,7 +313,7 @@ async function createGitHubPR(octokit, owner, repo, branchName, title, body, bas
     body
   });
 
-  console.log(`‚úÖ Created pull request #${pr.number}: ${pr.html_url}`);
+  console.log(`‚ú?Created pull request #${pr.number}: ${pr.html_url}`);
 
   return {
     number: pr.number,
@@ -356,7 +348,7 @@ async function cloneGitHubRepo(githubUrl, githubToken = null, projectPath) {
           const normalizedRequested = normalizeGitHubUrl(githubUrl);
 
           if (normalizedExisting === normalizedRequested) {
-            console.log('‚úÖ Repository already exists at path with correct URL');
+            console.log('‚ú?Repository already exists at path with correct URL');
             return resolve(cloneDir);
           } else {
             throw new Error(`Directory ${cloneDir} already exists with a different repository (${existingUrl}). Expected: ${githubUrl}`);
@@ -401,10 +393,10 @@ async function cloneGitHubRepo(githubUrl, githubToken = null, projectPath) {
 
       gitProcess.on('close', (code) => {
         if (code === 0) {
-          console.log('‚úÖ Repository cloned successfully');
+          console.log('‚ú?Repository cloned successfully');
           resolve(cloneDir);
         } else {
-          console.error('‚ùå Git clone failed:', stderr);
+          console.error('‚ù?Git clone failed:', stderr);
           reject(new Error(`Git clone failed: ${stderr}`));
         }
       });
@@ -419,7 +411,7 @@ async function cloneGitHubRepo(githubUrl, githubToken = null, projectPath) {
 }
 
 /**
- * Clean up a temporary project directory and its Claude session
+ * Clean up a temporary project directory and its Codex session
  * @param {string} projectPath - Path to the project directory
  * @param {string} sessionId - Session ID to clean up
  */
@@ -433,21 +425,21 @@ async function cleanupProject(projectPath, sessionId = null) {
 
     console.log('üßπ Cleaning up project:', projectPath);
     await fs.rm(projectPath, { recursive: true, force: true });
-    console.log('‚úÖ Project cleaned up');
+    console.log('‚ú?Project cleaned up');
 
-    // Also clean up the Claude session directory if sessionId provided
+    // Also clean up the Codex session directory if sessionId provided
     if (sessionId) {
       try {
         const sessionPath = path.join(os.homedir(), '.claude', 'sessions', sessionId);
         console.log('üßπ Cleaning up session directory:', sessionPath);
         await fs.rm(sessionPath, { recursive: true, force: true });
-        console.log('‚úÖ Session directory cleaned up');
+        console.log('‚ú?Session directory cleaned up');
       } catch (error) {
         console.error('‚ö†Ô∏è Failed to clean up session directory:', error.message);
       }
     }
   } catch (error) {
-    console.error('‚ùå Failed to clean up project:', error);
+    console.error('‚ù?Failed to clean up project:', error);
   }
 }
 
@@ -546,8 +538,8 @@ class ResponseCollector {
       if (typeof msg === 'string') {
         try {
           const parsed = JSON.parse(msg);
-          // Only include claude-response messages with assistant type
-          if (parsed.type === 'claude-response' && parsed.data && parsed.data.type === 'assistant') {
+          // Only include codex-response messages with assistant type
+          if (parsed.type === 'codex-response' && parsed.data && parsed.data.type === 'assistant') {
             assistantMessages.push(parsed.data);
           }
         } catch (e) {
@@ -580,8 +572,8 @@ class ResponseCollector {
         }
       }
 
-      // Extract usage from claude-response messages
-      if (data && data.type === 'claude-response' && data.data) {
+      // Extract usage from codex-response messages
+      if (data && data.type === 'codex-response' && data.data) {
         const msgData = data.data;
         if (msgData.message && msgData.message.usage) {
           const usage = msgData.message.usage;
@@ -610,7 +602,7 @@ class ResponseCollector {
 /**
  * POST /api/agent
  *
- * Trigger an AI agent (Claude or Cursor) to work on a project.
+ * Trigger the Codex agent to work on a project.
  * Supports automatic GitHub branch and pull request creation after successful completion.
  *
  * ================================================================================================
@@ -628,36 +620,32 @@ class ResponseCollector {
  *                               Behavior depends on usage:
  *                               - If used alone: Must point to existing project directory
  *                               - If used with githubUrl: Target location for cloning
- *                               - If omitted with githubUrl: Auto-generates temporary path in ~/.claude/external-projects/
+ *                               - If omitted with githubUrl: Auto-generates temporary path in ~/.codex/external-projects/
  *
  * @param {string} message - (Required) Task description for the AI agent. Used as:
  *                          - Instructions for the agent
  *                          - Source for auto-generated branch names (if createBranch=true and no branchName)
  *                          - Fallback for PR title if no commits are made
  *
- * @param {string} provider - (Optional) AI provider to use. Options: 'claude' | 'cursor'
- *                           Default: 'claude'
+ * @param {string} provider - (Optional) AI provider to use. Codex-only: 'codex'
+ *                           Default: 'codex'
  *
  * @param {boolean} stream - (Optional) Enable Server-Sent Events (SSE) streaming for real-time updates.
  *                          Default: true
  *                          - true: Returns text/event-stream with incremental updates
  *                          - false: Returns complete JSON response after completion
  *
- * @param {string} model - (Optional) Model identifier for providers.
+ * @param {string} model - (Optional) Codex model identifier.
  *
- *                        Claude models: 'sonnet' (default), 'opus', 'haiku', 'opusplan', 'sonnet[1m]'
- *                        Cursor models: 'gpt-5' (default), 'gpt-5.2', 'gpt-5.2-high', 'sonnet-4.5', 'opus-4.5',
- *                                       'gemini-3-pro', 'composer-1', 'auto', 'gpt-5.1', 'gpt-5.1-high',
- *                                       'gpt-5.1-codex', 'gpt-5.1-codex-high', 'gpt-5.1-codex-max',
- *                                       'gpt-5.1-codex-max-high', 'opus-4.1', 'grok', and thinking variants
- *                        Codex models: 'gpt-5.2' (default), 'gpt-5.1-codex-max', 'o3', 'o4-mini'
+ *                        Codex models: see shared model constants and runtime defaults.
+ *                        Codex model identifiers are validated by server/runtime configuration.
  *
  * @param {boolean} cleanup - (Optional) Auto-cleanup project directory after completion.
  *                           Default: true
  *                           Behavior:
  *                           - Only applies when cloning via githubUrl (not for existing projectPath)
  *                           - Deletes cloned repository after 5 seconds
- *                           - Also deletes associated Claude session directory
+ *                           - Also deletes associated Codex session directory
  *                           - Remote branch and PR remain on GitHub if created
  *
  * @param {string} githubToken - (Optional) GitHub Personal Access Token for authentication.
@@ -706,7 +694,7 @@ class ResponseCollector {
  *
  * Scenario 1: Only githubUrl provided
  *   Input:  { githubUrl: "https://github.com/owner/repo" }
- *   Action: Clones to auto-generated temporary path: ~/.claude/external-projects/<hash>/
+ *   Action: Clones to auto-generated temporary path: ~/.codex/external-projects/<hash>/
  *   Cleanup: Yes (if cleanup=true)
  *
  * Scenario 2: Only projectPath provided
@@ -753,7 +741,7 @@ class ResponseCollector {
  * Input Validations (400 Bad Request):
  *   - Either githubUrl OR projectPath must be provided (not neither)
  *   - message must be non-empty string
- *   - provider must be 'claude' or 'cursor'
+ *   - provider must be 'codex'
  *   - createBranch/createPR requires githubUrl OR projectPath (not neither)
  *   - branchName must pass Git naming rules (if provided)
  *
@@ -767,9 +755,9 @@ class ResponseCollector {
  * Branch Name Validation Errors (returned in response, not HTTP error):
  *   Invalid names return: { branch: { error: "Invalid branch name: <reason>" } }
  *   Examples:
- *   - "my branch" ‚Üí "Branch name cannot contain spaces"
- *   - ".feature" ‚Üí "Branch name cannot start with a dot"
- *   - "feature.lock" ‚Üí "Branch name cannot end with .lock"
+ *   - "my branch" ‚Ü?"Branch name cannot contain spaces"
+ *   - ".feature" ‚Ü?"Branch name cannot start with a dot"
+ *   - "feature.lock" ‚Ü?"Branch name cannot end with .lock"
  *
  * ================================================================================================
  * RESPONSE FORMATS
@@ -779,7 +767,7 @@ class ResponseCollector {
  *   Content-Type: text/event-stream
  *   Events:
  *     - { type: "status", message: "...", projectPath: "..." }
- *     - { type: "claude-response", data: {...} }
+ *     - { type: "chat-turn-delta", scope: {...}, ... }
  *     - { type: "github-branch", branch: { name: "...", url: "..." } }
  *     - { type: "github-pr", pullRequest: { number: 42, url: "..." } }
  *     - { type: "github-error", error: "..." }
@@ -842,7 +830,7 @@ class ResponseCollector {
  *   }
  */
 router.post('/', validateExternalApiKey, async (req, res) => {
-  const { githubUrl, projectPath, message, provider = 'claude', model, githubToken, branchName } = req.body;
+  const { githubUrl, projectPath, message, provider = 'codex', model, githubToken, branchName } = req.body;
 
   // Parse stream and cleanup as booleans (handle string "true"/"false" from curl)
   const stream = req.body.stream === undefined ? true : (req.body.stream === true || req.body.stream === 'true');
@@ -861,8 +849,8 @@ router.post('/', validateExternalApiKey, async (req, res) => {
     return res.status(400).json({ error: 'message is required' });
   }
 
-  if (!['claude', 'cursor', 'codex', 'gemini', 'openrouter', 'local', 'nano'].includes(provider)) {
-    return res.status(400).json({ error: 'provider must be "claude", "cursor", "codex", "gemini", "openrouter", "local", or "nano"' });
+  if (provider !== 'codex') {
+    return res.status(400).json({ error: 'provider must be "codex"' });
   }
 
   // Validate GitHub branch/PR creation requirements
@@ -944,100 +932,16 @@ router.post('/', validateExternalApiKey, async (req, res) => {
         projectPath: finalProjectPath
       });
     }
+    console.log('Starting Codex SDK session');
 
-    const geminiApiKey = getGeminiApiKeyForUser(req.user?.id);
-    const sessionEnv = withGeminiApiKeyEnv(process.env, geminiApiKey);
-
-    // Start the appropriate session
-    if (provider === 'claude') {
-      console.log('ü§ñ Starting Claude SDK session');
-
-      await queryClaudeSDK(message.trim(), {
-        projectPath: finalProjectPath,
-        cwd: finalProjectPath,
-        sessionId: null, // New session
-        model: model,
-        env: sessionEnv,
-        permissionMode: 'bypassPermissions' // Bypass all permissions for API calls
-      }, writer);
-
-    } else if (provider === 'cursor') {
-      console.log('üñ±Ô∏è Starting Cursor CLI session');
-
-      await spawnCursor(message.trim(), {
-        projectPath: finalProjectPath,
-        cwd: finalProjectPath,
-        sessionId: null, // New session
-        model: model || undefined,
-        env: sessionEnv,
-        skipPermissions: true // Bypass permissions for Cursor
-      }, writer);
-    } else if (provider === 'codex') {
-      console.log('ü§ñ Starting Codex SDK session');
-
-      await queryCodex(message.trim(), {
-        projectPath: finalProjectPath,
-        cwd: finalProjectPath,
-        sessionId: null,
-        model: model || CODEX_MODELS.DEFAULT,
-        env: sessionEnv,
-        permissionMode: 'bypassPermissions'
-      }, writer);
-    } else if (provider === 'gemini') {
-      console.log('ü§ñ Starting Gemini session');
-
-      const geminiOptions = {
-        projectPath: finalProjectPath,
-        cwd: finalProjectPath,
-        sessionId: null,
-        env: sessionEnv,
-        model: model || GEMINI_MODELS.DEFAULT,
-        userId: req.user?.id,
-      };
-
-      const result = await queryGeminiApi(message.trim(), geminiOptions, writer);
-      if (result?.authFailed) {
-        console.log('ü§ñ Falling back to Gemini CLI harness');
-        await spawnGemini(message.trim(), {
-          projectPath: finalProjectPath,
-          cwd: finalProjectPath,
-          sessionId: null,
-          env: sessionEnv,
-          model: model || GEMINI_MODELS.DEFAULT
-        }, writer);
-      }
-    } else if (provider === 'openrouter') {
-      console.log('ü§ñ Starting OpenRouter session');
-
-      await queryOpenRouter(message.trim(), {
-        projectPath: finalProjectPath,
-        cwd: finalProjectPath,
-        sessionId: null,
-        model: model || OPENROUTER_MODELS.DEFAULT,
-        env: sessionEnv,
-      }, writer);
-    } else if (provider === 'local') {
-      console.log('ü§ñ Starting Local GPU session');
-
-      await queryLocalGPU(message.trim(), {
-        projectPath: finalProjectPath,
-        cwd: finalProjectPath,
-        sessionId: null,
-        model: model || LOCAL_MODELS.DEFAULT || 'qwen3:8b',
-        env: sessionEnv,
-        permissionMode: 'bypassPermissions',
-      }, writer);
-    } else if (provider === 'nano') {
-      console.log('ü§ñ Starting Nano Claude Code session');
-
-      await spawnNanoClaudeCode(message.trim(), {
-        projectPath: finalProjectPath,
-        cwd: finalProjectPath,
-        sessionId: null,
-        model: model || NANO_CLAUDE_CODE_MODELS.DEFAULT,
-        env: sessionEnv,
-      }, writer);
-    }
+    await queryCodex(message.trim(), {
+      projectPath: finalProjectPath,
+      cwd: finalProjectPath,
+      sessionId: null,
+      model: model || CODEX_MODELS.DEFAULT,
+      env: process.env,
+      permissionMode: 'bypassPermissions'
+    }, writer);
 
     // Handle GitHub branch and PR creation after successful agent completion
     let branchInfo = null;
@@ -1066,7 +970,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
             if (!repoUrl.includes('github.com')) {
               throw new Error('Project does not have a GitHub remote configured');
             }
-            console.log(`‚úÖ Found GitHub remote: ${repoUrl}`);
+            console.log(`‚ú?Found GitHub remote: ${repoUrl}`);
           } catch (error) {
             throw new Error(`Failed to get GitHub remote URL: ${error.message}`);
           }
@@ -1103,7 +1007,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
             checkoutProcess.stderr.on('data', (data) => { stderr += data.toString(); });
             checkoutProcess.on('close', (code) => {
               if (code === 0) {
-                console.log(`‚úÖ Created and checked out local branch '${finalBranchName}'`);
+                console.log(`‚ú?Created and checked out local branch '${finalBranchName}'`);
                 resolve();
               } else {
                 // Branch might already exist locally, try to checkout
@@ -1115,7 +1019,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
                   });
                   checkoutExisting.on('close', (checkoutCode) => {
                     if (checkoutCode === 0) {
-                      console.log(`‚úÖ Checked out existing branch '${finalBranchName}'`);
+                      console.log(`‚ú?Checked out existing branch '${finalBranchName}'`);
                       resolve();
                     } else {
                       reject(new Error(`Failed to checkout existing branch: ${stderr}`));
@@ -1142,7 +1046,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
             pushProcess.stderr.on('data', (data) => { stderr += data.toString(); });
             pushProcess.on('close', (code) => {
               if (code === 0) {
-                console.log(`‚úÖ Pushed branch '${finalBranchName}' to remote`);
+                console.log(`‚ú?Pushed branch '${finalBranchName}' to remote`);
                 resolve();
               } else {
                 // Check if branch exists on remote but has different commits
@@ -1203,7 +1107,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
         }
 
       } catch (error) {
-        console.error('‚ùå GitHub branch/PR creation error:', error);
+        console.error('‚ù?GitHub branch/PR creation error:', error);
 
         // Send error but don't fail the entire request
         if (stream) {
@@ -1258,7 +1162,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
     }
 
   } catch (error) {
-    console.error('‚ùå External session error:', error);
+    console.error('‚ù?External session error:', error);
 
     // Clean up on error
     if (finalProjectPath && cleanup && githubUrl) {

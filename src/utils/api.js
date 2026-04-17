@@ -88,7 +88,7 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ tagIds }),
     }),
-  sessionMessages: (projectName, sessionId, limit = null, offset = 0, provider = 'claude') => {
+  sessionMessages: (projectName, sessionId, limit = null, offset = 0, provider = 'codex') => {
     const params = new URLSearchParams();
     if (limit !== null) {
       params.append('limit', limit);
@@ -97,15 +97,8 @@ export const api = {
     params.append('provider', provider);
     const queryString = params.toString();
 
-    // Route to the correct endpoint based on provider
-    let url;
-    if (provider === 'codex') {
-      url = `/api/codex/sessions/${sessionId}/messages${queryString ? `?${queryString}` : ''}`;
-    } else if (provider === 'cursor') {
-      url = `/api/cursor/sessions/${sessionId}/messages${queryString ? `?${queryString}` : ''}`;
-    } else {
-      url = `/api/projects/${projectName}/sessions/${sessionId}/messages${queryString ? `?${queryString}` : ''}`;
-    }
+    // Codex-only runtime.
+    const url = `/api/codex/sessions/${sessionId}/messages${queryString ? `?${queryString}` : ''}`;
     return authenticatedFetch(url);
   },
   sessionContextReview: (projectName, sessionId) =>
@@ -120,12 +113,12 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ displayName }),
     }),
-  renameSession: (projectName, sessionId, summary, provider = 'claude') =>
+  renameSession: (projectName, sessionId, summary, provider = 'codex') =>
     authenticatedFetch(`/api/projects/${projectName}/sessions/${sessionId}/rename`, {
       method: 'PUT',
       body: JSON.stringify({ summary, provider }),
     }),
-  deleteSession: (projectName, sessionId, provider = 'claude') =>
+  deleteSession: (projectName, sessionId, provider = 'codex') =>
     authenticatedFetch(`/api/projects/${projectName}/sessions/${sessionId}?provider=${provider}`, {
       method: 'DELETE',
     }),

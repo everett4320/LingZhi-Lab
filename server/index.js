@@ -50,21 +50,13 @@ import {
     buildLifecycleMessageFromPayload as _buildLifecycleMessageFromPayload,
 } from './utils/sessionLifecycle.js';
 import { getProjectTokenUsageSummary } from './project-token-usage.js';
-import { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive, getClaudeSDKSessionStartTime, getActiveClaudeSDKSessions, rebindClaudeSDKSessionWriter, resolveToolApproval } from './claude-sdk.js';
-import { spawnCursor, abortCursorSession, isCursorSessionActive, getCursorSessionStartTime, getActiveCursorSessions } from './cursor-cli.js';
 import { queryCodex, abortCodexSession, isCodexSessionActive, getCodexSessionStartTime, getActiveCodexSessions, rebindCodexSessionWriter } from './openai-codex.js';
-import { spawnGemini, abortGeminiSession, isGeminiSessionActive, getGeminiSessionStartTime, getActiveGeminiSessions, rebindGeminiSessionWriter } from './gemini-cli.js';
-import { queryOpenRouter, abortOpenRouterSession, isOpenRouterSessionActive, getOpenRouterSessionStartTime, rebindOpenRouterSessionWriter } from './openrouter.js';
-import { queryLocalGPU, abortLocalGPUSession, isLocalGPUSessionActive, getLocalGPUSessionStartTime, getActiveLocalGPUSessions, rebindLocalGPUSessionWriter } from './local-gpu.js';
-import { spawnNanoClaudeCode, abortNanoClaudeCodeSession, isNanoClaudeCodeSessionActive, getNanoClaudeCodeSessionStartTime, getActiveNanoClaudeCodeSessions, rebindNanoClaudeCodeSessionWriter } from './nano-claude-code.js';
 import gitRoutes from './routes/git.js';
 import authRoutes from './routes/auth.js';
 import mcpRoutes from './routes/mcp.js';
-import cursorRoutes from './routes/cursor.js';
 import taskmasterRoutes from './routes/taskmaster.js';
 import mcpUtilsRoutes from './routes/mcp-utils.js';
 import commandsRoutes from './routes/commands.js';
-import claudeBtwRoutes from './routes/claude-btw.js';
 import btwRoutes from './routes/btw.js';
 import settingsRoutes from './routes/settings.js';
 import agentRoutes from './routes/agent.js';
@@ -82,8 +74,7 @@ import { initializeDatabase, projectDb, sessionDb, tagDb } from './database/db.j
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
 import { IS_PLATFORM } from './constants/config.js';
 import { enqueueTelemetryEvent } from './telemetry.js';
-import { resolveCursorCliCommand, isCursorLoginCommand, isGeminiLoginCommand, normalizeCursorLoginCommand } from './utils/cursorCommand.js';
-import { getGeminiApiKeyForUser, withGeminiApiKeyEnv } from './utils/geminiApiKey.js';
+import { isCursorLoginCommand, isGeminiLoginCommand, normalizeCursorLoginCommand } from './utils/cursorCommand.js';
 import {
     DEFAULT_BACKEND_PORT,
     DEFAULT_FRONTEND_PORT,
@@ -93,15 +84,10 @@ import {
     setRuntimePortSync,
 } from './utils/runtimePorts.js';
 import { buildCodexTokenUsageFromJsonl } from './utils/sessionTokenUsage.js';
-import { getNanoLingzhiLabSessionsRoot } from './nanoSessionPaths.js';
 
 // File system watchers for provider project/session folders
 const PROVIDER_WATCH_PATHS = [
-    { provider: 'claude', rootPath: path.join(os.homedir(), '.claude', 'projects') },
-    { provider: 'cursor', rootPath: path.join(os.homedir(), '.cursor', 'chats') },
     { provider: 'codex', rootPath: path.join(os.homedir(), '.codex', 'sessions') },
-    { provider: 'gemini', rootPath: path.join(os.homedir(), '.gemini', 'sessions') },
-    { provider: 'nano', rootPath: getNanoLingzhiLabSessionsRoot() },
 ];
 const WATCHER_IGNORED_PATTERNS = [
     '**/node_modules/**',
@@ -127,23 +113,8 @@ function shouldProcessProjectsWatcherEvent(eventType, filePath, provider) {
     }
 
     const normalized = String(filePath || '').toLowerCase();
-    if (provider === 'claude' || provider === 'codex' || provider === 'gemini') {
+    if (provider === 'codex') {
         return normalized.endsWith('.jsonl');
-    }
-
-    if (provider === 'cursor') {
-        return (
-            normalized.endsWith('.db') ||
-            normalized.endsWith('.db-wal') ||
-            normalized.endsWith('.db-shm') ||
-            normalized.endsWith('.sqlite') ||
-            normalized.endsWith('.json')
-        );
-    }
-
-    if (provider === 'nano') {
-        const base = path.basename(String(filePath || '').replace(/\\/g, '/')).toLowerCase();
-        return base.endsWith('.json') && base.startsWith('lingzhilab-nano-');
     }
 
     return true;
@@ -162,7 +133,7 @@ function broadcastProgress(progress) {
     });
 }
 
-// Setup file system watchers for Claude, Cursor, and Codex project/session folders
+// Setup file system watcher for Codex session folders
 async function setupProjectsWatcher() {
     const chokidar = (await import('chokidar')).default;
 
@@ -317,7 +288,7 @@ function safePtyKill(session, sessionKey) {
     try {
         session.pty.kill();
     } catch (err) {
-        console.warn(`⚠️ Failed to kill PTY process (${sessionKey}):`, err);
+        console.warn(`[WARN] Failed to kill PTY process (${sessionKey}):`, err);
     }
 }
 
@@ -490,9 +461,6 @@ app.use('/api/git', authenticateToken, gitRoutes);
 // MCP API Routes (protected)
 app.use('/api/mcp', authenticateToken, mcpRoutes);
 
-// Cursor API Routes (protected)
-app.use('/api/cursor', authenticateToken, cursorRoutes);
-
 // TaskMaster API Routes (protected)
 app.use('/api/taskmaster', authenticateToken, taskmasterRoutes);
 
@@ -502,10 +470,8 @@ app.use('/api/mcp-utils', authenticateToken, mcpUtilsRoutes);
 // Commands API Routes (protected)
 app.use('/api/commands', authenticateToken, commandsRoutes);
 
-// Ephemeral side question (/btw) — unified multi-provider endpoint
+// Ephemeral side question (/btw) endpoint
 app.use('/api/btw', authenticateToken, btwRoutes);
-// Legacy Claude-only /btw endpoint (backward compat)
-app.use('/api/claude', authenticateToken, claudeBtwRoutes);
 
 // Settings API Routes (protected)
 app.use('/api/settings', authenticateToken, settingsRoutes);
@@ -822,7 +788,8 @@ app.get('/api/projects/:projectName/sessions/:sessionId/messages', authenticateT
     try {
         const userId = req.user?.id;
         const { projectName, sessionId } = req.params;
-        const { limit, offset, provider } = req.query;
+        const { limit, offset } = req.query;
+        const provider = 'codex';
 
         // Parse limit and offset if provided
         const parsedLimit = limit ? parseInt(limit, 10) : null;
@@ -955,7 +922,8 @@ app.put('/api/projects/:projectName/sessions/:sessionId/rename', authenticateTok
     try {
         const userId = req.user?.id;
         const { projectName, sessionId } = req.params;
-        const { summary, provider } = req.body;
+        const { summary } = req.body;
+        const provider = 'codex';
         await renameSession(projectName, sessionId, summary, provider, userId);
         res.json({ success: true });
     } catch (error) {
@@ -967,8 +935,8 @@ app.put('/api/projects/:projectName/sessions/:sessionId/rename', authenticateTok
 app.delete('/api/projects/:projectName/sessions/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { projectName, sessionId } = req.params;
-        const { provider } = req.query;
-        console.log(`[API] Deleting session: ${sessionId} from project: ${projectName}, provider: ${provider || 'claude'}`);
+        const provider = 'codex';
+        console.log(`[API] Deleting session: ${sessionId} from project: ${projectName}, provider: ${provider}`);
         await deleteSession(projectName, sessionId, provider);
         console.log(`[API] Session ${sessionId} deleted successfully`);
         res.json({ success: true });
@@ -1064,7 +1032,7 @@ app.get('/api/projects/:projectName/file', authenticateToken, async (req, res) =
         res.json({ content, path: resolved });
     } catch (error) {
         if (error.code === 'ENOENT') {
-            // File not found is a normal condition (e.g. optional config files) — no noisy log
+            // File not found is a normal condition (e.g. optional config files); no noisy log
             res.status(404).json({ error: 'File not found' });
         } else if (error.code === 'EACCES') {
             console.error('Permission denied reading file:', resolved);
@@ -1501,28 +1469,6 @@ function hasAgentResponseContent(payload) {
         return false;
     }
 
-    if (payload.type === 'claude-response') {
-        const data = payload.data;
-        if (!data || typeof data !== 'object') {
-            return false;
-        }
-
-        if (typeof data.content === 'string' && data.content.trim()) {
-            return true;
-        }
-
-        if (Array.isArray(data.content)) {
-            return data.content.some((part) => part?.type === 'text' && typeof part?.text === 'string' && part.text.trim());
-        }
-
-        return false;
-    }
-
-    if (payload.type === 'cursor-result') {
-        const result = payload.data?.result;
-        return typeof result === 'string' && Boolean(result.trim());
-    }
-
     if (payload.type === 'codex-response') {
         const codexData = payload.data;
         if (!codexData || typeof codexData !== 'object') {
@@ -1541,33 +1487,6 @@ function trackAgentResponseTelemetry(payload, context = {}) {
     if (context.telemetryEnabled === false) {
         return;
     }
-    if (context.provider === 'claude' && payload?.type === 'claude-response') {
-        const streamData = payload.data;
-        const sessionKey = `${context.provider}:${payload.sessionId || 'pending'}`;
-
-        if (streamData?.type === 'content_block_delta' && typeof streamData?.delta?.text === 'string') {
-            trackAgentResponseTelemetry.streamBuffers.set(sessionKey, true);
-            return;
-        }
-
-        if (streamData?.type === 'content_block_stop') {
-            const hasContent = trackAgentResponseTelemetry.streamBuffers.get(sessionKey);
-            if (hasContent) {
-                enqueueConversationTelemetry(
-                    {
-                        name: 'agent_dialogue_meta',
-                        direction: 'agent_to_user',
-                        provider: context.provider || 'unknown',
-                        sessionId: payload.sessionId || context.sessionId || null,
-                        transportType: payload.type || 'unknown',
-                    },
-                    context,
-                );
-            }
-            trackAgentResponseTelemetry.streamBuffers.delete(sessionKey);
-            return;
-        }
-    }
 
     if (!hasAgentResponseContent(payload)) {
         return;
@@ -1584,7 +1503,6 @@ function trackAgentResponseTelemetry(payload, context = {}) {
         context,
     );
 }
-trackAgentResponseTelemetry.streamBuffers = new Map();
 
 // Handle chat WebSocket connections
 function handleChatConnection(ws, request) {
@@ -1602,8 +1520,7 @@ function handleChatConnection(ws, request) {
         telemetryEnabled: true,
     };
 
-    const geminiApiKey = getGeminiApiKeyForUser(userId);
-    const sessionEnv = withGeminiApiKeyEnv(process.env, geminiApiKey);
+    const sessionEnv = process.env;
 
     // Wrap WebSocket with writer for consistent interface with SSEStreamWriter
     const writer = new WebSocketWriter(ws, telemetryContext);
@@ -1686,107 +1603,37 @@ function handleChatConnection(ws, request) {
         });
     };
 
+    const sendUnsupportedCommandIgnored = (type) => {
+        writer.send({
+            type: 'command-ignored',
+            ignoredType: type,
+            provider: 'codex',
+            reason: 'unsupported-provider',
+        });
+        console.warn(`[WARN] Ignored unsupported command type: ${type}`);
+    };
+
     ws.on('message', async (message) => {
         try {
             const data = JSON.parse(message);
-            
+
             if (data.type === 'telemetry-settings') {
                 const enabled = data.enabled !== false;
                 writer.telemetryContext = {
                     ...(writer.telemetryContext || telemetryContext),
                     telemetryEnabled: enabled,
                 };
-            } else if (data.type === 'claude-command') {
-                console.log('[DEBUG] User message:', data.command || '[Continue/Resume]');
-                console.log('📁 Project:', data.options?.projectPath || 'Unknown');
-                console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
-                const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
-                enqueueConversationTelemetry(
-                    {
-                        name: 'agent_dialogue_meta',
-                        direction: 'user_to_agent',
-                        provider: 'claude',
-                        sessionId: data.options?.sessionId || data.sessionId || null,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                        transportType: data.type,
-                    },
-                    { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
-                );
-                writer.telemetryContext = { ...telemetryContext, provider: 'claude', telemetryEnabled: commandTelemetryEnabled };
-                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
+                return;
+            }
 
-                // Use Claude Agents SDK
-                const sessionId = data.options?.sessionId || data.sessionId;
-                if (sessionId && isClaudeSDKSessionActive(sessionId)) {
-                    console.log(`[WARN] Session ${sessionId} is already active. Ignoring concurrent request.`);
-                    sendSessionBusy({
-                        provider: 'claude',
-                        sessionId,
-                        requestType: data.type,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                    });
-                    return;
-                }
-
-                sendSessionAccepted({
-                    provider: 'claude',
-                    sessionId,
-                    requestType: data.type,
-                    projectPath: data.options?.projectPath || data.options?.cwd || null,
-                });
-                
-                queryClaudeSDK(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
-                    console.error('[ERROR] Claude query error:', error);
-                });
-            } else if (data.type === 'cursor-command') {
-                console.log('[DEBUG] Cursor message:', data.command || '[Continue/Resume]');
-                console.log('📁 Project:', data.options?.cwd || 'Unknown');
-                console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
-                console.log('🤖 Model:', data.options?.model || 'default');
-                const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
-                const sessionId = data.options?.sessionId || data.sessionId;
-                
-                if (sessionId && isCursorSessionActive(sessionId)) {
-                    console.log(`[WARN] Cursor session ${sessionId} is already active. Ignoring concurrent request.`);
-                    sendSessionBusy({
-                        provider: 'cursor',
-                        sessionId,
-                        requestType: data.type,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                    });
-                    return;
-                }
-                
-                enqueueConversationTelemetry(
-                    {
-                        name: 'agent_dialogue_meta',
-                        direction: 'user_to_agent',
-                        provider: 'cursor',
-                        sessionId: sessionId || null,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                        transportType: data.type,
-                    },
-                    { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
-                );
-                writer.telemetryContext = { ...telemetryContext, provider: 'cursor', telemetryEnabled: commandTelemetryEnabled };
-                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
-                sendSessionAccepted({
-                    provider: 'cursor',
-                    sessionId,
-                    requestType: data.type,
-                    projectPath: data.options?.projectPath || data.options?.cwd || null,
-                });
-                spawnCursor(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
-                    console.error('[ERROR] Cursor spawn error:', error);
-                });
-            } else if (data.type === 'codex-command') {
+            if (data.type === 'codex-command') {
                 console.log('[DEBUG] Codex message:', data.command || '[Continue/Resume]');
-                console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
-                console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
-                console.log('🤖 Model:', data.options?.model || 'default');
+                console.log('[DEBUG] Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
+                console.log('[DEBUG] Session:', data.options?.sessionId ? 'Resume' : 'New');
+                console.log('[DEBUG] Model:', data.options?.model || 'default');
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
                 const sessionId = data.options?.sessionId || data.sessionId;
-                
+
                 if (sessionId && isCodexSessionActive(sessionId)) {
                     console.log(`[WARN] Codex session ${sessionId} is already active. Ignoring concurrent request.`);
                     sendSessionBusy({
@@ -1797,7 +1644,7 @@ function handleChatConnection(ws, request) {
                     });
                     return;
                 }
-                
+
                 enqueueConversationTelemetry(
                     {
                         name: 'agent_dialogue_meta',
@@ -1820,353 +1667,113 @@ function handleChatConnection(ws, request) {
                 queryCodex(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
                     console.error('[ERROR] Codex query error:', error);
                 });
-            } else if (data.type === 'gemini-command') {
-                console.log('[DEBUG] Gemini message:', data.command || '[Continue/Resume]');
-                console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
-                console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
-                console.log('🤖 Model:', data.options?.model || 'default');
-                const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
-                const sessionId = data.options?.sessionId || data.sessionId;
-                
-                if (sessionId && isGeminiSessionActive(sessionId)) {
-                    console.log(`[WARN] Gemini session ${sessionId} is already active. Ignoring concurrent request.`);
-                    sendSessionBusy({
-                        provider: 'gemini',
-                        sessionId,
-                        requestType: data.type,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                    });
-                    return;
-                }
-                
-                enqueueConversationTelemetry(
-                    {
-                        name: 'agent_dialogue_meta',
-                        direction: 'user_to_agent',
-                        provider: 'gemini',
-                        sessionId: sessionId || null,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                        transportType: data.type,
-                    },
-                    { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
-                );
-                writer.telemetryContext = { ...telemetryContext, provider: 'gemini', telemetryEnabled: commandTelemetryEnabled };
-                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
-                sendSessionAccepted({
-                    provider: 'gemini',
-                    sessionId,
-                    requestType: data.type,
-                    projectPath: data.options?.projectPath || data.options?.cwd || null,
-                });
-                spawnGemini(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
-                    console.error('[ERROR] Gemini spawn error:', error);
-                });
-            } else if (data.type === 'openrouter-command') {
-                console.log('[DEBUG] OpenRouter message:', data.command || '[Continue/Resume]');
-                console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
-                console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
-                console.log('🤖 Model:', data.options?.model || 'default');
-                const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
-                const sessionId = data.options?.sessionId || data.sessionId;
+                return;
+            }
 
-                if (sessionId && isOpenRouterSessionActive(sessionId)) {
-                    console.log(`[WARN] OpenRouter session ${sessionId} is already active. Ignoring concurrent request.`);
-                    sendSessionBusy({
-                        provider: 'openrouter',
-                        sessionId,
-                        requestType: data.type,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                    });
-                    return;
-                }
-
-                enqueueConversationTelemetry(
-                    {
-                        name: 'agent_dialogue_meta',
-                        direction: 'user_to_agent',
-                        provider: 'openrouter',
-                        sessionId: sessionId || null,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                        transportType: data.type,
-                    },
-                    { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
-                );
-                writer.telemetryContext = { ...telemetryContext, provider: 'openrouter', telemetryEnabled: commandTelemetryEnabled };
-                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
-                sendSessionAccepted({
-                    provider: 'openrouter',
-                    sessionId,
-                    requestType: data.type,
-                    projectPath: data.options?.projectPath || data.options?.cwd || null,
-                });
-                queryOpenRouter(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
-                    console.error('[ERROR] OpenRouter query error:', error);
-                });
-            } else if (data.type === 'local-command') {
-                console.log('[DEBUG] Local GPU message:', data.command || '[Continue/Resume]');
-                console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
-                console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
-                console.log('🤖 Model:', data.options?.model || 'default');
-                console.log('🖥️ Server:', data.options?.serverUrl || 'default');
-                const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
-                const sessionId = data.options?.sessionId || data.sessionId;
-
-                if (sessionId && isLocalGPUSessionActive(sessionId)) {
-                    console.log(`[WARN] Local GPU session ${sessionId} is already active. Ignoring concurrent request.`);
-                    sendSessionBusy({
-                        provider: 'local',
-                        sessionId,
-                        requestType: data.type,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                    });
-                    return;
-                }
-
-                enqueueConversationTelemetry(
-                    {
-                        name: 'agent_dialogue_meta',
-                        direction: 'user_to_agent',
-                        provider: 'local',
-                        sessionId: sessionId || null,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                        transportType: data.type,
-                    },
-                    { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
-                );
-                writer.telemetryContext = { ...telemetryContext, provider: 'local', telemetryEnabled: commandTelemetryEnabled };
-                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
-                sendSessionAccepted({
-                    provider: 'local',
-                    sessionId,
-                    requestType: data.type,
-                    projectPath: data.options?.projectPath || data.options?.cwd || null,
-                });
-                queryLocalGPU(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
-                    console.error('[ERROR] Local GPU query error:', error);
-                });
-            } else if (data.type === 'nano-command') {
-                console.log('[DEBUG] Nano Claude Code message:', data.command || '[Continue/Resume]');
-                console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
-                console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
-                console.log('🤖 Model:', data.options?.model || 'default');
-                const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
-                const sessionId = data.options?.sessionId || data.sessionId;
-
-                if (sessionId && isNanoClaudeCodeSessionActive(sessionId)) {
-                    console.log(`[WARN] Nano Claude Code session ${sessionId} is already active. Ignoring concurrent request.`);
-                    sendSessionBusy({
-                        provider: 'nano',
-                        sessionId,
-                        requestType: data.type,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                    });
-                    return;
-                }
-
-                enqueueConversationTelemetry(
-                    {
-                        name: 'agent_dialogue_meta',
-                        direction: 'user_to_agent',
-                        provider: 'nano',
-                        sessionId: sessionId || null,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                        transportType: data.type,
-                    },
-                    { ...telemetryContext, telemetryEnabled: commandTelemetryEnabled },
-                );
-                writer.telemetryContext = { ...telemetryContext, provider: 'nano', telemetryEnabled: commandTelemetryEnabled };
-                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
-                sendSessionAccepted({
-                    provider: 'nano',
-                    sessionId,
-                    requestType: data.type,
-                    projectPath: data.options?.projectPath || data.options?.cwd || null,
-                });
-                spawnNanoClaudeCode(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
-                    console.error('[ERROR] Nano Claude Code error:', error);
-                });
-            } else if (data.type === 'cursor-resume') {
-                // Backward compatibility: treat as cursor-command with resume and no prompt
-                console.log('[DEBUG] Cursor resume session (compat):', data.sessionId);
-                const sessionId = data.sessionId;
-                
-                if (sessionId && isCursorSessionActive(sessionId)) {
-                    console.log(`[WARN] Cursor session ${sessionId} is already active. Ignoring concurrent request.`);
-                    sendSessionBusy({
-                        provider: 'cursor',
-                        sessionId,
-                        requestType: data.type,
-                        projectPath: data.options?.projectPath || data.options?.cwd || null,
-                    });
-                    return;
-                }
-
-                writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
-                sendSessionAccepted({
-                    provider: 'cursor',
-                    sessionId: data.sessionId || null,
-                    requestType: data.type,
-                    projectPath: data.options?.projectPath || data.options?.cwd || null,
-                });
-                spawnCursor('', {
-                    sessionId: data.sessionId,
-                    resume: true,
-                    cwd: data.options?.cwd,
-                    env: sessionEnv
-                }, writer).catch(error => {
-                    console.error('[ERROR] Cursor resume error:', error);
-                });
-            } else if (data.type === 'abort-session') {
+            if (data.type === 'abort-session') {
                 console.log('[DEBUG] Abort session request:', data.sessionId);
-                const provider = data.provider || 'claude';
-                let success;
-
-                if (provider === 'cursor') {
-                    success = abortCursorSession(data.sessionId);
-                } else if (provider === 'codex') {
-                    success = abortCodexSession(data.sessionId);
-                } else if (provider === 'gemini') {
-                    success = abortGeminiSession(data.sessionId);
-                } else if (provider === 'openrouter') {
-                    success = abortOpenRouterSession(data.sessionId);
-                } else if (provider === 'local') {
-                    success = abortLocalGPUSession(data.sessionId);
-                } else if (provider === 'nano') {
-                    success = abortNanoClaudeCodeSession(data.sessionId);
-                } else {
-                    // Use Claude Agents SDK
-                    success = await abortClaudeSDKSession(data.sessionId);
-                }
-
-                writer.send({
-                    type: 'session-aborted',
-                    sessionId: data.sessionId,
-                    provider,
-                    success
-                });
-                sendSessionStateChanged({
-                    provider,
-                    sessionId: data.sessionId,
-                    state: success ? 'aborted' : 'running',
-                    reason: success ? 'session-aborted' : 'abort-failed',
-                    projectPath: data.options?.projectPath || data.options?.cwd || null,
-                });
-            } else if (data.type === 'claude-permission-response') {
-                // Relay UI approval decisions back into the SDK control flow.
-                // This does not persist permissions; it only resolves the in-flight request,
-                // introduced so the SDK can resume once the user clicks Allow/Deny.
-                if (data.requestId) {
-                    resolveToolApproval(data.requestId, {
-                        allow: Boolean(data.allow),
-                        updatedInput: data.updatedInput,
-                        message: data.message,
-                        rememberEntry: data.rememberEntry
+                const provider = data.provider || 'codex';
+                if (provider !== 'codex') {
+                    writer.send({
+                        type: 'session-aborted',
+                        sessionId: data.sessionId,
+                        provider: 'codex',
+                        success: false,
+                        ignored: true,
+                        reason: 'unsupported-provider',
                     });
+                    return;
                 }
-            } else if (data.type === 'cursor-abort') {
-                console.log('[DEBUG] Abort Cursor session:', data.sessionId);
-                const success = abortCursorSession(data.sessionId);
+
+                const success = abortCodexSession(data.sessionId);
+
                 writer.send({
                     type: 'session-aborted',
                     sessionId: data.sessionId,
-                    provider: 'cursor',
-                    success
+                    provider: 'codex',
+                    success,
                 });
                 sendSessionStateChanged({
-                    provider: 'cursor',
+                    provider: 'codex',
                     sessionId: data.sessionId,
                     state: success ? 'aborted' : 'running',
                     reason: success ? 'session-aborted' : 'abort-failed',
                     projectPath: data.options?.projectPath || data.options?.cwd || null,
                 });
-            } else if (data.type === 'check-session-status') {
-                // Check if a specific session is currently processing
-                const provider = data.provider || 'claude';
-                const sessionId = data.sessionId;
-                let isActive;
-                let startTime = null;
+                return;
+            }
 
-                if (provider === 'cursor') {
-                    isActive = isCursorSessionActive(sessionId);
-                    startTime = getCursorSessionStartTime(sessionId);
-                } else if (provider === 'codex') {
-                    isActive = isCodexSessionActive(sessionId);
-                    startTime = getCodexSessionStartTime(sessionId);
-                } else if (provider === 'gemini') {
-                    isActive = isGeminiSessionActive(sessionId);
-                    startTime = getGeminiSessionStartTime(sessionId);
-                } else if (provider === 'openrouter') {
-                    isActive = isOpenRouterSessionActive(sessionId);
-                    startTime = getOpenRouterSessionStartTime(sessionId);
-                } else if (provider === 'local') {
-                    isActive = isLocalGPUSessionActive(sessionId);
-                    startTime = getLocalGPUSessionStartTime(sessionId);
-                } else if (provider === 'nano') {
-                    isActive = isNanoClaudeCodeSessionActive(sessionId);
-                    startTime = getNanoClaudeCodeSessionStartTime(sessionId);
-                } else {
-                    // Use Claude Agents SDK
-                    isActive = isClaudeSDKSessionActive(sessionId);
-                    startTime = getClaudeSDKSessionStartTime(sessionId);
+            if (data.type === 'claude-permission-response' || data.type === 'codex-permission-response') {
+                writer.send({
+                    type: 'permission-response-ignored',
+                    provider: 'codex',
+                    requestId: data.requestId || null,
+                    reason: 'codex-no-permission-response-flow',
+                });
+                return;
+            }
+
+            if (data.type === 'check-session-status') {
+                const provider = data.provider || 'codex';
+                if (provider !== 'codex') {
+                    writer.send({
+                        type: 'session-status',
+                        sessionId: data.sessionId,
+                        provider: 'codex',
+                        isProcessing: false,
+                        startTime: null,
+                        ignored: true,
+                        reason: 'unsupported-provider',
+                    });
+                    return;
                 }
 
-                // If the session is still running, rebind its writer to the
-                // current WebSocket so that subsequent messages reach the
-                // reconnected client instead of the stale (closed) socket.
+                const sessionId = data.sessionId;
+                const isActive = isCodexSessionActive(sessionId);
+                const startTime = getCodexSessionStartTime(sessionId);
+
+                // Rebind active session writer after reconnect.
                 if (isActive && sessionId) {
-                    let rebound = false;
-                    if (provider === 'codex') {
-                        rebound = rebindCodexSessionWriter(sessionId, writer);
-                    } else if (provider === 'gemini') {
-                        rebound = rebindGeminiSessionWriter(sessionId, writer);
-                    } else if (provider === 'openrouter') {
-                        rebound = rebindOpenRouterSessionWriter(sessionId, writer);
-                    } else if (provider === 'local') {
-                        rebound = rebindLocalGPUSessionWriter(sessionId, writer);
-                    } else if (provider === 'nano') {
-                        rebound = rebindNanoClaudeCodeSessionWriter(sessionId, writer);
-                    } else if (provider !== 'cursor') {
-                        rebound = rebindClaudeSDKSessionWriter(sessionId, writer);
-                    }
+                    const rebound = rebindCodexSessionWriter(sessionId, writer);
                     if (rebound) {
-                        console.log(`[INFO] Rebound ${provider} session ${sessionId} writer to new WebSocket`);
+                        console.log(`[INFO] Rebound codex session ${sessionId} writer to new WebSocket`);
                     }
                 }
 
                 writer.send({
                     type: 'session-status',
                     sessionId,
-                    provider,
+                    provider: 'codex',
                     isProcessing: isActive,
-                    startTime
+                    startTime,
                 });
-            } else if (data.type === 'get-active-sessions') {
-                // Get all currently active sessions
-                const activeSessions = {
-                    claude: getActiveClaudeSDKSessions(),
-                    cursor: getActiveCursorSessions(),
-                    codex: getActiveCodexSessions(),
-                    gemini: getActiveGeminiSessions(),
-                    local: getActiveLocalGPUSessions(),
-                    nano: getActiveNanoClaudeCodeSessions()
-                };
+                return;
+            }
 
+            if (data.type === 'get-active-sessions') {
                 writer.send({
                     type: 'active-sessions',
-                    sessions: activeSessions
+                    sessions: {
+                        codex: getActiveCodexSessions(),
+                    },
                 });
+                return;
+            }
+
+            if (typeof data.type === 'string' && data.type.endsWith('-command')) {
+                sendUnsupportedCommandIgnored(data.type);
             }
         } catch (error) {
             console.error('[ERROR] Chat WebSocket error:', error.message);
             writer.send({
                 type: 'error',
-                error: error.message
+                error: error.message,
             });
         }
     });
 
     ws.on('close', () => {
-        console.log('🔌 Chat client disconnected');
+        console.log('Chat client disconnected');
         // Remove from connected clients
         connectedClients.delete(ws);
     });
@@ -2174,7 +1781,7 @@ function handleChatConnection(ws, request) {
 
 // Handle shell WebSocket connections
 function handleShellConnection(ws) {
-    console.log('🐚 Shell client connected');
+    console.log('[SHELL] Client connected');
     let shellProcess = null;
     let ptySessionKey = null;
     let urlDetectionBuffer = '';
@@ -2183,15 +1790,22 @@ function handleShellConnection(ws) {
     ws.on('message', async (message) => {
         try {
             const data = JSON.parse(message);
-            console.log('📨 Shell message received:', data.type);
+            console.log('[SHELL] Message received:', data.type);
 
             if (data.type === 'init') {
                 const projectPath = data.projectPath || process.cwd();
                 const sessionId = data.sessionId;
                 const hasSession = data.hasSession;
-                const provider = ['claude', 'cursor', 'codex', 'gemini', 'plain-shell'].includes(data.provider)
-                    ? data.provider
-                    : 'claude';
+                const requestedProvider = typeof data.provider === 'string' ? data.provider : '';
+                if (requestedProvider && requestedProvider !== 'codex' && requestedProvider !== 'plain-shell') {
+                    console.warn('[WARN] Ignoring non-codex shell provider:', requestedProvider);
+                    ws.send(JSON.stringify({
+                        type: 'output',
+                        data: '\x1b[33m[WARN] Non-codex shell provider ignored.\x1b[0m\r\n',
+                    }));
+                    return;
+                }
+                const provider = requestedProvider === 'plain-shell' ? 'plain-shell' : 'codex';
                 const initialCommand = data.initialCommand;
                 const normalizedInitialCommand = normalizeCursorLoginCommand(initialCommand || '');
                 const isPlainShell = data.isPlainShell || (!!initialCommand && !hasSession) || provider === 'plain-shell';
@@ -2217,7 +1831,7 @@ function handleShellConnection(ws) {
                 if (isLoginCommand) {
                     const oldSession = ptySessionsMap.get(ptySessionKey);
                     if (oldSession) {
-                        console.log('🧹 Cleaning up existing login session:', ptySessionKey);
+                        console.log('[SHELL] Cleaning up existing login session:', ptySessionKey);
                         if (oldSession.timeoutId) clearTimeout(oldSession.timeoutId);
                         safePtyKill(oldSession, ptySessionKey);
                         ptySessionsMap.delete(ptySessionKey);
@@ -2226,7 +1840,7 @@ function handleShellConnection(ws) {
 
                 const existingSession = isLoginCommand ? null : ptySessionsMap.get(ptySessionKey);
                 if (existingSession) {
-                    console.log('♻️  Reconnecting to existing PTY session:', ptySessionKey);
+                    console.log('[SHELL] Reconnecting to existing PTY session:', ptySessionKey);
                     shellProcess = existingSession.pty;
 
                     clearTimeout(existingSession.timeoutId);
@@ -2237,7 +1851,7 @@ function handleShellConnection(ws) {
                     }));
 
                     if (existingSession.buffer && existingSession.buffer.length > 0) {
-                        console.log(`📜 Sending ${existingSession.buffer.length} buffered messages`);
+                        console.log(`[SHELL] Sending ${existingSession.buffer.length} buffered messages`);
                         existingSession.buffer.forEach(bufferedData => {
                             const replayData = stripReplayTerminalQueries(bufferedData);
                             if (!replayData) {
@@ -2256,10 +1870,10 @@ function handleShellConnection(ws) {
                 }
 
                 console.log('[INFO] Starting shell in:', projectPath);
-                console.log('📋 Session info:', hasSession ? `Resume session ${sessionId}` : (isPlainShell ? 'Plain shell mode' : 'New session'));
-                console.log('🤖 Provider:', isPlainShell ? 'plain-shell' : provider);
+                console.log('[SHELL] Session info:', hasSession ? `Resume session ${sessionId}` : (isPlainShell ? 'Plain shell mode' : 'New session'));
+                console.log('[SHELL] Provider:', isPlainShell ? 'plain-shell' : provider);
                 if (initialCommand) {
-                    console.log('⚡ Initial command:', initialCommand);
+                    console.log('[SHELL] Initial command:', initialCommand);
                 }
 
                 // First send a welcome message
@@ -2267,10 +1881,7 @@ function handleShellConnection(ws) {
                 if (isPlainShell) {
                     welcomeMsg = `\x1b[36mStarting terminal in: ${projectPath}\x1b[0m\r\n`;
                 } else {
-                    const providerName = provider === 'cursor' ? 'Cursor' : 
-                                      provider === 'codex' ? 'Codex' : 
-                                      provider === 'gemini' ? 'Gemini' : 
-                                      'Claude';
+                    const providerName = 'Codex';
                     welcomeMsg = hasSession ?
                         `\x1b[36mResuming ${providerName} session ${sessionId} in: ${projectPath}\x1b[0m\r\n` :
                         `\x1b[36mStarting new ${providerName} session in: ${projectPath}\x1b[0m\r\n`;
@@ -2297,34 +1908,6 @@ function handleShellConnection(ws) {
                             // No command - launch interactive shell directly (handled in spawn below)
                             shellCommand = null;
                         }
-                    } else if (provider === 'cursor') {
-                        const cursorCommand = resolveCursorCliCommand();
-                        if (!cursorCommand) {
-                            ws.send(JSON.stringify({
-                                type: 'output',
-                                data: '\x1b[31mCursor CLI not found. Install Cursor CLI or set CURSOR_CLI_PATH to `agent` or `cursor-agent`.\x1b[0m\r\n'
-                            }));
-                            return;
-                        }
-
-                        const cursorCommandForShell = cursorCommand.includes(' ')
-                            ? `"${cursorCommand.replace(/"/g, '\\"')}"`
-                            : cursorCommand;
-
-                        // Use resolved Cursor CLI command (`cursor-agent` or `agent`)
-                        if (os.platform() === 'win32') {
-                            if (hasSession && sessionId) {
-                                shellCommand = `Set-Location -Path "${projectPath}"; ${cursorCommandForShell} --resume="${sessionId}"`;
-                            } else {
-                                shellCommand = `Set-Location -Path "${projectPath}"; ${cursorCommandForShell}`;
-                            }
-                        } else {
-                            if (hasSession && sessionId) {
-                                shellCommand = `cd "${projectPath}" && ${cursorCommandForShell} --resume="${sessionId}"`;
-                            } else {
-                                shellCommand = `cd "${projectPath}" && ${cursorCommandForShell}`;
-                            }
-                        }
                     } else if (provider === 'codex') {
                         // Use codex command
                         if (os.platform() === 'win32') {
@@ -2340,43 +1923,9 @@ function handleShellConnection(ws) {
                                 shellCommand = `cd "${projectPath}" && codex`;
                             }
                         }
-                    } else if (provider === 'gemini') {
-                        // Use gemini command
-                        const command = initialCommand || 'gemini';
-                        if (os.platform() === 'win32') {
-                            if (hasSession && sessionId) {
-                                shellCommand = `Set-Location -Path "${projectPath}"; gemini --resume ${sessionId}; if ($LASTEXITCODE -ne 0) { gemini }`;
-                            } else {
-                                shellCommand = `Set-Location -Path "${projectPath}"; ${command}`;
-                            }
-                        } else {
-                            if (hasSession && sessionId) {
-                                shellCommand = `cd "${projectPath}" && gemini --resume ${sessionId} || gemini`;
-                            } else {
-                                shellCommand = `cd "${projectPath}" && ${command}`;
-                            }
-                        }
-                    } else {
-                            // Use claude command (default) or initialCommand if provided
-
-                        const command = initialCommand || 'claude';
-                        if (os.platform() === 'win32') {
-                            if (hasSession && sessionId) {
-                                // Try to resume session, but with fallback to new session if it fails
-                                shellCommand = `Set-Location -Path "${projectPath}"; claude --resume ${sessionId}; if ($LASTEXITCODE -ne 0) { claude }`;
-                            } else {
-                                shellCommand = `Set-Location -Path "${projectPath}"; ${command}`;
-                            }
-                        } else {
-                            if (hasSession && sessionId) {
-                                shellCommand = `cd "${projectPath}" && claude --resume ${sessionId} || claude`;
-                            } else {
-                                shellCommand = `cd "${projectPath}" && ${command}`;
-                            }
-                        }
                     }
 
-                    console.log('🔧 Executing shell command:', shellCommand);
+                    console.log('[SHELL] Executing shell command:', shellCommand);
 
                     // Determine shell, args, and cwd based on command mode
                     let spawnShell, spawnArgs, spawnCwd;
@@ -2400,7 +1949,7 @@ function handleShellConnection(ws) {
                     // Use terminal dimensions from client if provided, otherwise use defaults
                     const termCols = data.cols || 80;
                     const termRows = data.rows || 24;
-                    console.log('📐 Using terminal dimensions:', termCols, 'x', termRows);
+                    console.log('[SHELL] Using terminal dimensions:', termCols, 'x', termRows);
 
                     shellProcess = pty.spawn(spawnShell, spawnArgs, {
                         name: 'xterm-256color',
@@ -2410,7 +1959,7 @@ function handleShellConnection(ws) {
                         env: buildEmbeddedShellEnv(process.env)
                     });
 
-                    console.log('🟢 Shell process started with PTY, PID:', shellProcess.pid);
+                    console.log('[SHELL] Process started with PTY, PID:', shellProcess.pid);
 
                     ptySessionsMap.set(ptySessionKey, {
                         pty: shellProcess,
@@ -2488,7 +2037,7 @@ function handleShellConnection(ws) {
 
                     // Handle process exit
                     shellProcess.onExit((exitCode) => {
-                        console.log('🔚 Shell process exited with code:', exitCode.exitCode, 'signal:', exitCode.signal);
+                        console.log('[SHELL] Process exited with code:', exitCode.exitCode, 'signal:', exitCode.signal);
                         const session = ptySessionsMap.get(ptySessionKey);
                         if (session && session.ws && session.ws.readyState === WebSocket.OPEN) {
                             session.ws.send(JSON.stringify({
@@ -2541,16 +2090,16 @@ function handleShellConnection(ws) {
     });
 
     ws.on('close', () => {
-        console.log('🔌 Shell client disconnected');
+        console.log('[SHELL] Client disconnected');
 
         if (ptySessionKey) {
             const session = ptySessionsMap.get(ptySessionKey);
             if (session) {
-                console.log('⏳ PTY session kept alive, will timeout in 30 minutes:', ptySessionKey);
+                console.log('[SHELL] PTY session kept alive, will timeout in 30 minutes:', ptySessionKey);
                 session.ws = null;
 
                 session.timeoutId = setTimeout(() => {
-                    console.log('⏰ PTY session timeout, killing process:', ptySessionKey);
+                    console.log('[SHELL] PTY session timeout, killing process:', ptySessionKey);
                     safePtyKill(session, ptySessionKey);
                     ptySessionsMap.delete(ptySessionKey);
                 }, PTY_SESSION_TIMEOUT);
@@ -2564,7 +2113,7 @@ function handleShellConnection(ws) {
 }
 
 function handleComputeShellConnection(ws, urlNodeId) {
-    console.log('🖥️  Compute shell client connected');
+    console.log('[COMPUTE_SHELL] Client connected');
     let shellProcess = null;
     let ptySessionKey = null;
 
@@ -2580,7 +2129,7 @@ function handleComputeShellConnection(ws, urlNodeId) {
     ws.on('message', async (message) => {
         try {
             const data = JSON.parse(message);
-            console.log('📨 Compute shell message received:', data.type);
+            console.log('[COMPUTE_SHELL] Message received:', data.type);
 
             if (data.type === 'init') {
                 const requestedNodeId = data.nodeId;
@@ -2610,7 +2159,7 @@ function handleComputeShellConnection(ws, urlNodeId) {
 
                 const existingSession = ptySessionsMap.get(ptySessionKey);
                 if (existingSession) {
-                    console.log('♻️  Reconnecting to existing compute PTY session:', ptySessionKey);
+                    console.log('[COMPUTE_SHELL] Reconnecting to existing PTY session:', ptySessionKey);
                     shellProcess = existingSession.pty;
                     clearTimeout(existingSession.timeoutId);
 
@@ -2668,7 +2217,7 @@ function handleComputeShellConnection(ws, urlNodeId) {
                         }
                     });
 
-                    console.log('🟢 Compute shell process started, PID:', shellProcess.pid);
+                    console.log('[COMPUTE_SHELL] Process started, PID:', shellProcess.pid);
 
                     let passwordAutoFilled = false;
                     let earlyOutput = '';
@@ -2711,7 +2260,7 @@ function handleComputeShellConnection(ws, urlNodeId) {
                     });
 
                     shellProcess.onExit((exitCode) => {
-                        console.log('🔚 Compute shell exited with code:', exitCode.exitCode);
+                        console.log('[COMPUTE_SHELL] Process exited with code:', exitCode.exitCode);
                         const session = ptySessionsMap.get(ptySessionKey);
                         if (session && session.ws && session.ws.readyState === WebSocket.OPEN) {
                             session.ws.send(JSON.stringify({
@@ -2759,14 +2308,14 @@ function handleComputeShellConnection(ws, urlNodeId) {
     });
 
     ws.on('close', () => {
-        console.log('🔌 Compute shell client disconnected');
+        console.log('[COMPUTE_SHELL] Client disconnected');
         if (ptySessionKey) {
             const session = ptySessionsMap.get(ptySessionKey);
             if (session) {
-                console.log('⏳ Compute PTY session kept alive for 30 minutes:', ptySessionKey);
+                console.log('[COMPUTE_SHELL] PTY session kept alive for 30 minutes:', ptySessionKey);
                 session.ws = null;
                 session.timeoutId = setTimeout(() => {
-                    console.log('⏰ Compute PTY session timeout, killing:', ptySessionKey);
+                    console.log('[COMPUTE_SHELL] PTY session timeout, killing:', ptySessionKey);
                     safePtyKill(session, ptySessionKey);
                     ptySessionsMap.delete(ptySessionKey);
                 }, PTY_SESSION_TIMEOUT);
@@ -3003,213 +2552,44 @@ app.post('/api/projects/:projectName/upload-images', authenticateToken, async (r
     }
 });
 
-// Get token usage for a specific session
+// Get token usage for a specific session (codex only)
 app.get('/api/projects/:projectName/sessions/:sessionId/token-usage', authenticateToken, async (req, res) => {
   try {
-    const { projectName, sessionId } = req.params;
-    const { provider = 'claude' } = req.query;
-    const homeDir = os.homedir();
+    const { sessionId } = req.params;
+    const { provider = 'codex' } = req.query;
 
-    // Allow only safe characters in sessionId
+    if (provider !== 'codex') {
+      return res.status(400).json({
+        error: 'Unsupported provider',
+        provider,
+        supportedProvider: 'codex',
+      });
+    }
+
     const safeSessionId = String(sessionId).replace(/[^a-zA-Z0-9._-]/g, '');
     if (!safeSessionId) {
       return res.status(400).json({ error: 'Invalid sessionId' });
     }
 
-    // Handle Cursor sessions - they use SQLite and don't have token usage info
-    if (provider === 'cursor') {
-      return res.json({
-        used: 0,
-        total: 0,
-        breakdown: { input: 0, cacheCreation: 0, cacheRead: 0 },
-        unsupported: true,
-        message: 'Token usage tracking not available for Cursor sessions'
-      });
+    const sessionFilePath = await resolveCodexSessionFilePath(safeSessionId);
+    if (!sessionFilePath) {
+      return res.status(404).json({ error: 'Codex session file not found', sessionId: safeSessionId });
     }
 
-    // Handle Codex sessions
-    if (provider === 'codex') {
-      const sessionFilePath = await resolveCodexSessionFilePath(safeSessionId);
-
-      if (!sessionFilePath) {
-        return res.status(404).json({ error: 'Codex session file not found', sessionId: safeSessionId });
-      }
-
-      // Read and parse the Codex JSONL file
-      let fileContent;
-      try {
-        fileContent = await fsPromises.readFile(sessionFilePath, 'utf8');
-      } catch (error) {
-        if (error.code === 'ENOENT') {
-          return res.status(404).json({ error: 'Session file not found', path: sessionFilePath });
-        }
-        throw error;
-      }
-      return res.json(buildCodexTokenUsageFromJsonl(fileContent));
-    }
-
-    // Handle Gemini sessions
-    if (provider === 'gemini') {
-      const geminiSessionPath = path.join(homeDir, '.gemini', 'sessions', `${safeSessionId}.jsonl`);
-      let fileContent;
-      try {
-        fileContent = await fsPromises.readFile(geminiSessionPath, 'utf8');
-      } catch (error) {
-        if (error.code === 'ENOENT') {
-          return res.status(404).json({ error: 'Session file not found', path: geminiSessionPath });
-        }
-        throw error;
-      }
-
-      const lines = fileContent.trim().split('\n');
-      let latestStats = null;
-      for (let i = lines.length - 1; i >= 0; i--) {
-        try {
-          const entry = JSON.parse(lines[i]);
-          if (entry.type === 'status' && entry.stats) {
-            latestStats = entry.stats;
-            break;
-          }
-        } catch {
-          // Ignore malformed line
-        }
-      }
-
-      const used = latestStats
-        ? (latestStats.total_tokens || ((latestStats.input_tokens || 0) + (latestStats.output_tokens || 0)))
-        : 0;
-      const total = parseInt(process.env.GEMINI_CONTEXT_WINDOW || process.env.CONTEXT_WINDOW || '2000000', 10);
-      const cacheCreation = latestStats?.cache_creation_input_tokens || 0;
-      const cacheRead = latestStats?.cache_read_input_tokens || 0;
-      const input = latestStats?.input_tokens || 0;
-      const output = latestStats?.output_tokens || 0;
-
-      return res.json({
-        used,
-        total,
-        breakdown: {
-          input,
-          output,
-          cacheCreation,
-          cacheRead
-        }
-      });
-    }
-
-    // Handle Claude sessions (default)
-    // Extract actual project path
-    let projectPath;
-    try {
-      projectPath = await extractProjectDirectory(projectName);
-    } catch (error) {
-      console.error('Error extracting project directory:', error);
-      return res.status(500).json({ error: 'Failed to determine project path' });
-    }
-
-    // Construct the JSONL file path
-    // Claude stores session files in ~/.claude/projects/[encoded-project-path]/[session-id].jsonl
-    // The encoding replaces /, spaces, ~, and _ with -
-    const encodedPath = projectPath.replace(/[\\/:\s~_]/g, '-');
-    const projectDir = path.join(homeDir, '.claude', 'projects', encodedPath);
-
-    const jsonlPath = path.join(projectDir, `${safeSessionId}.jsonl`);
-
-    // Constrain to projectDir
-    const rel = path.relative(path.resolve(projectDir), path.resolve(jsonlPath));
-    if (rel.startsWith('..') || path.isAbsolute(rel)) {
-      return res.status(400).json({ error: 'Invalid path' });
-    }
-
-    // Read and parse the JSONL file
     let fileContent;
     try {
-      fileContent = await fsPromises.readFile(jsonlPath, 'utf8');
+      fileContent = await fsPromises.readFile(sessionFilePath, 'utf8');
     } catch (error) {
       if (error.code === 'ENOENT') {
-        return res.status(404).json({ error: 'Session file not found', path: jsonlPath });
+        return res.status(404).json({ error: 'Session file not found', path: sessionFilePath });
       }
-      throw error; // Re-throw other errors to be caught by outer try-catch
-    }
-    const lines = fileContent.trim().split('\n');
-
-    let inputTokens = 0;
-    let cacheCreationTokens = 0;
-    let cacheReadTokens = 0;
-    let modelName = null;
-
-    // Find the latest assistant message with usage data (scan from end)
-    for (let i = lines.length - 1; i >= 0; i--) {
-      try {
-        const entry = JSON.parse(lines[i]);
-
-        // Only count assistant messages which have usage data
-        if (entry.type === 'assistant' && entry.message?.usage) {
-          const usage = entry.message.usage;
-
-          // Use token counts from latest assistant message only
-          inputTokens = usage.input_tokens || 0;
-          cacheCreationTokens = usage.cache_creation_input_tokens || 0;
-          cacheReadTokens = usage.cache_read_input_tokens || 0;
-          modelName = entry.message.model || null;
-
-          break; // Stop after finding the latest assistant message
-        }
-      } catch (parseError) {
-        // Skip lines that can't be parsed
-        continue;
-      }
+      throw error;
     }
 
-    // Determine context window from model name
-    const MODEL_CONTEXT_WINDOWS = {
-      'claude-opus-4-6':     200000,
-      'claude-opus-4-20250918': 200000,
-      'claude-sonnet-4-6':   200000,
-      'claude-sonnet-4-20250514': 200000,
-      'claude-haiku-4-5':    200000,
-      'claude-haiku-4-5-20251001': 200000,
-      'claude-3-5-sonnet':   200000,
-      'claude-3-5-sonnet-20241022': 200000,
-      'claude-3-5-haiku':    200000,
-      'claude-3-5-haiku-20241022': 200000,
-      'claude-3-opus':       200000,
-      'claude-3-opus-20240229': 200000,
-      'claude-3-sonnet':     200000,
-      'claude-3-haiku':      200000,
-    };
-
-    // Priority: env var override > model-based lookup > default
-    const parsedContextWindow = parseInt(process.env.CONTEXT_WINDOW, 10);
-    let contextWindow;
-    if (Number.isFinite(parsedContextWindow)) {
-      contextWindow = parsedContextWindow;
-    } else if (modelName) {
-      // Try exact match first, then prefix match
-      contextWindow = MODEL_CONTEXT_WINDOWS[modelName];
-      if (!contextWindow) {
-        const prefix = Object.keys(MODEL_CONTEXT_WINDOWS).find(k => modelName.startsWith(k));
-        contextWindow = prefix ? MODEL_CONTEXT_WINDOWS[prefix] : 200000;
-      }
-    } else {
-      contextWindow = 200000;
-    }
-
-    // Calculate total context usage (excluding output_tokens, as per ccusage)
-    const totalUsed = inputTokens + cacheCreationTokens + cacheReadTokens;
-
-    res.json({
-      used: totalUsed,
-      total: contextWindow,
-      model: modelName,
-      breakdown: {
-        input: inputTokens,
-        cacheCreation: cacheCreationTokens,
-        cacheRead: cacheReadTokens
-      }
-    });
+    return res.json(buildCodexTokenUsageFromJsonl(fileContent));
   } catch (error) {
     console.error('Error reading session token usage:', error);
-    res.status(500).json({ error: 'Failed to read session token usage' });
+    return res.status(500).json({ error: 'Failed to read session token usage' });
   }
 });
 
@@ -3345,7 +2725,7 @@ async function resolveProjectFilePath(projectRoot, inputPath) {
         };
     }
 
-    // 4. No match — fall back to direct path (will 404)
+    // 4. No match - fall back to direct path (will 404)
     return { resolved: direct };
 }
 
@@ -3457,7 +2837,7 @@ async function startServer() {
         const isProduction = fs.existsSync(distIndexPath);
 
         // Log Claude implementation mode
-        console.log(`${c.info('[INFO]')} Using Claude Agents SDK for Claude integration`);
+        console.log(`${c.info('[INFO]')} Using Codex runtime for chat integration`);
         if (IS_DESKTOP) {
             console.log(`${c.info('[INFO]')} Running inside Electron desktop shell`);
         }
@@ -3481,9 +2861,9 @@ async function startServer() {
         }
 
         console.log('');
-        console.log(c.dim('═'.repeat(63)));
+        console.log(c.dim('='.repeat(63)));
         console.log(`  ${c.bright('Lingzhi Lab Server - Ready')}`);
-        console.log(c.dim('═'.repeat(63)));
+        console.log(c.dim('='.repeat(63)));
         console.log('');
 
         if (isProduction) {
@@ -3510,3 +2890,22 @@ async function startServer() {
 }
 
 startServer();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -42,31 +42,11 @@ export const persistStarredProjects = (starredProjects: Set<string>) => {
 };
 
 export const getSessionDate = (session: SessionWithProvider): Date => {
-  if (session.__provider === 'cursor') {
-    return new Date(session.createdAt || 0);
-  }
-
-  if (session.__provider === 'codex' || session.__provider === 'gemini' || session.__provider === 'openrouter' || session.__provider === 'nano') {
-    return new Date(session.lastActivity || session.createdAt || 0);
-  }
-
-  return new Date(session.lastActivity || 0);
+  return new Date(session.lastActivity || session.createdAt || 0);
 };
 
 export const getSessionName = (session: SessionWithProvider, t: TFunction): string => {
-  let name = '';
-  if (session.__provider === 'cursor') {
-    name = session.name || t('projects.untitledSession');
-  } else if (session.__provider === 'codex') {
-    name = session.summary || session.name || t('projects.codexSession');
-  } else if (session.__provider === 'gemini') {
-    name = session.summary || session.name || 'Gemini Session';
-  } else if (session.__provider === 'nano') {
-    name = session.summary || session.name || 'Nano Claude Code Session';
-  } else {
-    name = session.summary || t('projects.newSession');
-  }
-  
+  const name = session.summary || session.name || t('projects.codexSession');
   return stripInternalContextPrefix(name) || t('projects.newSession');
 };
 
@@ -86,15 +66,7 @@ export const getSessionMode = (session: SessionWithProvider) => {
 };
 
 export const getSessionTime = (session: SessionWithProvider): string => {
-  if (session.__provider === 'cursor') {
-    return String(session.createdAt || '');
-  }
-
-  if (session.__provider === 'codex' || session.__provider === 'gemini' || session.__provider === 'openrouter' || session.__provider === 'nano') {
-    return String(session.lastActivity || session.createdAt || '');
-  }
-
-  return String(session.lastActivity || '');
+  return String(session.lastActivity || session.createdAt || '');
 };
 
 export const createSessionViewModel = (
@@ -106,9 +78,9 @@ export const createSessionViewModel = (
   const diffInMinutes = Math.floor((currentTime.getTime() - sessionDate.getTime()) / (1000 * 60));
 
   return {
-    isCursorSession: session.__provider === 'cursor',
+    isCursorSession: false,
     isCodexSession: session.__provider === 'codex',
-    isGeminiSession: session.__provider === 'gemini',
+    isGeminiSession: false,
     isActive: diffInMinutes < 10,
     sessionName: getSessionName(session, t),
     sessionTime: getSessionTime(session),
@@ -121,52 +93,19 @@ export const getAllSessions = (
   project: Project,
   additionalSessions: AdditionalSessionsByProject,
 ): SessionWithProvider[] => {
-  const claudeSessions = [
-    ...(project.sessions || []),
-    ...(additionalSessions[project.name] || []),
-  ].map((session) => ({
-    ...session,
-    __provider: normalizeProvider((session.__provider || 'claude') as SessionProvider),
-    __projectName: session.__projectName || project.name,
-  }));
-
-  const cursorSessions = (project.cursorSessions || []).map((session) => ({
-    ...session,
-    __provider: 'cursor' as const,
-    __projectName: project.name,
-  }));
-
   const codexSessions = (project.codexSessions || []).map((session) => ({
     ...session,
     __provider: 'codex' as const,
     __projectName: project.name,
   }));
 
-  const geminiSessions = (project.geminiSessions || []).map((session) => ({
+  const optimisticCodexSessions = (additionalSessions[project.name] || []).map((session) => ({
     ...session,
-    __provider: 'gemini' as const,
-    __projectName: project.name,
+    __provider: normalizeProvider((session.__provider || 'codex') as SessionProvider),
+    __projectName: session.__projectName || project.name,
   }));
 
-  const openrouterSessions = (project.openrouterSessions || []).map((session) => ({
-    ...session,
-    __provider: 'openrouter' as const,
-    __projectName: project.name,
-  }));
-
-  const localSessions = (project.localSessions || []).map((session) => ({
-    ...session,
-    __provider: 'local' as const,
-    __projectName: project.name,
-  }));
-
-  const nanoSessions = (project.nanoSessions || []).map((session) => ({
-    ...session,
-    __provider: 'nano' as const,
-    __projectName: project.name,
-  }));
-
-  return [...claudeSessions, ...cursorSessions, ...codexSessions, ...geminiSessions, ...openrouterSessions, ...localSessions, ...nanoSessions].sort(
+  return [...codexSessions, ...optimisticCodexSessions].sort(
     (a, b) => getSessionDate(b).getTime() - getSessionDate(a).getTime(),
   );
 };

@@ -101,7 +101,7 @@ describe('sidebar session list behavior', () => {
     expect(merged).toHaveLength(1);
   });
 
-  it('treats same session id under different providers as different identities', () => {
+  it('treats same session id under same provider as a single identity', () => {
     const baseSessions = getAllSessions(
       {
         name: 'proj-a',
@@ -121,8 +121,8 @@ describe('sidebar session list behavior', () => {
 
     const selectedSession: ProjectSession = {
       id: 'sess-1',
-      summary: 'Gemini selected',
-      __provider: 'gemini',
+      summary: 'Codex selected',
+      __provider: 'codex',
       __projectName: 'proj-a',
       createdAt: '2026-04-12T10:01:00.000Z',
       lastActivity: '2026-04-12T10:01:00.000Z',
@@ -135,12 +135,7 @@ describe('sidebar session list behavior', () => {
       'proj-a',
     );
 
-    expect(merged).toHaveLength(2);
-    expect(
-      merged.some((session) => session.id === 'sess-1' && session.__provider === 'gemini'),
-    ).toBe(true);
-    expect(
-      merged.some((session) => session.id === 'sess-1' && session.__provider === 'codex'),
-    ).toBe(true);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].__provider).toBe('codex');
   });
 });

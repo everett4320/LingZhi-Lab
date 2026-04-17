@@ -25,6 +25,7 @@ import { buildTempAttachmentFilename } from './utils/imageAttachmentFiles.js';
 import { buildCodexRealtimeTokenBudget } from './utils/sessionTokenUsage.js';
 import { expandSkillCommand } from './utils/skillExpander.js';
 import { buildCodexSessionCreatedEvent } from './utils/codexSessionEvents.js';
+import { buildUnifiedCodexEvent } from './utils/codexUnifiedEvents.js';
 import { CODEX_MODELS } from '../shared/modelConstants.js';
 import { BTW_SYSTEM_PROMPT, buildBtwUserMessage } from './utils/btw.js';
 
@@ -365,9 +366,13 @@ export async function queryCodex(command, options = {}, ws) {
     sessionMode,
     stageTagKeys,
     stageTagSource = 'task_context',
+    clientTurnId = null,
+    provisionalSessionId: incomingProvisionalSessionId = null,
+    projectName: incomingProjectName = null,
   } = options;
 
   const workingDirectory = cwd || projectPath || process.cwd();
+  const normalizedProjectName = incomingProjectName || (workingDirectory ? encodeProjectPath(workingDirectory) : null);
   const { sandboxMode, approvalPolicy } = mapPermissionModeToCodexOptions(permissionMode);
 
   let codex;
@@ -409,7 +414,7 @@ export async function queryCodex(command, options = {}, ws) {
       thread = codex.startThread(threadOptions);
     }
 
-    provisionalSessionId = currentSessionId || `codex-${Date.now()}`;
+    provisionalSessionId = incomingProvisionalSessionId || currentSessionId || `new-session-${Date.now()}`;
     activeCodexSessions.set(provisionalSessionId, {
       thread,
       codex,
@@ -446,7 +451,20 @@ export async function queryCodex(command, options = {}, ws) {
         sessionId: currentSessionId,
         sessionMode: sessionMode || 'research',
         projectName: workingDirectory ? encodeProjectPath(workingDirectory) : null,
+        provisionalSessionId,
+        clientTurnId,
       }));
+      const unifiedSessionCreated = buildUnifiedCodexEvent({
+        event: { type: 'thread.started' },
+        transformed: null,
+        sessionId: currentSessionId,
+        projectName: normalizedProjectName,
+        clientTurnId,
+        provisionalSessionId,
+      });
+      if (unifiedSessionCreated) {
+        sendMessage(ws, unifiedSessionCreated);
+      }
     };
 
     publishSessionId(thread.id || sessionId || null);
@@ -469,6 +487,9 @@ export async function queryCodex(command, options = {}, ws) {
 
     // Track items we've already sent to avoid duplicates
     const sentItems = new Map(); // itemId -> lifecycle stage
+    // Track the accumulated text for each assistant item so item.updated/item.completed
+    // can be converted into true text deltas instead of repeated full payloads.
+    const agentMessageTextByItem = new Map(); // itemId -> fullText
 
     for await (const event of streamedTurn.events) {
       if (event.type === 'thread.started' && event.id) {
@@ -500,10 +521,10 @@ export async function queryCodex(command, options = {}, ws) {
       }
 
       // Event filtering:
-      // - item.updated: always skip (streaming noise)
+      // - item.updated: keep only assistant text updates; drop other noisy updates
       // - item.started: forward tool-type items immediately so they appear in UI
       // - item.completed: always forward (final state with results)
-      if (event.type === 'item.updated') {
+      if (event.type === 'item.updated' && itemType !== 'agent_message') {
         continue;
       }
 
@@ -534,6 +555,33 @@ export async function queryCodex(command, options = {}, ws) {
           : event.type === 'item.completed' ? 'completed' : 'other';
       }
 
+      if (
+        itemId
+        && transformed.type === 'item'
+        && transformed.itemType === 'agent_message'
+      ) {
+        const fullText = typeof event.item?.text === 'string' ? event.item.text : '';
+        const previousText = agentMessageTextByItem.get(itemId) || '';
+        let textDelta = fullText;
+
+        if (fullText.startsWith(previousText)) {
+          textDelta = fullText.slice(previousText.length);
+        } else if (previousText && previousText.includes(fullText)) {
+          textDelta = '';
+        }
+
+        agentMessageTextByItem.set(itemId, fullText);
+
+        if (!textDelta) {
+          continue;
+        }
+
+        transformed.message = {
+          ...(transformed.message || {}),
+          content: textDelta,
+        };
+      }
+
       // Add startTime for frontend timer synchronization
       const activeSessionId = currentSessionId || provisionalSessionId;
       const activeSession = activeSessionId ? activeCodexSessions.get(activeSessionId) : null;
@@ -554,23 +602,51 @@ export async function queryCodex(command, options = {}, ws) {
           error: errorMsg || errorCode,
           errorType,
           isRetryable,
-          sessionId: currentSessionId,
+          sessionId: currentSessionId || provisionalSessionId || null,
+          provisionalSessionId,
+          clientTurnId,
         });
+        const unifiedErrorEvent = buildUnifiedCodexEvent({
+          event,
+          transformed,
+          sessionId: currentSessionId || provisionalSessionId || null,
+          projectName: normalizedProjectName,
+          clientTurnId,
+          provisionalSessionId,
+        });
+        if (unifiedErrorEvent) {
+          sendMessage(ws, unifiedErrorEvent);
+        }
         continue;
       }
 
       sendMessage(ws, {
         type: 'codex-response',
         data: transformed,
-        sessionId: currentSessionId
+        sessionId: currentSessionId || provisionalSessionId || null,
+        provisionalSessionId,
+        clientTurnId,
       });
+      const unifiedEvent = buildUnifiedCodexEvent({
+        event,
+        transformed,
+        sessionId: currentSessionId || provisionalSessionId || null,
+        projectName: normalizedProjectName,
+        clientTurnId,
+        provisionalSessionId,
+      });
+      if (unifiedEvent) {
+        sendMessage(ws, unifiedEvent);
+      }
 
       // Extract and send token usage if available (normalized to match Claude format)
       if (event.type === 'turn.completed' && event.usage) {
         sendMessage(ws, {
           type: 'token-budget',
           data: buildCodexRealtimeTokenBudget(event.usage),
-          sessionId: currentSessionId
+          sessionId: currentSessionId || provisionalSessionId || null,
+          provisionalSessionId,
+          clientTurnId,
         });
       }
     }
@@ -580,9 +656,22 @@ export async function queryCodex(command, options = {}, ws) {
     // Send completion event immediately so the UI can settle
     sendMessage(ws, {
       type: 'codex-complete',
-      sessionId: currentSessionId,
-      actualSessionId
+      sessionId: currentSessionId || provisionalSessionId || null,
+      actualSessionId,
+      provisionalSessionId,
+      clientTurnId,
     });
+    const unifiedCompletionEvent = buildUnifiedCodexEvent({
+      event: { type: 'turn.completed' },
+      transformed: { type: 'turn_complete' },
+      sessionId: actualSessionId || currentSessionId,
+      projectName: normalizedProjectName,
+      clientTurnId,
+      provisionalSessionId,
+    });
+    if (unifiedCompletionEvent) {
+      sendMessage(ws, unifiedCompletionEvent);
+    }
 
     // Post-completion housekeeping — runs after the UI receives the completion signal
     if (workingDirectory && actualSessionId) {
@@ -617,8 +706,21 @@ export async function queryCodex(command, options = {}, ws) {
         error: error.message,
         errorType,
         isRetryable,
-        sessionId: currentSessionId
+        sessionId: currentSessionId || provisionalSessionId || null,
+        provisionalSessionId,
+        clientTurnId,
       });
+      const unifiedCatchErrorEvent = buildUnifiedCodexEvent({
+        event: { type: 'error', message: error.message },
+        transformed: { type: 'error', message: error.message },
+        sessionId: currentSessionId || provisionalSessionId,
+        projectName: normalizedProjectName,
+        clientTurnId,
+        provisionalSessionId,
+      });
+      if (unifiedCatchErrorEvent) {
+        sendMessage(ws, unifiedCatchErrorEvent);
+      }
     }
 
   } finally {

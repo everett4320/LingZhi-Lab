@@ -12,7 +12,6 @@ import {
 import { normalizeProvider } from '../utils/providerPolicy';
 import { isTemporarySessionId } from '../utils/sessionScope';
 import {
-  hasTrackedTemporarySession,
   isTrackedSessionActive,
   upsertProjectSession,
 } from './projectsSessionSync';
@@ -83,7 +82,6 @@ const serialize = (value: unknown) => JSON.stringify(value ?? null);
 const projectsHaveChanges = (
   prevProjects: Project[],
   nextProjects: Project[],
-  includeExternalSessions: boolean,
 ): boolean => {
   if (prevProjects.length !== nextProjects.length) {
     return true;
@@ -99,38 +97,18 @@ const projectsHaveChanges = (
       nextProject.name !== prevProject.name ||
       nextProject.displayName !== prevProject.displayName ||
       nextProject.fullPath !== prevProject.fullPath ||
-      serialize(nextProject.sessionMeta) !== serialize(prevProject.sessionMeta) ||
-      serialize(nextProject.sessions) !== serialize(prevProject.sessions);
+      serialize(nextProject.sessionMeta) !== serialize(prevProject.sessionMeta);
 
     if (baseChanged) {
       return true;
     }
 
-    if (!includeExternalSessions) {
-      return false;
-    }
-
-    return (
-      serialize(nextProject.cursorSessions) !== serialize(prevProject.cursorSessions) ||
-      serialize(nextProject.codexSessions) !== serialize(prevProject.codexSessions) ||
-      serialize(nextProject.geminiSessions) !== serialize(prevProject.geminiSessions) ||
-      serialize(nextProject.openrouterSessions) !== serialize(prevProject.openrouterSessions) ||
-      serialize(nextProject.localSessions) !== serialize(prevProject.localSessions) ||
-      serialize(nextProject.nanoSessions) !== serialize(prevProject.nanoSessions)
-    );
+    return serialize(nextProject.codexSessions) !== serialize(prevProject.codexSessions);
   });
 };
 
 const getProjectSessions = (project: Project): ProjectSession[] => {
-  return [
-    ...(project.sessions ?? []),
-    ...(project.codexSessions ?? []),
-    ...(project.cursorSessions ?? []),
-    ...(project.geminiSessions ?? []),
-    ...(project.openrouterSessions ?? []),
-    ...(project.localSessions ?? []),
-    ...(project.nanoSessions ?? []),
-  ];
+  return [...(project.codexSessions ?? [])];
 };
 
 const matchesSessionIdentity = (
@@ -146,7 +124,7 @@ const matchesSessionIdentity = (
     return true;
   }
 
-  return (session.__provider || providerHint || 'claude') === detail.provider;
+  return (session.__provider || providerHint || 'codex') === detail.provider;
 };
 
 const applySessionTagsToList = (
@@ -186,82 +164,26 @@ const applySessionTagsToProject = (
     return project;
   }
 
-  const nextClaudeSessions = applySessionTagsToList(project.sessions, detail, 'claude');
-  const nextCursorSessions = applySessionTagsToList(project.cursorSessions, detail, 'cursor');
   const nextCodexSessions = applySessionTagsToList(project.codexSessions, detail, 'codex');
-  const nextGeminiSessions = applySessionTagsToList(project.geminiSessions, detail, 'gemini');
-  const nextOpenrouterSessions = applySessionTagsToList(project.openrouterSessions, detail, 'openrouter');
-  const nextLocalSessions = applySessionTagsToList(project.localSessions, detail, 'local');
-  const nextNanoSessions = applySessionTagsToList(project.nanoSessions, detail, 'nano');
 
-  if (
-    nextClaudeSessions === project.sessions &&
-    nextCursorSessions === project.cursorSessions &&
-    nextCodexSessions === project.codexSessions &&
-    nextGeminiSessions === project.geminiSessions &&
-    nextOpenrouterSessions === project.openrouterSessions &&
-    nextLocalSessions === project.localSessions &&
-    nextNanoSessions === project.nanoSessions
-  ) {
+  if (nextCodexSessions === project.codexSessions) {
     return project;
   }
 
   return {
     ...project,
-    sessions: nextClaudeSessions,
-    cursorSessions: nextCursorSessions,
     codexSessions: nextCodexSessions,
-    geminiSessions: nextGeminiSessions,
-    openrouterSessions: nextOpenrouterSessions,
-    localSessions: nextLocalSessions,
-    nanoSessions: nextNanoSessions,
   };
-};
-
-const isUpdateAdditive = (
-  currentProjects: Project[],
-  updatedProjects: Project[],
-  selectedProject: Project | null,
-  selectedSession: ProjectSession | null,
-): boolean => {
-  if (!selectedProject || !selectedSession) {
-    return true;
-  }
-
-  const currentSelectedProject = currentProjects.find((project) => project.name === selectedProject.name);
-  const updatedSelectedProject = updatedProjects.find((project) => project.name === selectedProject.name);
-
-  if (!currentSelectedProject || !updatedSelectedProject) {
-    return false;
-  }
-
-  const currentSelectedSession = getProjectSessions(currentSelectedProject).find(
-    (session) => session.id === selectedSession.id,
-  );
-  const updatedSelectedSession = getProjectSessions(updatedSelectedProject).find(
-    (session) => session.id === selectedSession.id,
-  );
-
-  if (!currentSelectedSession || !updatedSelectedSession) {
-    return false;
-  }
-
-  return (
-    currentSelectedSession.id === updatedSelectedSession.id &&
-    currentSelectedSession.title === updatedSelectedSession.title &&
-    currentSelectedSession.created_at === updatedSelectedSession.created_at &&
-    currentSelectedSession.updated_at === updatedSelectedSession.updated_at
-  );
 };
 
 const buildTransientSession = (
   sessionId: string,
-  provider: ProjectSession['__provider'] = 'claude',
+  provider: ProjectSession['__provider'] = 'codex',
   projectName?: string,
 ): ProjectSession => ({
     id: sessionId,
-    name: 'Auto Research Session',
-    summary: 'Auto Research Session',
+    name: 'New Session',
+    summary: 'New Session',
     mode: 'research',
     __provider: provider,
     __projectName: projectName,
@@ -313,7 +235,7 @@ export function useProjectsState({
           return projectData;
         }
 
-        return projectsHaveChanges(prevProjects, projectData, true)
+        return projectsHaveChanges(prevProjects, projectData)
           ? projectData
           : prevProjects;
       });
@@ -485,7 +407,7 @@ export function useProjectsState({
         null;
       const effectiveProjectName = createdProjectName || fallbackProjectName;
       const selectedSessionProvider = normalizeProvider(
-        (selectedSession?.__provider || createdProvider || 'claude') as SessionProvider,
+        (selectedSession?.__provider || createdProvider || 'codex') as SessionProvider,
       ) as SessionProvider;
       const selectedSessionProjectName =
         selectedSession?.__projectName || selectedProject?.name || null;
@@ -499,40 +421,18 @@ export function useProjectsState({
           : null;
 
       setProjects((prevProjects) => prevProjects.map((project) => {
-        const updateSessionList = (
-          sessions: ProjectSession[] | undefined,
-          provider: ProjectSession['__provider'],
-        ): ProjectSession[] | undefined => {
-          if (!Array.isArray(sessions)) {
-            return sessions;
-          }
-
-          let changed = false;
-          const nextSessions = sessions.map((session) => {
+        const nextProject = {
+          ...project,
+          codexSessions: (project.codexSessions || []).map((session) => {
             if (session.id !== latestMessage.sessionId) {
               return session;
             }
-
-            changed = true;
             return {
               ...session,
               mode: sessionMode,
-              __provider: session.__provider || provider,
+              __provider: session.__provider || 'codex',
             };
-          });
-
-          return changed ? nextSessions : sessions;
-        };
-
-        const nextProject = {
-          ...project,
-          sessions: updateSessionList(project.sessions, 'claude'),
-          cursorSessions: updateSessionList(project.cursorSessions, 'cursor'),
-          codexSessions: updateSessionList(project.codexSessions, 'codex'),
-          geminiSessions: updateSessionList(project.geminiSessions, 'gemini'),
-          openrouterSessions: updateSessionList(project.openrouterSessions, 'openrouter'),
-          localSessions: updateSessionList(project.localSessions, 'local'),
-          nanoSessions: updateSessionList(project.nanoSessions, 'nano'),
+          }),
         };
 
         if (effectiveProjectName && project.name === effectiveProjectName && createdProvider) {
@@ -649,25 +549,7 @@ export function useProjectsState({
         }
       }
 
-      const hasActiveSession =
-        Boolean(
-          selectedSession &&
-          isTrackedSessionActive(activeSessions, {
-            sessionId: selectedSession.id,
-            provider: selectedSession.__provider,
-            projectName: selectedSession.__projectName || selectedProject?.name,
-          }),
-        ) ||
-        hasTrackedTemporarySession(activeSessions);
-
       const updatedProjects = projectsMessage.projects;
-
-      if (
-        hasActiveSession &&
-        !isUpdateAdditive(projects, updatedProjects, selectedProject, selectedSession)
-      ) {
-        return;
-      }
 
       setProjects(updatedProjects);
       if (activeTab === 'trash') {
@@ -695,7 +577,7 @@ export function useProjectsState({
       }
 
       const normalizedSelectedProvider = normalizeProvider(
-        (selectedSession.__provider || 'claude') as SessionProvider,
+        (selectedSession.__provider || 'codex') as SessionProvider,
       ) as SessionProvider;
       const selectedSessionProjectName =
         selectedSession.__projectName || selectedProject.name;
@@ -703,17 +585,23 @@ export function useProjectsState({
         (session) => (
           session.id === selectedSession.id
           && normalizeProvider(
-            (session.__provider || 'claude') as SessionProvider,
+            (session.__provider || 'codex') as SessionProvider,
           ) === normalizedSelectedProvider
           && (session.__projectName || updatedSelectedProject.name) === selectedSessionProjectName
         ),
       );
 
       if (!updatedSelectedSession) {
-        setSelectedSession(null);
+        // Codex-only v4: projects_updated is reconciliation signal only.
+        // Do not clear selectedSession here; explicit session-delete paths own removal.
+        return;
+      }
+
+      if (serialize(updatedSelectedSession) !== serialize(selectedSession)) {
+        setSelectedSession(updatedSelectedSession);
       }
     }, 250);
-  }, [activeTab, activeSessions, fetchTrashProjects, latestMessage, projects, selectedProject, selectedSession]);
+  }, [activeTab, activeSessions, fetchTrashProjects, latestMessage, selectedProject, selectedSession]);
 
   useEffect(() => {
     return () => {
@@ -750,52 +638,10 @@ export function useProjectsState({
       : null;
 
     for (const project of projects) {
-      const claudeSession = project.sessions?.find((session) => session.id === targetSessionId);
-      if (claudeSession) {
-        matchedProject = project;
-        matchedSession = { ...claudeSession, __provider: 'claude' };
-        break;
-      }
-
-      const cursorSession = project.cursorSessions?.find((session) => session.id === targetSessionId);
-      if (cursorSession) {
-        matchedProject = project;
-        matchedSession = { ...cursorSession, __provider: 'cursor' };
-        break;
-      }
-
       const codexSession = project.codexSessions?.find((session) => session.id === targetSessionId);
       if (codexSession) {
         matchedProject = project;
         matchedSession = { ...codexSession, __provider: 'codex' };
-        break;
-      }
-
-      const geminiSession = project.geminiSessions?.find((session) => session.id === targetSessionId);
-      if (geminiSession) {
-        matchedProject = project;
-        matchedSession = { ...geminiSession, __provider: 'gemini' };
-        break;
-      }
-
-      const openrouterSession = project.openrouterSessions?.find((session) => session.id === targetSessionId);
-      if (openrouterSession) {
-        matchedProject = project;
-        matchedSession = { ...openrouterSession, __provider: 'openrouter' };
-        break;
-      }
-
-      const localSession = project.localSessions?.find((session) => session.id === targetSessionId);
-      if (localSession) {
-        matchedProject = project;
-        matchedSession = { ...localSession, __provider: 'local' };
-        break;
-      }
-
-      const nanoSession = project.nanoSessions?.find((session) => session.id === targetSessionId);
-      if (nanoSession) {
-        matchedProject = project;
-        matchedSession = { ...nanoSession, __provider: 'nano' };
         break;
       }
     }
@@ -819,7 +665,12 @@ export function useProjectsState({
     }
 
     if (sessionToSelect) {
-      navigate(`/session/${targetSessionId}`);
+      const routeProjectName = (sessionToSelect.__projectName || projectToSelect?.name || selectedProject?.name || targetProjectName);
+      if (routeProjectName) {
+        navigate(`/session/${encodeURIComponent(routeProjectName)}/${encodeURIComponent(targetSessionId)}`);
+      } else {
+        navigate(`/session/${encodeURIComponent(targetSessionId)}`);
+      }
     }
   }, [navigate, projects, selectedProject?.name, selectedSession?.id, selectedSession?.__provider]);
 
@@ -862,11 +713,6 @@ export function useProjectsState({
         setActiveTab('chat');
       }
 
-      const provider = localStorage.getItem('selected-provider') || 'claude';
-      if (provider === 'cursor') {
-        sessionStorage.setItem('cursorSessionId', session.id);
-      }
-
       if (isMobile) {
         const sessionProjectName = session.__projectName;
         const currentProjectName = selectedProject?.name;
@@ -876,7 +722,12 @@ export function useProjectsState({
         }
       }
 
-      navigate(`/session/${session.id}`);
+      const routeProjectName = session.__projectName || selectedProject?.name;
+      if (routeProjectName) {
+        navigate(`/session/${encodeURIComponent(routeProjectName)}/${encodeURIComponent(session.id)}`);
+      } else {
+        navigate(`/session/${encodeURIComponent(session.id)}`);
+      }
     },
     [activeTab, isMobile, navigate, selectedProject?.name],
   );
@@ -1032,13 +883,7 @@ export function useProjectsState({
       setProjects((prevProjects) =>
         prevProjects.map((project) => ({
           ...project,
-          sessions: filterOut(project.sessions),
-          cursorSessions: filterOut(project.cursorSessions),
           codexSessions: filterOut(project.codexSessions),
-          geminiSessions: filterOut(project.geminiSessions),
-          openrouterSessions: filterOut(project.openrouterSessions),
-          localSessions: filterOut(project.localSessions),
-          nanoSessions: filterOut(project.nanoSessions),
           sessionMeta: {
             ...project.sessionMeta,
             total: Math.max(0, (project.sessionMeta?.total as number | undefined ?? 0) - 1),
@@ -1059,7 +904,7 @@ export function useProjectsState({
       const freshTrashProjects = trashResponse.ok ? await trashResponse.json() as TrashProject[] : [];
 
       setProjects((prevProjects) =>
-        projectsHaveChanges(prevProjects, freshProjects, true) ? freshProjects : prevProjects,
+        projectsHaveChanges(prevProjects, freshProjects) ? freshProjects : prevProjects,
       );
       setTrashProjects(freshTrashProjects);
 
@@ -1222,3 +1067,5 @@ export function useProjectsState({
     clearImportedProjectAnalysisPrompt,
   };
 }
+
+

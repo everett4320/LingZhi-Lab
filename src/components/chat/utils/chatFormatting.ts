@@ -1,4 +1,4 @@
-export function decodeHtmlEntities(text: string) {
+﻿export function decodeHtmlEntities(text: string) {
   if (!text) return text;
   return text
     .replace(/&lt;/g, '<')
@@ -34,7 +34,7 @@ export function unescapeWithMathProtection(text: string) {
 
   processedText = processedText.replace(
     new RegExp(`${placeholderPrefix}(\\d+)${placeholderSuffix}`, 'g'),
-    (match, index) => {
+    (_match, index) => {
       return mathBlocks[parseInt(index, 10)];
     },
   );
@@ -46,75 +46,103 @@ export function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+const UNICODE_TREE_RE = /[\u2500-\u257F]/;
+const ASCII_TREE_PREFIXES: RegExp[] = [
+  /^\s*\|--\s+/,
+  /^\s*`--\s+/,
+  /^\s*\\--\s+/,
+  /^\s*\+--\s+/,
+  /^\s*\|__\s+/,
+  /^\s*\+__\s+/,
+];
+
+function isTreeLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (UNICODE_TREE_RE.test(trimmed)) {
+    return true;
+  }
+
+  return ASCII_TREE_PREFIXES.some((pattern) => pattern.test(trimmed));
+}
+
+function isTreeContinuationLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return true;
+  }
+
+  if (trimmed === '|' || trimmed === '||') {
+    return true;
+  }
+
+  return /^[\u2502\s]+$/.test(trimmed);
+}
+
+function isPossibleRootLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (trimmed.endsWith('/') || trimmed.endsWith('\\')) {
+    return true;
+  }
+
+  if (trimmed.startsWith('./') || trimmed.startsWith('../') || trimmed.startsWith('/') || /^[A-Za-z]:[\\/]/.test(trimmed)) {
+    return true;
+  }
+
+  return !trimmed.includes(' ') && /[\\/]/.test(trimmed);
+}
+
 export function formatFileTreeInContent(text: string): string {
   if (!text || typeof text !== 'string') return text;
 
-  // Pattern to detect file tree structures
-  // Matches lines starting with ├──, └──, │, or multiple spaces followed by these symbols
-  // Also matches the root directory line which often precedes the tree
   const lines = text.split('\n');
   const result: string[] = [];
   let isInTree = false;
   let treeLines: string[] = [];
 
-  const isTreeLine = (line: string) => {
-    const trimmed = line.trim();
-    return (
-      trimmed.startsWith('├──') ||
-      trimmed.startsWith('└──') ||
-      trimmed.startsWith('│') ||
-      (trimmed.includes('──') && (trimmed.includes('├') || trimmed.includes('└')))
-    );
-  };
-
-  const isPossibleRootLine = (line: string) => {
-    const trimmed = line.trim();
-    // Common root patterns: "dir/", "./dir", "/path/to/dir"
-    return (
-      trimmed.endsWith('/') ||
-      trimmed.startsWith('./') ||
-      trimmed.startsWith('/') ||
-      (trimmed.length > 0 && !trimmed.includes(' ') && trimmed.includes('/'))
-    );
-  };
-
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
-    const nextLine = lines[i + 1];
 
     if (isTreeLine(line)) {
       if (!isInTree) {
-        // Look back one line to see if it's the root directory
         if (result.length > 0 && isPossibleRootLine(result[result.length - 1])) {
           const rootLine = result.pop()!;
-          isInTree = true;
           treeLines = [rootLine, line];
         } else {
-          isInTree = true;
           treeLines = [line];
         }
+        isInTree = true;
       } else {
         treeLines.push(line);
       }
-    } else if (isInTree) {
-      // Sometimes there are empty lines or lines with just vertical bars in a tree
-      if (line.trim() === '' || line.trim() === '│') {
-        treeLines.push(line);
-      } else {
-        // End of tree
-        result.push('```text\n' + treeLines.join('\n') + '\n```');
-        result.push(line);
-        isInTree = false;
-        treeLines = [];
-      }
-    } else {
-      result.push(line);
+      continue;
     }
+
+    if (isInTree) {
+      if (isTreeContinuationLine(line)) {
+        treeLines.push(line);
+        continue;
+      }
+
+      result.push(`\`\`\`text\n${treeLines.join('\n')}\n\`\`\``);
+      result.push(line);
+      treeLines = [];
+      isInTree = false;
+      continue;
+    }
+
+    result.push(line);
   }
 
-  // Handle case where tree ends at the last line
-  if (isInTree) {
-    result.push('```text\n' + treeLines.join('\n') + '\n```');
+  if (isInTree && treeLines.length > 0) {
+    result.push(`\`\`\`text\n${treeLines.join('\n')}\n\`\`\``);
   }
 
   return result.join('\n');
@@ -124,16 +152,16 @@ export function formatUsageLimitText(text: string) {
   try {
     if (typeof text !== 'string') return text;
 
-    // First apply file tree formatting
     let formattedText = formatFileTreeInContent(text);
 
-    // Strip <thinking>...</thinking> blocks that appear inline in assistant messages
+    // Remove inline thinking blocks from assistant output.
     formattedText = formattedText.replace(/<thinking>[\s\S]*?<\/thinking>\s*/g, '');
 
-    // Parse "Claude AI usage limit reached|<timestamp>" and show local reset time
     const localTimezone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
     const USAGE_LIMIT_FALLBACK = 'AI usage limit reached. Please try again later.';
-    formattedText = formattedText.replace(/Claude AI usage limit reached\|(\d{10,13})/g, (_match, ts) => {
+    const usagePattern = /(?:Codex|Claude)?\s*AI usage limit reached\|(\d{10,13})/g;
+
+    formattedText = formattedText.replace(usagePattern, (_match, ts) => {
       try {
         const epoch = ts.length <= 10 ? Number(ts) * 1000 : Number(ts);
         const resetDate = new Date(epoch);
@@ -157,7 +185,7 @@ export function formatUsageLimitText(text: string) {
   }
 }
 
-// Re-export from shared module — single source of truth for both server and client
+// Re-export from shared module as the single parser source for legacy Gemini thought blocks.
 import { splitLegacyGeminiThoughtContent } from '../../../../shared/geminiThoughtParser.js';
 export { splitLegacyGeminiThoughtContent };
 
@@ -177,35 +205,6 @@ export function buildAssistantMessages(
   return [{ type: 'assistant', content, timestamp }];
 }
 
-/**
- * Returns the display label for a given provider.
- * For OpenRouter, shows a prettified version of the selected model slug.
- */
-export function getProviderDisplayName(provider: string): string {
-  if (provider === 'cursor') return 'Cursor';
-  if (provider === 'codex') return 'Codex';
-  if (provider === 'gemini') return 'Gemini';
-  if (provider === 'openrouter') {
-    const slug = localStorage.getItem('openrouter-model') || '';
-    if (slug) {
-      const afterSlash = slug.includes('/') ? slug.split('/').pop()! : slug;
-      return afterSlash
-        .replace(/-/g, ' ')
-        .replace(/\b\w/g, (c) => c.toUpperCase());
-    }
-    return 'OpenRouter';
-  }
-  if (provider === 'local') {
-    const model = localStorage.getItem('local-model') || '';
-    if (model) {
-      return model
-        .replace(/-/g, ' ')
-        .replace(/\b\w/g, (c) => c.toUpperCase());
-    }
-    return 'Local GPU';
-  }
-  if (provider === 'nano') {
-    return 'Nano Claude Code';
-  }
-  return 'Claude';
+export function getProviderDisplayName(_provider: string): string {
+  return 'Codex';
 }

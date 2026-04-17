@@ -3,18 +3,12 @@ import type { SessionProvider } from "../types/app";
 export { type SessionProvider };
 
 export const ALL_PROVIDERS: SessionProvider[] = [
-  "claude",
-  "cursor",
   "codex",
-  "gemini",
-  "openrouter",
-  "local",
-  "nano",
 ];
 
 export const ALLOWED_PROVIDERS: SessionProvider[] = [...ALL_PROVIDERS];
 
-export const DEFAULT_PROVIDER: SessionProvider = "claude";
+export const DEFAULT_PROVIDER: SessionProvider = "codex";
 
 export function isProviderAllowed(provider?: string | null): provider is SessionProvider {
   if (!provider) {

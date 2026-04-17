@@ -19,22 +19,17 @@ import { isTelemetryEnabled } from "../../../utils/telemetry";
 import { thinkingModes } from "../constants/thinkingModes";
 import type { CodexReasoningEffortId } from "../constants/codexReasoningEfforts";
 import { getSupportedCodexReasoningEfforts } from "../constants/codexReasoningSupport";
-import type { GeminiThinkingModeId } from "../../../../shared/geminiThinkingSupport";
-import { getSupportedGeminiThinkingModes } from "../../../../shared/geminiThinkingSupport";
 
 import { grantToolPermission } from "../utils/chatPermissions";
 import { applyEditedMessageToHistory, createChatMessageId } from '../utils/chatMessages';
 import {
   buildDraftInputStorageKey,
   clearScopedPendingSessionId,
-  clearScopedProviderSessionId,
   clearSessionTimerStart,
   getProviderSettingsKey,
   persistScopedPendingSessionId,
-  persistScopedProviderSessionId,
   persistSessionTimerStart,
   readScopedPendingSessionId,
-  readScopedProviderSessionId,
   safeLocalStorage,
 } from "../utils/chatStorage";
 import { hasUnsavedComposerDraft, normalizeProgrammaticDraft, resolveLineHeightPx } from '../utils/composerUtils';
@@ -109,13 +104,7 @@ interface UseChatComposerStateArgs {
   provider: SessionProvider;
   permissionMode: PermissionMode | string;
   cyclePermissionMode: () => void;
-  cursorModel: string;
-  claudeModel: string;
   codexModel: string;
-  geminiModel: string;
-  openrouterModel: string;
-  localModel: string;
-  nanoModel: string;
   isLoading: boolean;
   canAbortSession: boolean;
   tokenBudget: TokenBudget | null;
@@ -426,13 +415,7 @@ export function useChatComposerState({
   provider,
   permissionMode,
   cyclePermissionMode,
-  cursorModel,
-  claudeModel,
   codexModel,
-  geminiModel,
-  openrouterModel,
-  localModel,
-  nanoModel,
   isLoading,
   canAbortSession,
   tokenBudget,
@@ -488,26 +471,6 @@ export function useChatComposerState({
         case "high":
         case "xhigh":
         case "default":
-          return savedValue;
-        default:
-          return "default";
-      }
-    });
-  const [geminiThinkingMode, setGeminiThinkingMode] =
-    useState<GeminiThinkingModeId>(() => {
-      const savedValue = safeLocalStorage.getItem("gemini-thinking-mode");
-      switch (savedValue) {
-        case "default":
-        case "minimal":
-        case "low":
-        case "medium":
-        case "high":
-        case "dynamic":
-        case "off":
-        case "light":
-        case "balanced":
-        case "deep":
-        case "max":
           return savedValue;
         default:
           return "default";
@@ -731,22 +694,11 @@ export function useChatComposerState({
   }, [codexReasoningEffort]);
 
   useEffect(() => {
-    safeLocalStorage.setItem("gemini-thinking-mode", geminiThinkingMode);
-  }, [geminiThinkingMode]);
-
-  useEffect(() => {
     const supportedEfforts = getSupportedCodexReasoningEfforts(codexModel);
     if (!supportedEfforts.includes(codexReasoningEffort)) {
       setCodexReasoningEffort("default");
     }
   }, [codexModel, codexReasoningEffort]);
-
-  useEffect(() => {
-    const supportedModes = getSupportedGeminiThinkingModes(geminiModel);
-    if (!supportedModes.includes(geminiThinkingMode)) {
-      setGeminiThinkingMode("default");
-    }
-  }, [geminiModel, geminiThinkingMode]);
 
   const handleBuiltInCommand = useCallback(
     (result: CommandExecutionResult) => {
@@ -773,7 +725,7 @@ export function useChatComposerState({
             ...previous,
             {
               type: "assistant",
-              content: `**Current Model**: ${data.current.model}\n\n**Available Models**:\n\nClaude: ${data.available.claude.join(", ")}\n\nCursor: ${data.available.cursor.join(", ")}`,
+              content: `**Current Model**: ${data.current.model}\n\n**Available Models**:\n\nCodex: ${(data.available?.codex || []).join(", ")}`,
               timestamp: Date.now(),
             },
           ]);
@@ -916,12 +868,7 @@ export function useChatComposerState({
           projectName: selectedProject.name,
           sessionId: currentSessionId,
           provider,
-          model:
-            provider === "cursor"
-              ? cursorModel
-              : provider === "codex"
-                ? codexModel
-                : claudeModel,
+          model: codexModel,
           tokenUsage: tokenBudget,
         };
 
@@ -966,19 +913,6 @@ export function useChatComposerState({
             ]);
             return;
           }
-          const btwSupportedProviders = new Set(['claude', 'gemini', 'codex']);
-          if (!btwSupportedProviders.has(provider)) {
-            setChatMessages((previous) => [
-              ...previous,
-              {
-                type: 'assistant',
-                content:
-                  '`/btw` is available with Claude, Gemini, and Codex providers. Switch to one of them in the chat controls, then try again.',
-                timestamp: Date.now(),
-              },
-            ]);
-            return;
-          }
           const question = typeof data?.question === 'string' ? data.question.trim() : '';
           if (!question) {
             return;
@@ -995,12 +929,7 @@ export function useChatComposerState({
           });
           try {
             const transcript = buildBtwTranscript(getChatMessagesForBtw?.() ?? []);
-            const btwModel =
-              provider === 'gemini'
-                ? geminiModel
-                : provider === 'codex'
-                  ? codexModel
-                  : claudeModel;
+            const btwModel = codexModel;
             const btwResponse = await authenticatedFetch('/api/btw', {
               method: 'POST',
               headers: {
@@ -1065,15 +994,9 @@ export function useChatComposerState({
       }
     },
     [
-      claudeModel,
       codexModel,
       currentSessionId,
-      cursorModel,
       getChatMessagesForBtw,
-      geminiModel,
-      openrouterModel,
-      localModel,
-      nanoModel,
       handleBuiltInCommand,
       handleCustomCommand,
       input,
@@ -1442,7 +1365,6 @@ export function useChatComposerState({
   const resolveSessionContext = useCallback(() => {
     const routedSessionId = getRouteSessionId();
     const projectName = selectedProject?.name || null;
-    const resolvedProvider = normalizeProvider(provider);
 
     // If we're on the root path with no routed session and no selected session,
     // treat this as an explicit new-session start and clear stale IDs.
@@ -1451,33 +1373,20 @@ export function useChatComposerState({
       !routedSessionId &&
       !selectedSession?.id;
     if (isExplicitNewSessionStart) {
-      clearScopedProviderSessionId(projectName, "gemini");
-      clearScopedProviderSessionId(projectName, "cursor");
-      clearScopedPendingSessionId(projectName, "claude");
-      clearScopedPendingSessionId(projectName, "cursor");
       clearScopedPendingSessionId(projectName, "codex");
-      clearScopedPendingSessionId(projectName, "gemini");
-      clearScopedPendingSessionId(projectName, "openrouter");
-      clearScopedPendingSessionId(projectName, "local");
       lastSubmittedCodexSessionRef.current = null;
     }
 
-    const providerSessionId =
-      resolvedProvider === "gemini" || resolvedProvider === "cursor"
-        ? readScopedProviderSessionId(projectName, resolvedProvider)
-        : null;
-    const pendingSessionId = readScopedPendingSessionId(projectName, resolvedProvider);
+    const pendingSessionId = readScopedPendingSessionId(projectName, "codex");
     const pendingViewSessionId =
       pendingViewSessionRef.current?.sessionId || null;
-    const lastSubmittedSessionId =
-      provider === "codex" ? lastSubmittedCodexSessionRef.current : null;
+    const lastSubmittedSessionId = lastSubmittedCodexSessionRef.current;
     const effectiveSessionId =
       currentSessionId ||
         selectedSession?.id ||
         routedSessionId ||
         pendingViewSessionId ||
         pendingSessionId ||
-        providerSessionId ||
         lastSubmittedSessionId;
     const isNewSession = !effectiveSessionId;
     const sessionToActivate = effectiveSessionId || `new-session-${Date.now()}`;
@@ -1489,14 +1398,12 @@ export function useChatComposerState({
       effectiveSessionId,
       isNewSession,
       sessionToActivate,
-      resolvedProvider,
       resolvedProjectPath,
     };
   }, [
     currentSessionId,
     pathname,
     pendingViewSessionRef,
-    provider,
     selectedProject?.fullPath,
     selectedProject?.path,
     selectedSession?.id,
@@ -2076,10 +1983,6 @@ export function useChatComposerState({
         return;
       }
 
-      if (isLoading && provider !== "codex") {
-        return;
-      }
-
       const currentAttachedFiles = attachedFilesRef.current;
       const currentAttachedPrompt = attachedPromptRef.current;
       const currentStageTagKeys = pendingStageTagKeysRef.current;
@@ -2163,18 +2066,16 @@ export function useChatComposerState({
         effectiveSessionId,
         isNewSession,
         sessionToActivate,
-        resolvedProvider,
         resolvedProjectPath,
       } = resolveSessionContext();
       const isCodexSessionBusy =
-        resolvedProvider === "codex" &&
         hasProcessingSession(
           sessionToActivate,
-          resolvedProvider,
+          "codex",
           selectedProject?.name || currentProjectName,
         );
       const useSteerForThisSubmit =
-        resolvedProvider === "codex" && (steerMode || forceSteerForSubmit);
+        steerMode || forceSteerForSubmit;
 
       if (isCodexSessionBusy) {
         if (attachedFiles.length > 0) {
@@ -2289,40 +2190,38 @@ export function useChatComposerState({
           messageContent = `${messageContent}${fileNote}`;
         }
 
-        if (resolvedProvider === "codex") {
-          codexAttachmentPayload = uploadedFiles.reduce(
-            (
-              accumulator: {
-                imagePaths: string[];
-                documentPaths: string[];
-              },
-              uploadedFile: UploadedProjectFile,
-              index: number,
-            ) => {
-              const sourceFile = currentAttachedFiles[index];
-              const uploadedPath =
-                uploadedFile?.path && typeof uploadedFile.path === "string"
-                  ? uploadedFile.path
-                  : null;
+        codexAttachmentPayload = uploadedFiles.reduce(
+          (
+            accumulator: {
+              imagePaths: string[];
+              documentPaths: string[];
+            },
+            uploadedFile: UploadedProjectFile,
+            index: number,
+          ) => {
+            const sourceFile = currentAttachedFiles[index];
+            const uploadedPath =
+              uploadedFile?.path && typeof uploadedFile.path === "string"
+                ? uploadedFile.path
+                : null;
 
-              if (!sourceFile || !uploadedPath) {
-                return accumulator;
-              }
-
-              if (isImageAttachment(sourceFile)) {
-                accumulator.imagePaths.push(uploadedPath);
-              } else if (isPdfAttachment(sourceFile)) {
-                accumulator.documentPaths.push(uploadedPath);
-              }
-
+            if (!sourceFile || !uploadedPath) {
               return accumulator;
-            },
-            {
-              imagePaths: [] as string[],
-              documentPaths: [] as string[],
-            },
-          );
-        }
+            }
+
+            if (isImageAttachment(sourceFile)) {
+              accumulator.imagePaths.push(uploadedPath);
+            } else if (isPdfAttachment(sourceFile)) {
+              accumulator.documentPaths.push(uploadedPath);
+            }
+
+            return accumulator;
+          },
+          {
+            imagePaths: [] as string[],
+            documentPaths: [] as string[],
+          },
+        );
 
         const imageFiles = currentAttachedFiles.filter((file) => isImageAttachment(file));
         if (imageFiles.length > 0) {
@@ -2376,7 +2275,7 @@ export function useChatComposerState({
         const optimisticSessionCreatedDetail: OptimisticSessionCreatedDetail = {
           sessionId: sessionToActivate,
           projectName: selectedProject.name,
-          provider: resolvedProvider,
+          provider: "codex",
           mode: newSessionMode,
           displayName: getOptimisticSessionDisplayName(normalizedInput),
           summary: getOptimisticSessionDisplayName(normalizedInput),
@@ -2393,10 +2292,7 @@ export function useChatComposerState({
       }
 
       if (!effectiveSessionId && !selectedSession?.id) {
-        clearScopedPendingSessionId(selectedProject.name, resolvedProvider);
-        if (resolvedProvider === "cursor" || resolvedProvider === "gemini") {
-          clearScopedProviderSessionId(selectedProject.name, resolvedProvider);
-        }
+        clearScopedPendingSessionId(selectedProject.name, "codex");
         pendingViewSessionRef.current = {
           sessionId: sessionToActivate,
           startedAt: Date.now(),
@@ -2404,28 +2300,19 @@ export function useChatComposerState({
       }
       persistScopedPendingSessionId(
         selectedProject.name,
-        resolvedProvider,
+        "codex",
         sessionToActivate,
       );
-      if (resolvedProvider === "cursor" || resolvedProvider === "gemini") {
-        persistScopedProviderSessionId(
-          selectedProject.name,
-          resolvedProvider,
-          sessionToActivate,
-        );
-      }
       persistSessionTimerStart(sessionToActivate, turnStartTime);
-      onSessionActive?.(sessionToActivate, resolvedProvider, selectedProject.name);
+      onSessionActive?.(sessionToActivate, "codex", selectedProject.name);
       onSessionProcessing?.(
         sessionToActivate,
-        resolvedProvider,
+        "codex",
         selectedProject.name,
       );
-      if (resolvedProvider === "codex") {
-        lastSubmittedCodexSessionRef.current = sessionToActivate;
-      }
+      lastSubmittedCodexSessionRef.current = sessionToActivate;
 
-      const toolsSettings = getToolsSettings(resolvedProvider);
+      const toolsSettings = getToolsSettings("codex");
       const telemetryEnabled = isTelemetryEnabled();
 
       if (isNewSession) {
@@ -2436,151 +2323,35 @@ export function useChatComposerState({
         messageContent = `${sessionModeContext}${messageContent}`;
       }
 
-      if (resolvedProvider === "cursor") {
-        sendMessage({
-          type: "cursor-command",
-          command: messageContent,
+      sendMessage({
+        type: "codex-command",
+        command: messageContent,
+        sessionId: effectiveSessionId,
+        options: {
+          cwd: resolvedProjectPath,
+          projectPath: resolvedProjectPath,
           sessionId: effectiveSessionId,
-          options: {
-            cwd: resolvedProjectPath,
-            projectPath: resolvedProjectPath,
-            sessionId: effectiveSessionId,
-            resume: Boolean(effectiveSessionId),
-            model: cursorModel,
-            skipPermissions: toolsSettings?.skipPermissions || false,
-            toolsSettings,
-            telemetryEnabled,
-            sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
-            stageTagKeys: pendingStageTagKeys,
-            stageTagSource: "task_context",
-          },
-        });
-      } else if (resolvedProvider === "gemini") {
-        sendMessage({
-          type: "gemini-command",
-          command: messageContent,
-          sessionId: effectiveSessionId,
-          options: {
-            cwd: resolvedProjectPath,
-            projectPath: resolvedProjectPath,
-            sessionId: effectiveSessionId,
-            resume: Boolean(effectiveSessionId),
-            model: geminiModel,
-            permissionMode,
-            thinkingMode: geminiThinkingMode,
-            images: uploadedImages.length > 0 ? uploadedImages : undefined,
-            toolsSettings,
-            telemetryEnabled,
-            sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
-            stageTagKeys: pendingStageTagKeys,
-            stageTagSource: "task_context",
-          },
-        });
-      } else if (resolvedProvider === "codex") {
-        sendMessage({
-          type: "codex-command",
-          command: messageContent,
-          sessionId: effectiveSessionId,
-          options: {
-            cwd: resolvedProjectPath,
-            projectPath: resolvedProjectPath,
-            sessionId: effectiveSessionId,
-            resume: Boolean(effectiveSessionId),
-            model: codexModel,
-            permissionMode:
-              permissionMode === "plan" ? "default" : permissionMode,
-            modelReasoningEffort:
-              codexReasoningEffort === "default"
-                ? undefined
-                : codexReasoningEffort,
-            attachments: codexAttachmentPayload,
-            images: uploadedImages,
-            telemetryEnabled,
-            sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
-            stageTagKeys: pendingStageTagKeys,
-            stageTagSource: "task_context",
-          },
-        });
-      } else if (resolvedProvider === "openrouter") {
-        sendMessage({
-          type: "openrouter-command",
-          command: messageContent,
-          sessionId: effectiveSessionId,
-          options: {
-            cwd: resolvedProjectPath,
-            projectPath: resolvedProjectPath,
-            sessionId: effectiveSessionId,
-            resume: Boolean(effectiveSessionId),
-            model: openrouterModel,
-            permissionMode,
-            toolsSettings,
-            telemetryEnabled,
-            sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
-            stageTagKeys: pendingStageTagKeys,
-            stageTagSource: "task_context",
-          },
-        });
-      } else if (resolvedProvider === "local") {
-        sendMessage({
-          type: "local-command",
-          command: messageContent,
-          sessionId: effectiveSessionId,
-          options: {
-            cwd: resolvedProjectPath,
-            projectPath: resolvedProjectPath,
-            sessionId: effectiveSessionId,
-            resume: Boolean(effectiveSessionId),
-            model: localModel,
-            serverUrl:
-              localStorage.getItem("local-gpu-server-url") ||
-              "http://localhost:11434",
-            gpuId: localStorage.getItem("local-gpu-selected") || undefined,
-            permissionMode,
-            toolsSettings,
-            telemetryEnabled,
-            sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
-            stageTagKeys: pendingStageTagKeys,
-            stageTagSource: "task_context",
-          },
-        });
-      } else if (resolvedProvider === "nano") {
-        sendMessage({
-          type: "nano-command",
-          command: messageContent,
-          sessionId: effectiveSessionId,
-          options: {
-            cwd: resolvedProjectPath,
-            projectPath: resolvedProjectPath,
-            sessionId: effectiveSessionId,
-            resume: Boolean(effectiveSessionId),
-            model: nanoModel,
-            toolsSettings,
-            telemetryEnabled,
-            sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
-            stageTagKeys: pendingStageTagKeys,
-            stageTagSource: "task_context",
-          },
-        });
-      } else {
-        sendMessage({
-          type: "claude-command",
-          command: messageContent,
-          options: {
-            projectPath: resolvedProjectPath,
-            cwd: resolvedProjectPath,
-            sessionId: effectiveSessionId,
-            resume: Boolean(effectiveSessionId),
-            toolsSettings,
-            permissionMode,
-            model: claudeModel,
-            images: uploadedImages.length > 0 ? uploadedImages : undefined,
-            telemetryEnabled,
-            sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
-            stageTagKeys: pendingStageTagKeys,
-            stageTagSource: "task_context",
-          },
-        });
-      }
+          resume: Boolean(effectiveSessionId),
+          model: codexModel,
+          permissionMode:
+            permissionMode === "plan" ? "default" : permissionMode,
+          modelReasoningEffort:
+            codexReasoningEffort === "default"
+              ? undefined
+              : codexReasoningEffort,
+          attachments: codexAttachmentPayload,
+          images: uploadedImages,
+          telemetryEnabled,
+          sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
+          stageTagKeys: pendingStageTagKeys,
+          stageTagSource: "task_context",
+          clientTurnId: userMessage.id,
+          projectName: selectedProject.name,
+          provider: "codex",
+          provisionalSessionId: isNewSession ? sessionToActivate : undefined,
+          resumeSessionId: effectiveSessionId || undefined,
+        },
+      });
 
       setInput("");
       inputValueRef.current = "";
@@ -2609,27 +2380,20 @@ export function useChatComposerState({
     [
       attachedFiles,
       attachedPrompt,
-      claudeModel,
       codexModel,
       codexReasoningEffort,
       currentSessionId,
-      cursorModel,
       executeCommand,
-      geminiThinkingMode,
-      geminiModel,
       getToolsSettings,
       intakeGreeting,
       isLoading,
-      localModel,
       newSessionMode,
       onSessionActive,
       onSessionProcessing,
-      openrouterModel,
       pendingStageTagKeys,
       pendingViewSessionRef,
       permissionMode,
       processingSessions,
-      provider,
       resetCommandMenuState,
       resolveSessionContext,
       scrollToBottom,
@@ -2922,24 +2686,15 @@ export function useChatComposerState({
 
     setCanAbortSession(false);
 
-    const selectedSessionProvider = normalizeProvider(
-      selectedSession?.__provider || provider,
-    );
     const pendingSessionId = readScopedPendingSessionId(
       currentProjectName,
-      selectedSessionProvider,
+      "codex",
     );
-    const providerSessionId =
-      selectedSessionProvider === "cursor" ||
-      selectedSessionProvider === "gemini"
-        ? readScopedProviderSessionId(currentProjectName, selectedSessionProvider)
-        : null;
 
     const candidateSessionIds = [
       currentSessionId,
       pendingViewSessionRef.current?.sessionId || null,
       pendingSessionId,
-      providerSessionId,
       selectedSession?.id || null,
     ];
 
@@ -2959,13 +2714,11 @@ export function useChatComposerState({
 
       for (const sessionId of recoverySessionIds) {
         clearSessionTimerStart(sessionId);
-        if (provider === "codex") {
-          releasePendingQueueDispatch(sessionId);
-        }
+        releasePendingQueueDispatch(sessionId);
         sendMessage({
           type: "check-session-status",
           sessionId,
-          provider,
+          provider: "codex",
         });
       }
 
@@ -2979,7 +2732,7 @@ export function useChatComposerState({
     sendMessage({
       type: "abort-session",
       sessionId: targetSessionId,
-      provider,
+      provider: "codex",
     });
 
     if (abortTimeoutRef.current) {
@@ -2998,9 +2751,7 @@ export function useChatComposerState({
     currentSessionId,
     isLoading,
     pendingViewSessionRef,
-    provider,
     selectedSession?.id,
-    selectedSession?.__provider,
     sendMessage,
     releasePendingQueueDispatch,
     setCanAbortSession,
@@ -3025,12 +2776,12 @@ export function useChatComposerState({
 
   const handleGrantToolPermission = useCallback(
     (suggestion: { entry: string; toolName: string }) => {
-      if (!suggestion || (provider !== "claude" && provider !== "gemini")) {
+      if (!suggestion) {
         return { success: false };
       }
-      return grantToolPermission(suggestion.entry, provider);
+      return grantToolPermission(suggestion.entry, "codex");
     },
-    [provider],
+    [],
   );
 
   const handlePermissionDecision = useCallback(
@@ -3051,7 +2802,7 @@ export function useChatComposerState({
 
       validIds.forEach((requestId) => {
         sendMessage({
-          type: "claude-permission-response",
+          type: "codex-permission-response",
           requestId,
           allow: Boolean(decision?.allow),
           updatedInput: decision?.updatedInput,
@@ -3121,8 +2872,6 @@ export function useChatComposerState({
     setThinkingMode,
     codexReasoningEffort,
     setCodexReasoningEffort,
-    geminiThinkingMode,
-    setGeminiThinkingMode,
     slashCommandsCount,
     filteredCommands,
     frequentCommands,

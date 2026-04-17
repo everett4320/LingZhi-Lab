@@ -14,14 +14,8 @@
  */
 export function inferProviderFromMessageType(type, fallbackProvider = null) {
   const messageType = String(type || '');
-  if (messageType.startsWith('claude-')) return 'claude';
-  if (messageType.startsWith('cursor-')) return 'cursor';
   if (messageType.startsWith('codex-')) return 'codex';
-  if (messageType.startsWith('gemini-')) return 'gemini';
-  if (messageType.startsWith('openrouter-')) return 'openrouter';
-  if (messageType.startsWith('localgpu-')) return 'local';
-  if (messageType.startsWith('nano-')) return 'nano';
-  return fallbackProvider || null;
+  return fallbackProvider === 'codex' ? 'codex' : null;
 }
 
 /**
@@ -116,9 +110,9 @@ export function buildLifecycleMessageFromPayload(
   const messageType = String(payload.type || '');
   let state = null;
 
-  if (messageType === 'cursor-result' || messageType.endsWith('-complete')) {
+  if (messageType === 'codex-complete') {
     state = 'completed';
-  } else if (messageType.endsWith('-error')) {
+  } else if (messageType === 'codex-error') {
     state = 'failed';
   }
 
@@ -130,6 +124,9 @@ export function buildLifecycleMessageFromPayload(
     messageType,
     typeof payload.provider === 'string' ? payload.provider : fallbackProvider,
   );
+  if (provider !== 'codex') {
+    return null;
+  }
   const projectName = resolveProjectName(
     payload.projectName || fallbackProjectName || null,
     payload.projectPath || null,

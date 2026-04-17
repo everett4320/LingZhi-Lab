@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 
 import {
   inferProviderFromMessageType,
@@ -9,19 +9,18 @@ import {
 
 describe('inferProviderFromMessageType', () => {
   it.each([
-    ['claude-complete', 'claude'],
-    ['cursor-result', 'cursor'],
     ['codex-complete', 'codex'],
-    ['gemini-complete', 'gemini'],
-    ['openrouter-complete', 'openrouter'],
-    ['localgpu-complete', 'local'],
-    ['nano-complete', 'nano'],
-  ])('infers %s → %s', (type, expected) => {
+    ['codex-error', 'codex'],
+  ])('infers %s -> %s', (type, expected) => {
     expect(inferProviderFromMessageType(type)).toBe(expected);
   });
 
-  it('returns fallbackProvider when prefix is unknown', () => {
+  it('returns codex fallback when prefix is unknown and fallback is codex', () => {
     expect(inferProviderFromMessageType('unknown-type', 'codex')).toBe('codex');
+  });
+
+  it('returns null when fallback is non-codex', () => {
+    expect(inferProviderFromMessageType('unknown-type', 'gemini')).toBeNull();
   });
 
   it('returns null when no prefix matches and no fallback', () => {
@@ -87,7 +86,7 @@ describe('enrichSessionEventPayload', () => {
   });
 
   it('ignores non-session message types', () => {
-    const payload = { type: 'claude-complete', projectPath: '/p' };
+    const payload = { type: 'codex-complete', projectPath: '/p' };
     expect(enrichSessionEventPayload(payload, null, deps)).toBe(payload);
   });
 
@@ -132,32 +131,23 @@ describe('buildLifecycleMessageFromPayload', () => {
     expect(buildLifecycleMessageFromPayload({ type: 'session-created' })).toBeNull();
   });
 
-  it('builds completed lifecycle for -complete suffix', () => {
+  it('builds completed lifecycle for codex-complete', () => {
     const now = Date.now();
     const result = buildLifecycleMessageFromPayload({
-      type: 'claude-complete',
+      type: 'codex-complete',
       sessionId: 'sess-1',
     });
     expect(result).toMatchObject({
       type: 'session-state-changed',
-      provider: 'claude',
+      provider: 'codex',
       sessionId: 'sess-1',
       state: 'completed',
-      reason: 'claude-complete',
+      reason: 'codex-complete',
     });
     expect(result.changedAt).toBeGreaterThanOrEqual(now);
   });
 
-  it('builds completed lifecycle for cursor-result', () => {
-    const result = buildLifecycleMessageFromPayload({
-      type: 'cursor-result',
-      sessionId: 'cursor-sess',
-    });
-    expect(result.state).toBe('completed');
-    expect(result.provider).toBe('cursor');
-  });
-
-  it('builds failed lifecycle for -error suffix', () => {
+  it('builds failed lifecycle for codex-error', () => {
     const result = buildLifecycleMessageFromPayload({
       type: 'codex-error',
       sessionId: 'codex-sess',
@@ -171,32 +161,32 @@ describe('buildLifecycleMessageFromPayload', () => {
 
   it('prefers actualSessionId over sessionId', () => {
     const result = buildLifecycleMessageFromPayload({
-      type: 'gemini-complete',
+      type: 'codex-complete',
       sessionId: 'old-id',
       actualSessionId: 'real-id',
     });
     expect(result.sessionId).toBe('real-id');
   });
 
-  it('uses fallbackProvider when type prefix is unknown', () => {
+  it('returns null when terminal type is unknown even with codex fallback', () => {
     const result = buildLifecycleMessageFromPayload(
       { type: 'custom-complete', sessionId: 's1' },
-      'openrouter',
+      'codex',
     );
-    expect(result.provider).toBe('openrouter');
+    expect(result).toBeNull();
   });
 
-  it('uses payload.provider over fallbackProvider', () => {
+  it('drops non-codex payload provider even with complete type', () => {
     const result = buildLifecycleMessageFromPayload(
       { type: 'custom-complete', sessionId: 's1', provider: 'nano' },
-      'openrouter',
+      'codex',
     );
-    expect(result.provider).toBe('nano');
+    expect(result).toBeNull();
   });
 
   it('includes projectName from fallbackProjectName', () => {
     const result = buildLifecycleMessageFromPayload(
-      { type: 'claude-complete', sessionId: 's1' },
+      { type: 'codex-complete', sessionId: 's1' },
       null,
       'my-project',
     );
@@ -205,7 +195,7 @@ describe('buildLifecycleMessageFromPayload', () => {
 
   it('omits projectName when not resolvable', () => {
     const result = buildLifecycleMessageFromPayload(
-      { type: 'claude-complete', sessionId: 's1' },
+      { type: 'codex-complete', sessionId: 's1' },
       null,
       null,
     );
@@ -218,7 +208,7 @@ describe('buildLifecycleMessageFromPayload', () => {
       encodePath: (p) => `encoded-${p}`,
     };
     const result = buildLifecycleMessageFromPayload(
-      { type: 'claude-error', sessionId: 's1', projectPath: '/proj' },
+      { type: 'codex-error', sessionId: 's1', projectPath: '/proj' },
       null,
       null,
       deps,

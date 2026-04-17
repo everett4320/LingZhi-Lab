@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Badge } from './ui/badge';
-import { X, Plus, Settings as SettingsIcon, Shield, AlertTriangle, Moon, Sun, Server, Edit3, Trash2, Globe, Terminal, Zap, FolderOpen, LogIn, Key, GitBranch, Check, Mail, Brain } from 'lucide-react';
+import { X, Settings as SettingsIcon, Moon, Sun, FolderOpen } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import CredentialsSettings from './CredentialsSettings';
@@ -13,7 +12,6 @@ import { isTelemetryEnabled, setTelemetryEnabled } from '../utils/telemetry';
 import { writeCliAvailability } from '../utils/cliAvailability';
 import { useDesktop } from '../hooks/useDesktop';
 
-// New settings components
 import AgentListItem from './settings/AgentListItem';
 import AccountContent from './settings/AccountContent';
 import EmailSettingsContent from './settings/EmailSettingsContent';
@@ -24,243 +22,89 @@ import LanguageSelector from './LanguageSelector';
 
 const VALID_SETTINGS_TABS = new Set(['agents', 'email', 'appearance', 'git', 'api']);
 
+const buildDefaultAuthState = (overrides = {}) => ({
+  authenticated: false,
+  email: null,
+  cliAvailable: true,
+  cliCommand: 'codex',
+  installHint: null,
+  loading: false,
+  error: null,
+  installable: false,
+  docsUrl: null,
+  downloadUrl: null,
+  ...overrides,
+});
+
 function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { t } = useTranslation('settings');
   const { isDesktop, selectDirectory, showItemInFolder } = useDesktop();
-  const [allowedTools, setAllowedTools] = useState([]);
-  const [disallowedTools, setDisallowedTools] = useState([]);
-  const [newAllowedTool, setNewAllowedTool] = useState('');
-  const [newDisallowedTool, setNewDisallowedTool] = useState('');
-  const [geminiAllowedTools, setGeminiAllowedTools] = useState([]);
-  const [geminiDisallowedTools, setGeminiDisallowedTools] = useState([]);
-  const [newGeminiAllowedTool, setNewGeminiAllowedTool] = useState('');
-  const [newGeminiDisallowedTool, setNewGeminiDisallowedTool] = useState('');
-  const [skipPermissions, setSkipPermissions] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState(null);
-  const [projectSortOrder, setProjectSortOrder] = useState('date');
 
-  const [mcpServers, setMcpServers] = useState([]);
-  const [showMcpForm, setShowMcpForm] = useState(false);
-  const [editingMcpServer, setEditingMcpServer] = useState(null);
-  const [mcpFormData, setMcpFormData] = useState({
-    name: '',
-    type: 'stdio',
-    scope: 'user',
-    projectPath: '', // For local scope
-    config: {
-      command: '',
-      args: [],
-      env: {},
-      url: '',
-      headers: {},
-      timeout: 30000
-    },
-    jsonInput: '', // For JSON import
-    importMode: 'form' // 'form' or 'json'
-  });
-  const [mcpLoading, setMcpLoading] = useState(false);
-  const [mcpTestResults, setMcpTestResults] = useState({});
-  const [mcpServerTools, setMcpServerTools] = useState({});
-  const [mcpToolsLoading, setMcpToolsLoading] = useState({});
   const [activeTab, setActiveTab] = useState(
     VALID_SETTINGS_TABS.has(initialTab) ? initialTab : 'agents',
   );
-  const [jsonValidationError, setJsonValidationError] = useState('');
-  const [selectedAgent, setSelectedAgent] = useState('claude'); // 'claude', 'cursor', or 'codex'
-  const [selectedCategory, setSelectedCategory] = useState('account'); // 'account', 'email', 'permissions', 'mcp', or 'memory'
+  const [selectedCategory, setSelectedCategory] = useState('account');
 
-  // Code Editor settings
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null);
+
   const [codeEditorTheme, setCodeEditorTheme] = useState(() =>
-    localStorage.getItem('codeEditorTheme') || 'dark'
+    localStorage.getItem('codeEditorTheme') || 'dark',
   );
   const [codeEditorWordWrap, setCodeEditorWordWrap] = useState(() =>
-    localStorage.getItem('codeEditorWordWrap') === 'true'
+    localStorage.getItem('codeEditorWordWrap') === 'true',
   );
   const [codeEditorShowMinimap, setCodeEditorShowMinimap] = useState(() =>
-    localStorage.getItem('codeEditorShowMinimap') !== 'false' // Default true
+    localStorage.getItem('codeEditorShowMinimap') !== 'false',
   );
   const [codeEditorLineNumbers, setCodeEditorLineNumbers] = useState(() =>
-    localStorage.getItem('codeEditorLineNumbers') !== 'false' // Default true
+    localStorage.getItem('codeEditorLineNumbers') !== 'false',
   );
   const [codeEditorFontSize, setCodeEditorFontSize] = useState(() =>
-    localStorage.getItem('codeEditorFontSize') || '14'
+    localStorage.getItem('codeEditorFontSize') || '14',
   );
   const [telemetryEnabled, setTelemetryEnabledState] = useState(() => isTelemetryEnabled());
 
-  // Workspace root settings
   const [workspaceRoot, setWorkspaceRoot] = useState('');
   const [workspaceRootDefault, setWorkspaceRootDefault] = useState('');
   const [workspaceRootSaved, setWorkspaceRootSaved] = useState(false);
   const [workspaceRootError, setWorkspaceRootError] = useState('');
-  
-  // Cursor-specific states
-  const [cursorAllowedCommands, setCursorAllowedCommands] = useState([]);
-  const [cursorDisallowedCommands, setCursorDisallowedCommands] = useState([]);
-  const [cursorSkipPermissions, setCursorSkipPermissions] = useState(false);
-  const [newCursorCommand, setNewCursorCommand] = useState('');
-  const [newCursorDisallowedCommand, setNewCursorDisallowedCommand] = useState('');
-  const [cursorMcpServers, setCursorMcpServers] = useState([]);
 
-  // Codex-specific states
-  const [codexMcpServers, setCodexMcpServers] = useState([]);
   const [codexPermissionMode, setCodexPermissionMode] = useState('default');
+  const [codexMcpServers, setCodexMcpServers] = useState([]);
   const [showCodexMcpForm, setShowCodexMcpForm] = useState(false);
-
-  // Gemini-specific states
-  const [geminiPermissionMode, setGeminiPermissionMode] = useState('default');
+  const [editingCodexMcpServer, setEditingCodexMcpServer] = useState(null);
+  const [codexMcpLoading, setCodexMcpLoading] = useState(false);
   const [codexMcpFormData, setCodexMcpFormData] = useState({
     name: '',
     type: 'stdio',
     config: {
       command: '',
       args: [],
-      env: {}
-    }
+      env: {},
+    },
   });
-  const [editingCodexMcpServer, setEditingCodexMcpServer] = useState(null);
-  const [codexMcpLoading, setCodexMcpLoading] = useState(false);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [loginProvider, setLoginProvider] = useState('');
   const [selectedProject, setSelectedProject] = useState(null);
+  const [codexAuthStatus, setCodexAuthStatus] = useState(
+    buildDefaultAuthState({ loading: true, cliCommand: 'codex' }),
+  );
 
-  const [claudeAuthStatus, setClaudeAuthStatus] = useState({
-    authenticated: false,
-    email: null,
-    cliAvailable: true,
-    cliCommand: 'claude',
-    installHint: null,
-    loading: true,
-    error: null,
-    installable: false,
-    docsUrl: null,
-    downloadUrl: null
-  });
-  const [cursorAuthStatus, setCursorAuthStatus] = useState({
-    authenticated: false,
-    email: null,
-    cliAvailable: true,
-    cliCommand: 'agent',
-    installHint: null,
-    loading: true,
-    error: null,
-    installable: false,
-    docsUrl: null,
-    downloadUrl: null
-  });
-  const [codexAuthStatus, setCodexAuthStatus] = useState({
-    authenticated: false,
-    email: null,
-    cliAvailable: true,
-    cliCommand: 'codex',
-    installHint: null,
-    loading: true,
-    error: null,
-    installable: false,
-    docsUrl: null,
-    downloadUrl: null
-  });
-  const [geminiAuthStatus, setGeminiAuthStatus] = useState({
-    authenticated: false,
-    email: null,
-    cliAvailable: true,
-    cliCommand: 'gemini',
-    installHint: null,
-    loading: true,
-    error: null,
-    installable: false,
-    docsUrl: null,
-    downloadUrl: null
-  });
-  const [openrouterAuthStatus, setOpenrouterAuthStatus] = useState({
-    authenticated: false,
-    email: null,
-    cliAvailable: true,
-    cliCommand: 'openrouter',
-    installHint: null,
-    loading: true,
-    error: null
-  });
-  const [localAuthStatus, setLocalAuthStatus] = useState({
-    authenticated: false,
-    email: null,
-    cliAvailable: true,
-    cliCommand: null,
-    installHint: null,
-    loading: true,
-    error: null
-  });
-
-  const buildDefaultAuthState = (overrides = {}) => ({
-    authenticated: false,
-    email: null,
-    cliAvailable: true,
-    cliCommand: null,
-    installHint: null,
-    loading: false,
-    error: null,
-    installable: false,
-    docsUrl: null,
-    downloadUrl: null,
-    ...overrides
-  });
-
-  // Common tool patterns for Claude
-  const commonTools = [
-    'Bash(git log:*)',
-    'Bash(git diff:*)',
-    'Bash(git status:*)',
-    'Write',
-    'Read',
-    'Edit',
-    'Glob',
-    'Grep',
-    'MultiEdit',
-    'Task',
-    'TodoWrite',
-    'TodoRead',
-    'WebFetch',
-    'WebSearch'
-  ];
-  
-  // Common shell commands for Cursor
-  const commonCursorCommands = [
-    'Shell(ls)',
-    'Shell(mkdir)',
-    'Shell(cd)',
-    'Shell(cat)',
-    'Shell(echo)',
-    'Shell(git status)',
-    'Shell(git diff)',
-    'Shell(git log)',
-    'Shell(npm install)',
-    'Shell(npm run)',
-    'Shell(python)',
-    'Shell(node)'
-  ];
-
-  // Fetch Cursor MCP servers
-  const fetchCursorMcpServers = async () => {
-    try {
-      const response = await authenticatedFetch('/api/cursor/mcp');
-
-      if (response.ok) {
-        const data = await response.json();
-        setCursorMcpServers(data.servers || []);
-      } else {
-        console.error('Failed to fetch Cursor MCP servers');
-      }
-    } catch (error) {
-      console.error('Error fetching Cursor MCP servers:', error);
-    }
+  const resetCodexMcpForm = () => {
+    setCodexMcpFormData({
+      name: '',
+      type: 'stdio',
+      config: { command: '', args: [], env: {} },
+    });
+    setEditingCodexMcpServer(null);
+    setShowCodexMcpForm(false);
   };
 
   const fetchCodexMcpServers = async () => {
     try {
       const configResponse = await authenticatedFetch('/api/codex/mcp/config/read');
-
       if (configResponse.ok) {
         const configData = await configResponse.json();
         if (configData.success && configData.servers) {
@@ -270,11 +114,10 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
       }
 
       const cliResponse = await authenticatedFetch('/api/codex/mcp/cli/list');
-
       if (cliResponse.ok) {
         const cliData = await cliResponse.json();
         if (cliData.success && cliData.servers) {
-          const servers = cliData.servers.map(server => ({
+          const servers = cliData.servers.map((server) => ({
             id: server.name,
             name: server.name,
             type: server.type || 'stdio',
@@ -282,8 +125,8 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
             config: {
               command: server.command || '',
               args: server.args || [],
-              env: server.env || {}
-            }
+              env: server.env || {},
+            },
           }));
           setCodexMcpServers(servers);
         }
@@ -293,237 +136,46 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
     }
   };
 
-  // MCP API functions
-  const fetchMcpServers = async () => {
-    try {
-      // Try to read directly from config files for complete details
-      const configResponse = await authenticatedFetch('/api/mcp/config/read');
-
-      if (configResponse.ok) {
-        const configData = await configResponse.json();
-        if (configData.success && configData.servers) {
-          setMcpServers(configData.servers);
-          return;
-        }
-      }
-
-      // Fallback to Claude CLI
-      const cliResponse = await authenticatedFetch('/api/mcp/cli/list');
-
-      if (cliResponse.ok) {
-        const cliData = await cliResponse.json();
-        if (cliData.success && cliData.servers) {
-          // Convert CLI format to our format
-          const servers = cliData.servers.map(server => ({
-            id: server.name,
-            name: server.name,
-            type: server.type,
-            scope: 'user',
-            config: {
-              command: server.command || '',
-              args: server.args || [],
-              env: server.env || {},
-              url: server.url || '',
-              headers: server.headers || {},
-              timeout: 30000
-            },
-            created: new Date().toISOString(),
-            updated: new Date().toISOString()
-          }));
-          setMcpServers(servers);
-          return;
-        }
-      }
-
-      // Final fallback to direct config reading
-      const response = await authenticatedFetch('/api/mcp/servers?scope=user');
-
-      if (response.ok) {
-        const data = await response.json();
-        setMcpServers(data.servers || []);
-      } else {
-        console.error('Failed to fetch MCP servers');
-      }
-    } catch (error) {
-      console.error('Error fetching MCP servers:', error);
-    }
-  };
-
-  const saveMcpServer = async (serverData) => {
-    try {
-      if (editingMcpServer) {
-        // For editing, remove old server and add new one
-        await deleteMcpServer(editingMcpServer.id, 'user');
-      }
-
-      // Use Claude CLI to add the server
-      const response = await authenticatedFetch('/api/mcp/cli/add', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: serverData.name,
-          type: serverData.type,
-          scope: serverData.scope,
-          projectPath: serverData.projectPath,
-          command: serverData.config?.command,
-          args: serverData.config?.args || [],
-          url: serverData.config?.url,
-          headers: serverData.config?.headers || {},
-          env: serverData.config?.env || {}
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          await fetchMcpServers(); // Refresh the list
-          return true;
-        } else {
-          throw new Error(result.error || 'Failed to save server via Claude CLI');
-        }
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save server');
-      }
-    } catch (error) {
-      console.error('Error saving MCP server:', error);
-      throw error;
-    }
-  };
-
-  const deleteMcpServer = async (serverId, scope = 'user') => {
-    try {
-      // Use Claude CLI to remove the server with proper scope
-      const response = await authenticatedFetch(`/api/mcp/cli/remove/${serverId}?scope=${scope}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          await fetchMcpServers(); // Refresh the list
-          return true;
-        } else {
-          throw new Error(result.error || 'Failed to delete server via Claude CLI');
-        }
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete server');
-      }
-    } catch (error) {
-      console.error('Error deleting MCP server:', error);
-      throw error;
-    }
-  };
-
-  const testMcpServer = async (serverId, scope = 'user') => {
-    try {
-      const response = await authenticatedFetch(`/api/mcp/servers/${serverId}/test?scope=${scope}`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return data.testResult;
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to test server');
-      }
-    } catch (error) {
-      console.error('Error testing MCP server:', error);
-      throw error;
-    }
-  };
-
-
-  const discoverMcpTools = async (serverId, scope = 'user') => {
-    try {
-      const response = await authenticatedFetch(`/api/mcp/servers/${serverId}/tools?scope=${scope}`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return data.toolsResult;
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to discover tools');
-      }
-    } catch (error) {
-      console.error('Error discovering MCP tools:', error);
-      throw error;
-    }
-  };
-
   const saveCodexMcpServer = async (serverData) => {
-    try {
-      if (editingCodexMcpServer) {
-        await deleteCodexMcpServer(editingCodexMcpServer.id);
-      }
+    const response = await authenticatedFetch('/api/codex/mcp/cli/add', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: serverData.name,
+        command: serverData.config?.command,
+        args: serverData.config?.args || [],
+        env: serverData.config?.env || {},
+      }),
+    });
 
-      const response = await authenticatedFetch('/api/codex/mcp/cli/add', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: serverData.name,
-          command: serverData.config?.command,
-          args: serverData.config?.args || [],
-          env: serverData.config?.env || {}
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          await fetchCodexMcpServers();
-          return true;
-        } else {
-          throw new Error(result.error || 'Failed to save Codex MCP server');
-        }
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save server');
-      }
-    } catch (error) {
-      console.error('Error saving Codex MCP server:', error);
-      throw error;
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to save Codex MCP server');
     }
+
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to save Codex MCP server');
+    }
+
+    await fetchCodexMcpServers();
   };
 
   const deleteCodexMcpServer = async (serverId) => {
-    try {
-      const response = await authenticatedFetch(`/api/codex/mcp/cli/remove/${serverId}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          await fetchCodexMcpServers();
-          return true;
-        } else {
-          throw new Error(result.error || 'Failed to delete Codex MCP server');
-        }
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete server');
-      }
-    } catch (error) {
-      console.error('Error deleting Codex MCP server:', error);
-      throw error;
-    }
-  };
-
-  const resetCodexMcpForm = () => {
-    setCodexMcpFormData({
-      name: '',
-      type: 'stdio',
-      config: {
-        command: '',
-        args: [],
-        env: {}
-      }
+    const response = await authenticatedFetch(`/api/codex/mcp/cli/remove/${serverId}`, {
+      method: 'DELETE',
     });
-    setEditingCodexMcpServer(null);
-    setShowCodexMcpForm(false);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete Codex MCP server');
+    }
+
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to delete Codex MCP server');
+    }
+
+    await fetchCodexMcpServers();
   };
 
   const openCodexMcpForm = (server = null) => {
@@ -535,8 +187,8 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
         config: {
           command: server.config?.command || '',
           args: server.config?.args || [],
-          env: server.config?.env || {}
-        }
+          env: server.config?.env || {},
+        },
       });
     } else {
       resetCodexMcpForm();
@@ -544,13 +196,11 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
     setShowCodexMcpForm(true);
   };
 
-  const handleCodexMcpSubmit = async (e) => {
-    e.preventDefault();
+  const handleCodexMcpSubmit = async (event) => {
+    event.preventDefault();
     setCodexMcpLoading(true);
-
     try {
       if (editingCodexMcpServer) {
-        // Delete old server first, then add new one
         await deleteCodexMcpServer(editingCodexMcpServer.name);
       }
       await saveCodexMcpServer(codexMcpFormData);
@@ -565,1960 +215,579 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
   };
 
   const handleCodexMcpDelete = async (serverName) => {
-    if (confirm('Are you sure you want to delete this MCP server?')) {
-      try {
-        await deleteCodexMcpServer(serverName);
-        setSaveStatus('success');
-      } catch (error) {
-        alert(`Error: ${error.message}`);
-        setSaveStatus('error');
-      }
+    if (!confirm('Are you sure you want to delete this MCP server?')) {
+      return;
     }
-  };
 
-  useEffect(() => {
-    if (isOpen) {
-      loadSettings();
-      checkClaudeAuthStatus();
-      checkCursorAuthStatus();
-      checkCodexAuthStatus();
-      checkGeminiAuthStatus();
-      checkOpenRouterAuthStatus();
-      checkLocalAuthStatus();
-      setActiveTab(VALID_SETTINGS_TABS.has(initialTab) ? initialTab : 'agents');
-    }
-  }, [isOpen, initialTab]);
-
-  // Persist code editor settings to localStorage
-  useEffect(() => {
-    localStorage.setItem('codeEditorTheme', codeEditorTheme);
-    window.dispatchEvent(new Event('codeEditorSettingsChanged'));
-  }, [codeEditorTheme]);
-
-  useEffect(() => {
-    localStorage.setItem('codeEditorWordWrap', codeEditorWordWrap.toString());
-    window.dispatchEvent(new Event('codeEditorSettingsChanged'));
-  }, [codeEditorWordWrap]);
-
-  useEffect(() => {
-    localStorage.setItem('codeEditorShowMinimap', codeEditorShowMinimap.toString());
-    window.dispatchEvent(new Event('codeEditorSettingsChanged'));
-  }, [codeEditorShowMinimap]);
-
-  useEffect(() => {
-    localStorage.setItem('codeEditorLineNumbers', codeEditorLineNumbers.toString());
-    window.dispatchEvent(new Event('codeEditorSettingsChanged'));
-  }, [codeEditorLineNumbers]);
-
-  useEffect(() => {
-    localStorage.setItem('codeEditorFontSize', codeEditorFontSize);
-    window.dispatchEvent(new Event('codeEditorSettingsChanged'));
-  }, [codeEditorFontSize]);
-
-  useEffect(() => {
-    setTelemetryEnabled(telemetryEnabled);
-  }, [telemetryEnabled]);
-
-  const loadSettings = async () => {
     try {
-      
-      // Load Claude settings from localStorage
-      const savedSettings = localStorage.getItem('claude-settings');
-      
-      if (savedSettings) {
-        const settings = JSON.parse(savedSettings);
-        setAllowedTools(settings.allowedTools || []);
-        setDisallowedTools(settings.disallowedTools || []);
-        setSkipPermissions(settings.skipPermissions || false);
-        setProjectSortOrder(settings.projectSortOrder || 'date');
-      } else {
-        // Set defaults
-        setAllowedTools([]);
-        setDisallowedTools([]);
-        setSkipPermissions(false);
-        setProjectSortOrder('name');
-      }
-      
-      // Load Cursor settings from localStorage
-      const savedCursorSettings = localStorage.getItem('cursor-tools-settings');
-
-      if (savedCursorSettings) {
-        const cursorSettings = JSON.parse(savedCursorSettings);
-        setCursorAllowedCommands(cursorSettings.allowedCommands || []);
-        setCursorDisallowedCommands(cursorSettings.disallowedCommands || []);
-        setCursorSkipPermissions(cursorSettings.skipPermissions || false);
-      } else {
-        // Set Cursor defaults
-        setCursorAllowedCommands([]);
-        setCursorDisallowedCommands([]);
-        setCursorSkipPermissions(false);
-      }
-
-      // Load Codex settings from localStorage
-      const savedCodexSettings = localStorage.getItem('codex-settings');
-
-      if (savedCodexSettings) {
-        const codexSettings = JSON.parse(savedCodexSettings);
-        setCodexPermissionMode(codexSettings.permissionMode || 'default');
-      } else {
-        setCodexPermissionMode('default');
-      }
-
-      // Load Gemini settings from localStorage
-      const savedGeminiSettings = localStorage.getItem('gemini-settings');
-
-      if (savedGeminiSettings) {
-        const geminiSettings = JSON.parse(savedGeminiSettings);
-        setGeminiPermissionMode(geminiSettings.permissionMode || 'default');
-        setGeminiAllowedTools(geminiSettings.allowedTools || []);
-        setGeminiDisallowedTools(geminiSettings.disallowedTools || []);
-      } else {
-        setGeminiPermissionMode('default');
-        setGeminiAllowedTools([]);
-        setGeminiDisallowedTools([]);
-      }
-
-      // Load workspace root setting
-      try {
-        const wsResponse = await api.getWorkspaceRoot();
-        if (wsResponse.ok) {
-          const wsData = await wsResponse.json();
-          setWorkspaceRoot(wsData.path || '');
-          setWorkspaceRootDefault(wsData.defaultPath || '');
-        }
-      } catch (err) {
-        console.error('Error loading workspace root:', err);
-      }
-
-      // Load MCP servers from API
-      await fetchMcpServers();
-
-      // Load Cursor MCP servers
-      await fetchCursorMcpServers();
-
-      // Load Codex MCP servers
-      await fetchCodexMcpServers();
+      await deleteCodexMcpServer(serverName);
+      setSaveStatus('success');
     } catch (error) {
-      console.error('Error loading tool settings:', error);
-      setAllowedTools([]);
-      setDisallowedTools([]);
-      setSkipPermissions(false);
-      setProjectSortOrder('name');
-    }
-  };
-
-  const checkClaudeAuthStatus = async () => {
-    try {
-      const response = await authenticatedFetch('/api/cli/claude/status');
-
-      if (response.ok) {
-        const data = await response.json();
-        setClaudeAuthStatus({
-          authenticated: data.authenticated,
-          email: data.email,
-          cliAvailable: data.cliAvailable !== false,
-          cliCommand: data.cliCommand || 'claude',
-          installHint: data.installHint || null,
-          loading: false,
-          error: data.error || null,
-          installable: data.installable === true,
-          docsUrl: data.docsUrl || null,
-          downloadUrl: data.downloadUrl || null
-        });
-        writeCliAvailability('claude', {
-          cliAvailable: data.cliAvailable !== false,
-          cliCommand: data.cliCommand || 'claude',
-          installHint: data.installHint || null,
-        });
-      } else {
-        setClaudeAuthStatus(buildDefaultAuthState({
-          cliCommand: 'claude',
-          error: 'Failed to check authentication status'
-        }));
-      }
-    } catch (error) {
-      console.error('Error checking Claude auth status:', error);
-      setClaudeAuthStatus(buildDefaultAuthState({
-        cliCommand: 'claude',
-        error: error.message
-      }));
-    }
-  };
-
-  const checkCursorAuthStatus = async () => {
-    try {
-      const response = await authenticatedFetch('/api/cli/cursor/status');
-
-      if (response.ok) {
-        const data = await response.json();
-        setCursorAuthStatus({
-          authenticated: data.authenticated,
-          email: data.email,
-          cliAvailable: data.cliAvailable !== false,
-          cliCommand: data.cliCommand || 'agent',
-          installHint: data.installHint || null,
-          loading: false,
-          error: data.error || null,
-          installable: data.installable === true,
-          docsUrl: data.docsUrl || null,
-          downloadUrl: data.downloadUrl || null
-        });
-        writeCliAvailability('cursor', {
-          cliAvailable: data.cliAvailable !== false,
-          cliCommand: data.cliCommand || 'agent',
-          installHint: data.installHint || null,
-        });
-      } else {
-        setCursorAuthStatus(buildDefaultAuthState({
-          cliCommand: 'agent',
-          error: 'Failed to check authentication status'
-        }));
-      }
-    } catch (error) {
-      console.error('Error checking Cursor auth status:', error);
-      setCursorAuthStatus(buildDefaultAuthState({
-        cliCommand: 'agent',
-        error: error.message
-      }));
+      alert(`Error: ${error.message}`);
+      setSaveStatus('error');
     }
   };
 
   const checkCodexAuthStatus = async () => {
     try {
       const response = await authenticatedFetch('/api/cli/codex/status');
+      const data = await response.json();
 
       if (response.ok) {
-        const data = await response.json();
-        setCodexAuthStatus({
-          authenticated: data.authenticated,
-          email: data.email,
-          cliAvailable: data.cliAvailable !== false,
+        const nextState = buildDefaultAuthState({
+          ...data,
           cliCommand: data.cliCommand || 'codex',
-          installHint: data.installHint || null,
           loading: false,
-          error: data.error || null,
-          installable: data.installable === true,
-          docsUrl: data.docsUrl || null,
-          downloadUrl: data.downloadUrl || null
         });
+        setCodexAuthStatus(nextState);
         writeCliAvailability('codex', {
-          cliAvailable: data.cliAvailable !== false,
-          cliCommand: data.cliCommand || 'codex',
-          installHint: data.installHint || null,
+          available: nextState.cliAvailable !== false,
+          cliCommand: nextState.cliCommand,
+          installHint: nextState.installHint || null,
+          installable: nextState.installable === true,
+          docsUrl: nextState.docsUrl || null,
+          downloadUrl: nextState.downloadUrl || null,
         });
       } else {
         setCodexAuthStatus(buildDefaultAuthState({
+          loading: false,
+          cliAvailable: false,
           cliCommand: 'codex',
-          error: 'Failed to check authentication status'
+          error: data.error || 'Failed to check Codex status',
         }));
       }
     } catch (error) {
-      console.error('Error checking Codex auth status:', error);
       setCodexAuthStatus(buildDefaultAuthState({
-        cliCommand: 'codex',
-        error: error.message
-      }));
-    }
-  };
-
-  const checkGeminiAuthStatus = async () => {
-    try {
-      const response = await authenticatedFetch('/api/cli/gemini/status');
-
-      if (response.ok) {
-        const data = await response.json();
-        setGeminiAuthStatus({
-          authenticated: data.authenticated,
-          email: data.email,
-          cliAvailable: data.cliAvailable !== false,
-          cliCommand: data.cliCommand || 'gemini',
-          installHint: data.installHint || null,
-          loading: false,
-          error: data.error || null,
-          installable: data.installable === true,
-          docsUrl: data.docsUrl || null,
-          downloadUrl: data.downloadUrl || null
-        });
-        writeCliAvailability('gemini', {
-          cliAvailable: data.cliAvailable !== false,
-          cliCommand: data.cliCommand || 'gemini',
-          installHint: data.installHint || null,
-        });
-      } else {
-        setGeminiAuthStatus(buildDefaultAuthState({
-          cliCommand: 'gemini',
-          error: 'Failed to check authentication status'
-        }));
-      }
-    } catch (error) {
-      console.error('Error checking Gemini auth status:', error);
-      setGeminiAuthStatus(buildDefaultAuthState({
-        cliCommand: 'gemini',
-        error: error.message
-      }));
-    }
-  };
-
-  const checkOpenRouterAuthStatus = async () => {
-    try {
-      const response = await authenticatedFetch('/api/cli/openrouter/status');
-
-      if (response.ok) {
-        const data = await response.json();
-        setOpenrouterAuthStatus({
-          authenticated: data.authenticated,
-          email: data.email,
-          cliAvailable: data.cliAvailable !== false,
-          cliCommand: data.cliCommand || 'openrouter',
-          installHint: data.installHint || null,
-          loading: false,
-          error: data.error || null
-        });
-        writeCliAvailability('openrouter', {
-          cliAvailable: data.cliAvailable !== false,
-          cliCommand: data.cliCommand || 'openrouter',
-          installHint: data.installHint || null,
-        });
-      } else {
-        setOpenrouterAuthStatus(buildDefaultAuthState({
-          cliCommand: 'openrouter',
-          error: 'Failed to check authentication status'
-        }));
-      }
-    } catch (error) {
-      console.error('Error checking OpenRouter auth status:', error);
-      setOpenrouterAuthStatus(buildDefaultAuthState({
-        cliCommand: 'openrouter',
-        error: error.message
-      }));
-    }
-  };
-
-  const refreshProviderStatus = async (provider) => {
-    if (provider === 'claude') {
-      await checkClaudeAuthStatus();
-      return;
-    }
-
-    if (provider === 'cursor') {
-      await checkCursorAuthStatus();
-      return;
-    }
-
-    if (provider === 'codex') {
-      await checkCodexAuthStatus();
-      return;
-    }
-
-    if (provider === 'gemini') {
-      await checkGeminiAuthStatus();
-    }
-  };
-
-  const checkLocalAuthStatus = async () => {
-    try {
-      const response = await authenticatedFetch('/api/cli/local/status');
-
-      if (response.ok) {
-        const data = await response.json();
-        setLocalAuthStatus({
-          authenticated: data.authenticated,
-          email: data.email,
-          cliAvailable: true,
-          cliCommand: null,
-          installHint: data.installHint || null,
-          loading: false,
-          error: data.error || null
-        });
-        writeCliAvailability('local', {
-          cliAvailable: true,
-          cliCommand: null,
-          installHint: data.installHint || null,
-        });
-      } else {
-        setLocalAuthStatus({
-          authenticated: false,
-          email: null,
-          cliAvailable: true,
-          cliCommand: null,
-          installHint: 'Install Ollama from https://ollama.com',
-          loading: false,
-          error: 'Could not check Ollama status'
-        });
-      }
-    } catch (error) {
-      console.error('Error checking Local GPU auth status:', error);
-      setLocalAuthStatus({
-        authenticated: false,
-        email: null,
-        cliAvailable: true,
-        cliCommand: null,
-        installHint: 'Install Ollama from https://ollama.com',
         loading: false,
-        error: error.message
-      });
+        cliAvailable: false,
+        cliCommand: 'codex',
+        error: error.message || 'Failed to check Codex status',
+      }));
     }
   };
 
-  const getDefaultProject = () => projects?.[0] || { name: 'default', fullPath: '' };
-
-  const handleClaudeLogin = () => {
-    setLoginProvider('claude');
-    setSelectedProject(getDefaultProject());
-    setShowLoginModal(true);
+  const loadWorkspaceRoot = async () => {
+    try {
+      const response = await api.workspaceRoot.get();
+      if (!response.ok) return;
+      const data = await response.json();
+      setWorkspaceRoot(data.workspaceRoot || '');
+      setWorkspaceRootDefault(data.defaultRoot || '');
+      setWorkspaceRootError('');
+      setWorkspaceRootSaved(false);
+    } catch (error) {
+      console.error('Error loading workspace root:', error);
+    }
   };
 
-  const handleCursorLogin = () => {
-    setLoginProvider('cursor');
-    setSelectedProject(getDefaultProject());
-    setShowLoginModal(true);
+  const saveWorkspaceRoot = async () => {
+    const trimmed = workspaceRoot.trim();
+    if (!trimmed) {
+      setWorkspaceRootError(t('workspaceRoot.validation.required'));
+      return;
+    }
+
+    try {
+      setWorkspaceRootError('');
+      setWorkspaceRootSaved(false);
+      const response = await api.workspaceRoot.update(trimmed);
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setWorkspaceRootError(data.error || t('workspaceRoot.validation.saveFailed'));
+        return;
+      }
+      setWorkspaceRootSaved(true);
+      setWorkspaceRoot(trimmed);
+      setTimeout(() => setWorkspaceRootSaved(false), 2500);
+    } catch (error) {
+      setWorkspaceRootError(error.message || t('workspaceRoot.validation.saveFailed'));
+    }
   };
 
   const handleCodexLogin = () => {
-    setLoginProvider('codex');
-    setSelectedProject(getDefaultProject());
-    setShowLoginModal(true);
-  };
-
-  const handleGeminiLogin = () => {
-    setLoginProvider('gemini');
-    setSelectedProject(getDefaultProject());
+    setSelectedProject(projects[0] || null);
     setShowLoginModal(true);
   };
 
   const handleLoginComplete = (exitCode) => {
     if (exitCode === 0) {
-      setSaveStatus('success');
-
-      if (loginProvider === 'claude') {
-        checkClaudeAuthStatus();
-      } else if (loginProvider === 'cursor') {
-        checkCursorAuthStatus();
-      } else if (loginProvider === 'codex') {
-        checkCodexAuthStatus();
-      } else if (loginProvider === 'gemini') {
-        checkGeminiAuthStatus();
-      }
+      void checkCodexAuthStatus();
     }
   };
 
-  const saveSettings = () => {
+  const saveSettings = async () => {
     setIsSaving(true);
     setSaveStatus(null);
-    
     try {
-      // Save Claude settings
-      const claudeSettings = {
-        allowedTools,
-        disallowedTools,
-        skipPermissions,
-        projectSortOrder,
-        lastUpdated: new Date().toISOString()
-      };
-      
-      // Save Cursor settings
-      const cursorSettings = {
-        allowedCommands: cursorAllowedCommands,
-        disallowedCommands: cursorDisallowedCommands,
-        skipPermissions: cursorSkipPermissions,
-        lastUpdated: new Date().toISOString()
-      };
-
-      // Save Codex settings
-      const codexSettings = {
-        permissionMode: codexPermissionMode,
-        lastUpdated: new Date().toISOString()
-      };
-
-      // Save Gemini settings
-      const geminiSettings = {
-        permissionMode: geminiPermissionMode,
-        allowedTools: geminiAllowedTools,
-        disallowedTools: geminiDisallowedTools,
-        lastUpdated: new Date().toISOString()
-      };
-
-      // Save to localStorage
-      localStorage.setItem('claude-settings', JSON.stringify(claudeSettings));
-      localStorage.setItem('cursor-tools-settings', JSON.stringify(cursorSettings));
-      localStorage.setItem('codex-settings', JSON.stringify(codexSettings));
-      localStorage.setItem('gemini-settings', JSON.stringify(geminiSettings));
-
+      localStorage.setItem('codex-settings', JSON.stringify({ permissionMode: codexPermissionMode }));
+      localStorage.setItem('codeEditorTheme', codeEditorTheme);
+      localStorage.setItem('codeEditorWordWrap', String(codeEditorWordWrap));
+      localStorage.setItem('codeEditorShowMinimap', String(codeEditorShowMinimap));
+      localStorage.setItem('codeEditorLineNumbers', String(codeEditorLineNumbers));
+      localStorage.setItem('codeEditorFontSize', String(codeEditorFontSize));
+      setTelemetryEnabled(telemetryEnabled);
       setSaveStatus('success');
-      
-      setTimeout(() => {
-        onClose();
-      }, 1000);
+      setTimeout(() => setSaveStatus(null), 2500);
     } catch (error) {
-      console.error('Error saving tool settings:', error);
+      console.error('Error saving settings:', error);
       setSaveStatus('error');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const saveWorkspaceRoot = async (newPath) => {
-    setWorkspaceRootError('');
-    setWorkspaceRootSaved(false);
-    try {
-      const response = await api.setWorkspaceRoot(newPath || null);
-      const data = await response.json();
-      if (response.ok) {
-        setWorkspaceRoot(data.path);
-        setWorkspaceRootSaved(true);
-        setTimeout(() => setWorkspaceRootSaved(false), 2000);
-      } else {
-        setWorkspaceRootError(data.error || t('appearanceSettings.defaultProjectPath.invalidPath'));
-      }
-    } catch (err) {
-      setWorkspaceRootError(err.message);
+  useEffect(() => {
+    if (!isOpen) {
+      return;
     }
-  };
 
-  const resetWorkspaceRoot = () => {
-    saveWorkspaceRoot(null);
-  };
-
-  const addAllowedTool = (tool) => {
-    if (tool && !allowedTools.includes(tool)) {
-      setAllowedTools([...allowedTools, tool]);
-      setNewAllowedTool('');
-    }
-  };
-
-  const removeAllowedTool = (tool) => {
-    setAllowedTools(allowedTools.filter(t => t !== tool));
-  };
-
-  const addDisallowedTool = (tool) => {
-    if (tool && !disallowedTools.includes(tool)) {
-      setDisallowedTools([...disallowedTools, tool]);
-      setNewDisallowedTool('');
-    }
-  };
-
-  const removeDisallowedTool = (tool) => {
-    setDisallowedTools(disallowedTools.filter(t => t !== tool));
-  };
-
-  // MCP form handling functions
-  const resetMcpForm = () => {
-    setMcpFormData({
-      name: '',
-      type: 'stdio',
-      scope: 'user', // Default to user scope
-      projectPath: '',
-      config: {
-        command: '',
-        args: [],
-        env: {},
-        url: '',
-        headers: {},
-        timeout: 30000
-      },
-      jsonInput: '',
-      importMode: 'form'
-    });
-    setEditingMcpServer(null);
-    setShowMcpForm(false);
-    setJsonValidationError('');
-  };
-
-  const openMcpForm = (server = null) => {
-    if (server) {
-      setEditingMcpServer(server);
-      setMcpFormData({
-        name: server.name,
-        type: server.type,
-        scope: server.scope,
-        projectPath: server.projectPath || '',
-        config: { ...server.config },
-        raw: server.raw, // Store raw config for display
-        importMode: 'form', // Always use form mode when editing
-        jsonInput: ''
-      });
-    } else {
-      resetMcpForm();
-    }
-    setShowMcpForm(true);
-  };
-
-  const handleMcpSubmit = async (e) => {
-    e.preventDefault();
-    
-    setMcpLoading(true);
-    
-    try {
-      if (mcpFormData.importMode === 'json') {
-        // Use JSON import endpoint
-        const response = await authenticatedFetch('/api/mcp/cli/add-json', {
-          method: 'POST',
-          body: JSON.stringify({
-            name: mcpFormData.name,
-            jsonConfig: mcpFormData.jsonInput,
-            scope: mcpFormData.scope,
-            projectPath: mcpFormData.projectPath
-          })
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success) {
-            await fetchMcpServers(); // Refresh the list
-            resetMcpForm();
-            setSaveStatus('success');
-          } else {
-            throw new Error(result.error || 'Failed to add server via JSON');
-          }
-        } else {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to add server');
-        }
-      } else {
-        // Use regular form-based save
-        await saveMcpServer(mcpFormData);
-        resetMcpForm();
-        setSaveStatus('success');
-      }
-    } catch (error) {
-      alert(`Error: ${error.message}`);
-      setSaveStatus('error');
-    } finally {
-      setMcpLoading(false);
-    }
-  };
-
-  const handleMcpDelete = async (serverId, scope) => {
-    if (confirm('Are you sure you want to delete this MCP server?')) {
+    setActiveTab(VALID_SETTINGS_TABS.has(initialTab) ? initialTab : 'agents');
+    const savedCodexSettings = localStorage.getItem('codex-settings');
+    if (savedCodexSettings) {
       try {
-        await deleteMcpServer(serverId, scope);
-        setSaveStatus('success');
-      } catch (error) {
-        alert(`Error: ${error.message}`);
-        setSaveStatus('error');
+        const parsed = JSON.parse(savedCodexSettings);
+        setCodexPermissionMode(parsed.permissionMode || 'default');
+      } catch {
+        // Ignore invalid local settings.
       }
     }
-  };
 
-  const handleMcpTest = async (serverId, scope) => {
-    try {
-      setMcpTestResults({ ...mcpTestResults, [serverId]: { loading: true } });
-      const result = await testMcpServer(serverId, scope);
-      setMcpTestResults({ ...mcpTestResults, [serverId]: result });
-    } catch (error) {
-      setMcpTestResults({ 
-        ...mcpTestResults, 
-        [serverId]: { 
-          success: false, 
-          message: error.message,
-          details: []
-        } 
-      });
-    }
-  };
+    void checkCodexAuthStatus();
+    void fetchCodexMcpServers();
+    void loadWorkspaceRoot();
+  }, [isOpen, initialTab]);
 
-  const handleMcpToolsDiscovery = async (serverId, scope) => {
-    try {
-      setMcpToolsLoading({ ...mcpToolsLoading, [serverId]: true });
-      const result = await discoverMcpTools(serverId, scope);
-      setMcpServerTools({ ...mcpServerTools, [serverId]: result });
-    } catch (error) {
-      setMcpServerTools({ 
-        ...mcpServerTools, 
-        [serverId]: { 
-          success: false, 
-          tools: [], 
-          resources: [], 
-          prompts: [] 
-        } 
-      });
-    } finally {
-      setMcpToolsLoading({ ...mcpToolsLoading, [serverId]: false });
-    }
-  };
+  useEffect(() => {
+    localStorage.setItem('codeEditorTheme', codeEditorTheme);
+    window.dispatchEvent(new Event('codeEditorSettingsChanged'));
+  }, [codeEditorTheme]);
 
-  const updateMcpConfig = (key, value) => {
-    setMcpFormData(prev => ({
-      ...prev,
-      config: {
-        ...prev.config,
-        [key]: value
-      }
-    }));
-  };
+  useEffect(() => {
+    localStorage.setItem('codeEditorWordWrap', String(codeEditorWordWrap));
+    window.dispatchEvent(new Event('codeEditorSettingsChanged'));
+  }, [codeEditorWordWrap]);
 
+  useEffect(() => {
+    localStorage.setItem('codeEditorShowMinimap', String(codeEditorShowMinimap));
+    window.dispatchEvent(new Event('codeEditorSettingsChanged'));
+  }, [codeEditorShowMinimap]);
 
-  const getTransportIcon = (type) => {
-    switch (type) {
-      case 'stdio': return <Terminal className="w-4 h-4" />;
-      case 'sse': return <Zap className="w-4 h-4" />;
-      case 'http': return <Globe className="w-4 h-4" />;
-      default: return <Server className="w-4 h-4" />;
-    }
-  };
+  useEffect(() => {
+    localStorage.setItem('codeEditorLineNumbers', String(codeEditorLineNumbers));
+    window.dispatchEvent(new Event('codeEditorSettingsChanged'));
+  }, [codeEditorLineNumbers]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    localStorage.setItem('codeEditorFontSize', String(codeEditorFontSize));
+    window.dispatchEvent(new Event('codeEditorSettingsChanged'));
+  }, [codeEditorFontSize]);
+
+  const categories = useMemo(() => [
+    { key: 'account', label: t('agents.categories.account') },
+    { key: 'permissions', label: t('agents.categories.permissions') },
+    { key: 'mcp', label: t('agents.categories.mcp') },
+    { key: 'memory', label: t('agents.categories.memory') },
+  ], [t]);
+
+  if (!isOpen) {
+    return null;
+  }
 
   return (
-    <div className="modal-backdrop fixed inset-0 flex items-center justify-center z-[9999] md:p-4 bg-background/95">
-      <div className="bg-background border border-border md:rounded-lg shadow-xl w-full md:max-w-4xl h-full md:h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 md:p-6 border-b border-border flex-shrink-0">
+    <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm p-0 md:p-4">
+      <div className="h-full md:h-auto md:max-h-[92vh] w-full md:max-w-6xl md:mx-auto bg-background border border-border rounded-none md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-4 md:p-6 border-b border-border">
           <div className="flex items-center gap-3">
             <SettingsIcon className="w-5 h-5 md:w-6 md:h-6 text-blue-600" />
-            <h2 className="text-lg md:text-xl font-semibold text-foreground">
-              {t('title')}
-            </h2>
+            <div>
+              <h2 className="text-lg md:text-xl font-semibold text-foreground">{t('title')}</h2>
+              <p className="text-xs md:text-sm text-muted-foreground">{t('subtitle')}</p>
+            </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground touch-manipulation"
-          >
+          <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="w-5 h-5" />
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {/* Tab Navigation */}
-          <div className="border-b border-border">
-            <div className="flex px-4 md:px-6">
-              <button
-                onClick={() => setActiveTab('agents')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'agents'
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {t('mainTabs.agents')}
-              </button>
-              <button
-                onClick={() => setActiveTab('email')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'email'
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Mail className="w-4 h-4 inline mr-2" />
-                {t('mainTabs.email')}
-              </button>
-              <button
-                onClick={() => setActiveTab('appearance')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'appearance'
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {t('mainTabs.appearance')}
-              </button>
-              <button
-                onClick={() => setActiveTab('git')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'git'
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <GitBranch className="w-4 h-4 inline mr-2" />
-                {t('mainTabs.git')}
-              </button>
-              <button
-                onClick={() => setActiveTab('api')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'api'
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Key className="w-4 h-4 inline mr-2" />
-                {t('mainTabs.apiTokens')}
-              </button>
+        <div className="flex-1 overflow-hidden">
+          <div className="border-b border-border px-4 md:px-6">
+            <div className="flex gap-2 overflow-x-auto py-3">
+              {[
+                { key: 'agents', label: t('tabs.agents') },
+                { key: 'email', label: t('tabs.email') },
+                { key: 'appearance', label: t('tabs.appearance') },
+                { key: 'git', label: t('tabs.git') },
+                { key: 'api', label: t('tabs.api') },
+              ].map((tab) => (
+                <Button
+                  key={tab.key}
+                  variant={activeTab === tab.key ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveTab(tab.key)}
+                  className="whitespace-nowrap"
+                >
+                  {tab.label}
+                </Button>
+              ))}
             </div>
           </div>
 
-          <div className="p-4 md:p-6 space-y-6 md:space-y-8 pb-safe-area-inset-bottom">
-            
-            {/* Appearance Tab */}
-            {activeTab === 'appearance' && (
-              <div className="space-y-6 md:space-y-8">
-    {/* Theme Settings */}
-    <div className="space-y-4">
-      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-medium text-foreground">
-              {t('appearanceSettings.darkMode.label')}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t('appearanceSettings.darkMode.description')}
-            </div>
-          </div>
-          <button
-            onClick={toggleDarkMode}
-            className="relative inline-flex h-8 w-14 items-center rounded-full bg-gray-200 dark:bg-gray-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-            role="switch"
-            aria-checked={isDarkMode}
-            aria-label="Toggle dark mode"
-          >
-            <span className="sr-only">Toggle dark mode</span>
-            <span
-              className={`${
-                isDarkMode ? 'translate-x-7' : 'translate-x-1'
-              } inline-block h-6 w-6 transform rounded-full bg-white shadow-lg transition-transform duration-200 flex items-center justify-center`}
-            >
-              {isDarkMode ? (
-                <Moon className="w-3.5 h-3.5 text-gray-700" />
-              ) : (
-                <Sun className="w-3.5 h-3.5 text-yellow-500" />
-              )}
-            </span>
-          </button>
-        </div>
-      </div>
-    </div>
+          <div className="h-[calc(100%-57px)] overflow-y-auto p-4 md:p-6">
+            {activeTab === 'agents' && (
+              <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-border p-2">
+                    <AgentListItem
+                      agentId="codex"
+                      authStatus={codexAuthStatus}
+                      isSelected={true}
+                      onClick={() => {}}
+                    />
+                  </div>
 
-    {/* Telemetry Settings */}
-    <div className="space-y-4">
-      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-medium text-foreground">
-              {t('appearanceSettings.telemetry.label')}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t('appearanceSettings.telemetry.description')}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span
-              className={`text-xs font-semibold px-2 py-1 rounded-md ${
-                telemetryEnabled
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-              }`}
-            >
-              {telemetryEnabled ? 'ON' : 'OFF'}
-            </span>
-            <button
-              onClick={() => setTelemetryEnabledState(!telemetryEnabled)}
-              className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 ${
-                telemetryEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-700'
-              }`}
-              role="switch"
-              aria-checked={telemetryEnabled}
-              aria-label={t('appearanceSettings.telemetry.label')}
-            >
-              <span className="sr-only">{t('appearanceSettings.telemetry.label')}</span>
-              <span
-                className={`${
-                  telemetryEnabled ? 'translate-x-7' : 'translate-x-1'
-                } inline-block h-6 w-6 transform rounded-full bg-white shadow-lg transition-transform duration-200`}
-              />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+                  <div className="rounded-lg border border-border p-2">
+                    {categories.map((category) => (
+                      <button
+                        key={category.key}
+                        onClick={() => setSelectedCategory(category.key)}
+                        className={`w-full text-left rounded-md px-3 py-2 text-sm transition-colors ${
+                          selectedCategory === category.key
+                            ? 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
+                            : 'text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        {category.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-    {/* Language Selector */}
-    <div className="space-y-4">
-      <LanguageSelector />
-    </div>
+                <div className="space-y-6">
+                  {selectedCategory === 'account' && (
+                    <AccountContent
+                      agent="codex"
+                      authStatus={codexAuthStatus}
+                      onLogin={handleCodexLogin}
+                    />
+                  )}
 
-    {/* Project Sorting */}
-    <div className="space-y-4">
-      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-medium text-foreground">
-              {t('appearanceSettings.projectSorting.label')}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t('appearanceSettings.projectSorting.description')}
-            </div>
-          </div>
-          <select
-            value={projectSortOrder}
-            onChange={(e) => setProjectSortOrder(e.target.value)}
-            className="text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2 w-32"
-          >
-            <option value="name">{t('appearanceSettings.projectSorting.alphabetical')}</option>
-            <option value="date">{t('appearanceSettings.projectSorting.recentActivity')}</option>
-          </select>
-        </div>
-      </div>
-    </div>
+                  {selectedCategory === 'permissions' && (
+                    <PermissionsContent
+                      agent="codex"
+                      permissionMode={codexPermissionMode}
+                      setPermissionMode={setCodexPermissionMode}
+                    />
+                  )}
 
-    {/* Default Project Path */}
-    <div className="space-y-4">
-      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div className="mb-2">
-          <div className="font-medium text-foreground">
-            {t('appearanceSettings.defaultProjectPath.label')}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {t('appearanceSettings.defaultProjectPath.description')}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 mt-3">
-          <Input
-            value={workspaceRoot}
-            onChange={(e) => {
-              setWorkspaceRoot(e.target.value);
-              setWorkspaceRootSaved(false);
-              setWorkspaceRootError('');
-            }}
-            onBlur={() => {
-              if (workspaceRoot && workspaceRoot !== workspaceRootDefault) {
-                saveWorkspaceRoot(workspaceRoot);
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                saveWorkspaceRoot(workspaceRoot);
-              }
-            }}
-            placeholder={workspaceRootDefault}
-            className="flex-1 text-sm font-mono"
-          />
-          {isDesktop && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                const selected = await selectDirectory({
-                  title: t('appearanceSettings.defaultProjectPath.browseTitle', 'Select Default Project Folder'),
-                  defaultPath: workspaceRoot || workspaceRootDefault || undefined,
-                });
-                if (selected) {
-                  setWorkspaceRoot(selected);
-                  setWorkspaceRootSaved(false);
-                  setWorkspaceRootError('');
-                  saveWorkspaceRoot(selected);
-                }
-              }}
-              className="whitespace-nowrap"
-              title={t('appearanceSettings.defaultProjectPath.browse', 'Browse')}
-            >
-              <FolderOpen className="w-4 h-4 mr-1" />
-              {t('appearanceSettings.defaultProjectPath.browse', 'Browse')}
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={resetWorkspaceRoot}
-            className="whitespace-nowrap"
-            title={t('appearanceSettings.defaultProjectPath.reset')}
-          >
-            {t('appearanceSettings.defaultProjectPath.reset')}
-          </Button>
-        </div>
-        {workspaceRootSaved && (
-          <div className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
-            <Check className="w-3 h-3" />
-            {t('appearanceSettings.defaultProjectPath.saved')}
-          </div>
-        )}
-        {workspaceRootError && (
-          <div className="text-xs text-red-600 dark:text-red-400 mt-1">
-            {workspaceRootError}
-          </div>
-        )}
-      </div>
-    </div>
+                  {selectedCategory === 'mcp' && (
+                    <McpServersContent
+                      agent="codex"
+                      servers={codexMcpServers}
+                      onAdd={() => openCodexMcpForm()}
+                      onEdit={(server) => openCodexMcpForm(server)}
+                      onDelete={handleCodexMcpDelete}
+                    />
+                  )}
 
-    {/* Code Editor Settings */}
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-foreground">{t('appearanceSettings.codeEditor.title')}</h3>
-
-      {/* Editor Theme */}
-      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-medium text-foreground">
-              {t('appearanceSettings.codeEditor.theme.label')}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t('appearanceSettings.codeEditor.theme.description')}
-            </div>
-          </div>
-          <button
-            onClick={() => setCodeEditorTheme(codeEditorTheme === 'dark' ? 'light' : 'dark')}
-            className="relative inline-flex h-8 w-14 items-center rounded-full bg-gray-200 dark:bg-gray-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-            role="switch"
-            aria-checked={codeEditorTheme === 'dark'}
-            aria-label="Toggle editor theme"
-          >
-            <span className="sr-only">Toggle editor theme</span>
-            <span
-              className={`${
-                codeEditorTheme === 'dark' ? 'translate-x-7' : 'translate-x-1'
-              } inline-block h-6 w-6 transform rounded-full bg-white shadow-lg transition-transform duration-200 flex items-center justify-center`}
-            >
-              {codeEditorTheme === 'dark' ? (
-                <Moon className="w-3.5 h-3.5 text-gray-700" />
-              ) : (
-                <Sun className="w-3.5 h-3.5 text-yellow-500" />
-              )}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Word Wrap */}
-      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-medium text-foreground">
-              {t('appearanceSettings.codeEditor.wordWrap.label')}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t('appearanceSettings.codeEditor.wordWrap.description')}
-            </div>
-          </div>
-          <button
-            onClick={() => setCodeEditorWordWrap(!codeEditorWordWrap)}
-            className="relative inline-flex h-8 w-14 items-center rounded-full bg-gray-200 dark:bg-gray-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-            role="switch"
-            aria-checked={codeEditorWordWrap}
-            aria-label="Toggle word wrap"
-          >
-            <span className="sr-only">Toggle word wrap</span>
-            <span
-              className={`${
-                codeEditorWordWrap ? 'translate-x-7' : 'translate-x-1'
-              } inline-block h-6 w-6 transform rounded-full bg-white shadow-lg transition-transform duration-200`}
-            />
-          </button>
-        </div>
-      </div>
-
-      {/* Show Minimap */}
-      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-medium text-foreground">
-              {t('appearanceSettings.codeEditor.showMinimap.label')}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t('appearanceSettings.codeEditor.showMinimap.description')}
-            </div>
-          </div>
-          <button
-            onClick={() => setCodeEditorShowMinimap(!codeEditorShowMinimap)}
-            className="relative inline-flex h-8 w-14 items-center rounded-full bg-gray-200 dark:bg-gray-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-            role="switch"
-            aria-checked={codeEditorShowMinimap}
-            aria-label="Toggle minimap"
-          >
-            <span className="sr-only">Toggle minimap</span>
-            <span
-              className={`${
-                codeEditorShowMinimap ? 'translate-x-7' : 'translate-x-1'
-              } inline-block h-6 w-6 transform rounded-full bg-white shadow-lg transition-transform duration-200`}
-            />
-          </button>
-        </div>
-      </div>
-
-      {/* Show Line Numbers */}
-      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-medium text-foreground">
-              {t('appearanceSettings.codeEditor.lineNumbers.label')}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t('appearanceSettings.codeEditor.lineNumbers.description')}
-            </div>
-          </div>
-          <button
-            onClick={() => setCodeEditorLineNumbers(!codeEditorLineNumbers)}
-            className="relative inline-flex h-8 w-14 items-center rounded-full bg-gray-200 dark:bg-gray-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-            role="switch"
-            aria-checked={codeEditorLineNumbers}
-            aria-label="Toggle line numbers"
-          >
-            <span className="sr-only">Toggle line numbers</span>
-            <span
-              className={`${
-                codeEditorLineNumbers ? 'translate-x-7' : 'translate-x-1'
-              } inline-block h-6 w-6 transform rounded-full bg-white shadow-lg transition-transform duration-200`}
-            />
-          </button>
-        </div>
-      </div>
-
-      {/* Font Size */}
-      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-medium text-foreground">
-              {t('appearanceSettings.codeEditor.fontSize.label')}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t('appearanceSettings.codeEditor.fontSize.description')}
-            </div>
-          </div>
-          <select
-            value={codeEditorFontSize}
-            onChange={(e) => setCodeEditorFontSize(e.target.value)}
-            className="text-sm bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2 w-24"
-          >
-            <option value="10">10px</option>
-            <option value="11">11px</option>
-            <option value="12">12px</option>
-            <option value="13">13px</option>
-            <option value="14">14px</option>
-            <option value="15">15px</option>
-            <option value="16">16px</option>
-            <option value="18">18px</option>
-            <option value="20">20px</option>
-          </select>
-        </div>
-      </div>
-    </div>
+                  {selectedCategory === 'memory' && <MemoryContent />}
+                </div>
               </div>
             )}
 
-            {/* Git Tab */}
-            {activeTab === 'git' && <GitSettings />}
-
-            {/* Email Tab */}
             {activeTab === 'email' && <EmailSettingsContent />}
 
-            {/* Agents Tab */}
-            {activeTab === 'agents' && (
-              <div className="flex flex-col md:flex-row h-full min-h-[400px] md:min-h-[500px]">
-                {/* Mobile: Horizontal Agent Tabs */}
-                <div className="md:hidden border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-                  <div className="flex">
-                    <AgentListItem
-                      agentId="claude"
-                      authStatus={claudeAuthStatus}
-                      isSelected={selectedAgent === 'claude'}
-                      onClick={() => setSelectedAgent('claude')}
-                      isMobile={true}
-                    />
-                    <AgentListItem
-                      agentId="codex"
-                      authStatus={codexAuthStatus}
-                      isSelected={selectedAgent === 'codex'}
-                      onClick={() => setSelectedAgent('codex')}
-                      isMobile={true}
-                    />
-                    <AgentListItem
-                      agentId="gemini"
-                      authStatus={geminiAuthStatus}
-                      isSelected={selectedAgent === 'gemini'}
-                      onClick={() => setSelectedAgent('gemini')}
-                      isMobile={true}
-                    />
-                    <AgentListItem
-                      agentId="openrouter"
-                      authStatus={openrouterAuthStatus}
-                      isSelected={selectedAgent === 'openrouter'}
-                      onClick={() => setSelectedAgent('openrouter')}
-                      isMobile={true}
-                    />
-                    <AgentListItem
-                      agentId="local"
-                      authStatus={localAuthStatus}
-                      isSelected={selectedAgent === 'local'}
-                      onClick={() => setSelectedAgent('local')}
-                      isMobile={true}
-                    />
+            {activeTab === 'appearance' && (
+              <div className="space-y-8">
+                <div>
+                  <h3 className="text-lg font-medium text-foreground mb-4">{t('appearance.theme.title')}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button
+                      onClick={toggleDarkMode}
+                      className={`rounded-lg border p-4 text-left transition-colors ${
+                        !isDarkMode ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-border hover:bg-muted'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 font-medium">
+                        <Sun className="w-4 h-4" />
+                        {t('appearance.theme.light')}
+                      </div>
+                    </button>
+                    <button
+                      onClick={toggleDarkMode}
+                      className={`rounded-lg border p-4 text-left transition-colors ${
+                        isDarkMode ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-border hover:bg-muted'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 font-medium">
+                        <Moon className="w-4 h-4" />
+                        {t('appearance.theme.dark')}
+                      </div>
+                    </button>
                   </div>
                 </div>
 
-                {/* Desktop: Sidebar - Agent List */}
-                <div className="hidden md:block w-48 border-r border-gray-200 dark:border-gray-700 flex-shrink-0">
-                  <div className="p-2">
-                    <AgentListItem
-                      agentId="claude"
-                      authStatus={claudeAuthStatus}
-                      isSelected={selectedAgent === 'claude'}
-                      onClick={() => setSelectedAgent('claude')}
-                    />
-                    <AgentListItem
-                      agentId="codex"
-                      authStatus={codexAuthStatus}
-                      isSelected={selectedAgent === 'codex'}
-                      onClick={() => setSelectedAgent('codex')}
-                    />
-                    <AgentListItem
-                      agentId="gemini"
-                      authStatus={geminiAuthStatus}
-                      isSelected={selectedAgent === 'gemini'}
-                      onClick={() => setSelectedAgent('gemini')}
-                    />
-                    <AgentListItem
-                      agentId="openrouter"
-                      authStatus={openrouterAuthStatus}
-                      isSelected={selectedAgent === 'openrouter'}
-                      onClick={() => setSelectedAgent('openrouter')}
-                    />
-                    <AgentListItem
-                      agentId="local"
-                      authStatus={localAuthStatus}
-                      isSelected={selectedAgent === 'local'}
-                      onClick={() => setSelectedAgent('local')}
-                    />
-                  </div>
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-foreground">{t('appearance.language.title')}</h3>
+                  <LanguageSelector />
                 </div>
 
-                {/* Main Panel */}
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  {/* Category Tabs */}
-                  <div className="border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-                    <div className="flex px-2 md:px-4 overflow-x-auto">
-                      <button
-                        onClick={() => setSelectedCategory('account')}
-                        className={`px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                          selectedCategory === 'account'
-                            ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                            : 'border-transparent text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {t('tabs.account')}
-                      </button>
-                      <button
-                        onClick={() => setSelectedCategory('permissions')}
-                        className={`px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                          selectedCategory === 'permissions'
-                            ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                            : 'border-transparent text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {t('tabs.permissions')}
-                      </button>
-                      <button
-                        onClick={() => setSelectedCategory('mcp')}
-                        className={`px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                          selectedCategory === 'mcp'
-                            ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                            : 'border-transparent text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {t('tabs.mcpServers')}
-                      </button>
-                      <button
-                        onClick={() => setSelectedCategory('memory')}
-                        className={`px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
-                          selectedCategory === 'memory'
-                            ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                            : 'border-transparent text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        <Brain className="w-4 h-4" />
-                        Memory
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Category Content */}
-                  <div className="flex-1 overflow-y-auto p-3 md:p-4">
-                    {/* Account Category */}
-                    {selectedCategory === 'account' && (
-                      <AccountContent
-                        agent={selectedAgent}
-                        authStatus={
-                          selectedAgent === 'claude' ? claudeAuthStatus :
-                          selectedAgent === 'cursor' ? cursorAuthStatus :
-                          selectedAgent === 'gemini' ? geminiAuthStatus :
-                          selectedAgent === 'openrouter' ? openrouterAuthStatus :
-                          selectedAgent === 'local' ? localAuthStatus :
-                          codexAuthStatus
-                        }
-                        onLogin={
-                          selectedAgent === 'claude' ? handleClaudeLogin :
-                          selectedAgent === 'cursor' ? handleCursorLogin :
-                          selectedAgent === 'gemini' ? handleGeminiLogin :
-                          selectedAgent === 'openrouter' ? (() => {}) :
-                          selectedAgent === 'local' ? checkLocalAuthStatus :
-                          handleCodexLogin
-                        }
-                      />
-                    )}
-
-                    {/* Permissions Category */}
-                    {selectedCategory === 'permissions' && selectedAgent === 'claude' && (
-                      <PermissionsContent
-                        agent="claude"
-                        skipPermissions={skipPermissions}
-                        setSkipPermissions={setSkipPermissions}
-                        allowedTools={allowedTools}
-                        setAllowedTools={setAllowedTools}
-                        disallowedTools={disallowedTools}
-                        setDisallowedTools={setDisallowedTools}
-                        newAllowedTool={newAllowedTool}
-                        setNewAllowedTool={setNewAllowedTool}
-                        newDisallowedTool={newDisallowedTool}
-                        setNewDisallowedTool={setNewDisallowedTool}
-                      />
-                    )}
-
-                    {selectedCategory === 'permissions' && selectedAgent === 'cursor' && (
-                      <PermissionsContent
-                        agent="cursor"
-                        skipPermissions={cursorSkipPermissions}
-                        setSkipPermissions={setCursorSkipPermissions}
-                        allowedCommands={cursorAllowedCommands}
-                        setAllowedCommands={setCursorAllowedCommands}
-                        disallowedCommands={cursorDisallowedCommands}
-                        setDisallowedCommands={setCursorDisallowedCommands}
-                        newAllowedCommand={newCursorCommand}
-                        setNewAllowedCommand={setNewCursorCommand}
-                        newDisallowedCommand={newCursorDisallowedCommand}
-                        setNewDisallowedCommand={setNewCursorDisallowedCommand}
-                      />
-                    )}
-
-                    {selectedCategory === 'permissions' && selectedAgent === 'codex' && (
-                      <PermissionsContent
-                        agent="codex"
-                        permissionMode={codexPermissionMode}
-                        setPermissionMode={setCodexPermissionMode}
-                      />
-                    )}
-
-                    {selectedCategory === 'permissions' && selectedAgent === 'gemini' && (
-                      <PermissionsContent
-                        agent="gemini"
-                        permissionMode={geminiPermissionMode}
-                        setPermissionMode={setGeminiPermissionMode}
-                        allowedTools={geminiAllowedTools}
-                        setAllowedTools={setGeminiAllowedTools}
-                        disallowedTools={geminiDisallowedTools}
-                        setDisallowedTools={setGeminiDisallowedTools}
-                        newAllowedTool={newGeminiAllowedTool}
-                        setNewAllowedTool={setNewGeminiAllowedTool}
-                        newDisallowedTool={newGeminiDisallowedTool}
-                        setNewDisallowedTool={setNewGeminiDisallowedTool}
-                      />
-                    )}
-
-                    {/* MCP Servers Category */}
-                    {selectedCategory === 'mcp' && selectedAgent === 'claude' && (
-                      <McpServersContent
-                        agent="claude"
-                        servers={mcpServers}
-                        onAdd={() => openMcpForm()}
-                        onEdit={(server) => openMcpForm(server)}
-                        onDelete={(serverId, scope) => handleMcpDelete(serverId, scope)}
-                        onTest={(serverId, scope) => handleMcpTest(serverId, scope)}
-                        onDiscoverTools={(serverId, scope) => handleMcpToolsDiscovery(serverId, scope)}
-                        testResults={mcpTestResults}
-                        serverTools={mcpServerTools}
-                        toolsLoading={mcpToolsLoading}
-                      />
-                    )}
-
-                    {selectedCategory === 'mcp' && selectedAgent === 'cursor' && (
-                      <McpServersContent
-                        agent="cursor"
-                        servers={cursorMcpServers}
-                        onAdd={() => {/* TODO: Add cursor MCP form */}}
-                        onEdit={(server) => {/* TODO: Edit cursor MCP form */}}
-                        onDelete={(serverId) => {/* TODO: Delete cursor MCP */}}
-                      />
-                    )}
-
-                    {selectedCategory === 'mcp' && selectedAgent === 'codex' && (
-                      <McpServersContent
-                        agent="codex"
-                        servers={codexMcpServers}
-                        onAdd={() => openCodexMcpForm()}
-                        onEdit={(server) => openCodexMcpForm(server)}
-                        onDelete={(serverId) => handleCodexMcpDelete(serverId)}
-                      />
-                    )}
-
-                    {/* Memory Category */}
-                    {selectedCategory === 'memory' && (
-                      <MemoryContent />
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* MCP Server Form Modal */}
-            {showMcpForm && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[110] p-4">
-                <div className="bg-background border border-border rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                  <div className="flex items-center justify-between p-4 border-b border-border">
-                    <h3 className="text-lg font-medium text-foreground">
-                      {editingMcpServer ? t('mcpForm.title.edit') : t('mcpForm.title.add')}
-                    </h3>
-                    <Button variant="ghost" size="sm" onClick={resetMcpForm}>
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  
-                  <form onSubmit={handleMcpSubmit} className="p-4 space-y-4">
-
-                    {!editingMcpServer && (
-                    <div className="flex gap-2 mb-4">
-                      <button
-                        type="button"
-                        onClick={() => setMcpFormData(prev => ({...prev, importMode: 'form'}))}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          mcpFormData.importMode === 'form'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        {t('mcpForm.importMode.form')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMcpFormData(prev => ({...prev, importMode: 'json'}))}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          mcpFormData.importMode === 'json'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        {t('mcpForm.importMode.json')}
-                      </button>
-                    </div>
-                    )}
-
-                    {/* Show current scope when editing */}
-                    {mcpFormData.importMode === 'form' && editingMcpServer && (
-                      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                        <label className="block text-sm font-medium text-foreground mb-2">
-                          {t('mcpForm.scope.label')}
-                        </label>
-                        <div className="flex items-center gap-2">
-                          {mcpFormData.scope === 'user' ? <Globe className="w-4 h-4" /> : <FolderOpen className="w-4 h-4" />}
-                          <span className="text-sm">
-                            {mcpFormData.scope === 'user' ? t('mcpForm.scope.userGlobal') : t('mcpForm.scope.projectLocal')}
-                          </span>
-                          {mcpFormData.scope === 'local' && mcpFormData.projectPath && (
-                            <span className="text-xs text-muted-foreground">
-                              - {mcpFormData.projectPath}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {t('mcpForm.scope.cannotChange')}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Scope Selection - Moved to top, disabled when editing */}
-                    {mcpFormData.importMode === 'form' && !editingMcpServer && (
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-foreground mb-2">
-                            {t('mcpForm.scope.label')} *
-                          </label>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setMcpFormData(prev => ({...prev, scope: 'user', projectPath: ''}))}
-                              className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
-                                mcpFormData.scope === 'user'
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                              }`}
-                            >
-                              <div className="flex items-center justify-center gap-2">
-                                <Globe className="w-4 h-4" />
-                                <span>{t('mcpForm.scope.userGlobal')}</span>
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setMcpFormData(prev => ({...prev, scope: 'local'}))}
-                              className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
-                                mcpFormData.scope === 'local'
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                              }`}
-                            >
-                              <div className="flex items-center justify-center gap-2">
-                                <FolderOpen className="w-4 h-4" />
-                                <span>{t('mcpForm.scope.projectLocal')}</span>
-                              </div>
-                            </button>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            {mcpFormData.scope === 'user'
-                              ? t('mcpForm.scope.userDescription')
-                              : t('mcpForm.scope.projectDescription')
-                            }
-                          </p>
-                        </div>
-
-                        {/* Project Selection for Local Scope */}
-                        {mcpFormData.scope === 'local' && !editingMcpServer && (
-                          <div>
-                            <label className="block text-sm font-medium text-foreground mb-2">
-                              {t('mcpForm.fields.selectProject')} *
-                            </label>
-                            <select
-                              value={mcpFormData.projectPath}
-                              onChange={(e) => setMcpFormData(prev => ({...prev, projectPath: e.target.value}))}
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                              required={mcpFormData.scope === 'local'}
-                            >
-                              <option value="">{t('mcpForm.fields.selectProject')}...</option>
-                              {projects.map(project => (
-                                <option key={project.name} value={project.path || project.fullPath}>
-                                  {project.displayName || project.name}
-                                </option>
-                              ))}
-                            </select>
-                            {mcpFormData.projectPath && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {t('mcpForm.projectPath', { path: mcpFormData.projectPath })}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Basic Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className={mcpFormData.importMode === 'json' ? 'md:col-span-2' : ''}>
-                        <label className="block text-sm font-medium text-foreground mb-2">
-                          {t('mcpForm.fields.serverName')} *
-                        </label>
-                        <Input
-                          value={mcpFormData.name}
-                          onChange={(e) => {
-                            setMcpFormData(prev => ({...prev, name: e.target.value}));
-                          }}
-                          placeholder={t('mcpForm.placeholders.serverName')}
-                          required
-                        />
-                      </div>
-
-                      {mcpFormData.importMode === 'form' && (
-                        <div>
-                          <label className="block text-sm font-medium text-foreground mb-2">
-                            {t('mcpForm.fields.transportType')} *
-                          </label>
-                          <select
-                            value={mcpFormData.type}
-                            onChange={(e) => {
-                              setMcpFormData(prev => ({...prev, type: e.target.value}));
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            <option value="stdio">stdio</option>
-                            <option value="sse">SSE</option>
-                            <option value="http">HTTP</option>
-                          </select>
-                        </div>
-                      )}
-                    </div>
-
-
-                    {/* Show raw configuration details when editing */}
-                    {editingMcpServer && mcpFormData.raw && mcpFormData.importMode === 'form' && (
-                      <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                        <h4 className="text-sm font-medium text-foreground mb-2">
-                          {t('mcpForm.configDetails', { configFile: editingMcpServer.scope === 'global' ? '~/.claude.json' : 'project config' })}
-                        </h4>
-                        <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-3 rounded overflow-x-auto">
-                          {JSON.stringify(mcpFormData.raw, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-
-                    {/* JSON Import Mode */}
-                    {mcpFormData.importMode === 'json' && (
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-foreground mb-2">
-                            {t('mcpForm.fields.jsonConfig')} *
-                          </label>
-                          <textarea
-                            value={mcpFormData.jsonInput}
-                            onChange={(e) => {
-                              setMcpFormData(prev => ({...prev, jsonInput: e.target.value}));
-                              // Validate JSON as user types
-                              try {
-                                if (e.target.value.trim()) {
-                                  const parsed = JSON.parse(e.target.value);
-                                  // Basic validation
-                                  if (!parsed.type) {
-                                    setJsonValidationError(t('mcpForm.validation.missingType'));
-                                  } else if (parsed.type === 'stdio' && !parsed.command) {
-                                    setJsonValidationError(t('mcpForm.validation.stdioRequiresCommand'));
-                                  } else if ((parsed.type === 'http' || parsed.type === 'sse') && !parsed.url) {
-                                    setJsonValidationError(t('mcpForm.validation.httpRequiresUrl', { type: parsed.type }));
-                                  } else {
-                                    setJsonValidationError('');
-                                  }
-                                }
-                              } catch (err) {
-                                if (e.target.value.trim()) {
-                                  setJsonValidationError(t('mcpForm.validation.invalidJson'));
-                                } else {
-                                  setJsonValidationError('');
-                                }
-                              }
-                            }}
-                            className={`w-full px-3 py-2 border ${jsonValidationError ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-blue-500 focus:border-blue-500 font-mono text-sm`}
-                            rows="8"
-                            placeholder={'{\n  "type": "stdio",\n  "command": "/path/to/server",\n  "args": ["--api-key", "abc123"],\n  "env": {\n    "CACHE_DIR": "/tmp"\n  }\n}'}
-                            required
-                          />
-                          {jsonValidationError && (
-                            <p className="text-xs text-red-500 mt-1">{jsonValidationError}</p>
-                          )}
-                          <p className="text-xs text-muted-foreground mt-2">
-                            {t('mcpForm.validation.jsonHelp')}
-                            <br />• stdio: {`{"type":"stdio","command":"npx","args":["@upstash/context7-mcp"]}`}
-                            <br />• http/sse: {`{"type":"http","url":"https://api.example.com/mcp"}`}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Transport-specific Config - Only show in form mode */}
-                    {mcpFormData.importMode === 'form' && mcpFormData.type === 'stdio' && (
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-foreground mb-2">
-                            {t('mcpForm.fields.command')} *
-                          </label>
-                          <Input
-                            value={mcpFormData.config.command}
-                            onChange={(e) => updateMcpConfig('command', e.target.value)}
-                            placeholder="/path/to/mcp-server"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-foreground mb-2">
-                            {t('mcpForm.fields.arguments')}
-                          </label>
-                          <textarea
-                            value={Array.isArray(mcpFormData.config.args) ? mcpFormData.config.args.join('\n') : ''}
-                            onChange={(e) => updateMcpConfig('args', e.target.value.split('\n').filter(arg => arg.trim()))}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                            rows="3"
-                            placeholder="--api-key&#10;abc123"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {mcpFormData.importMode === 'form' && (mcpFormData.type === 'sse' || mcpFormData.type === 'http') && (
-                      <div>
-                        <label className="block text-sm font-medium text-foreground mb-2">
-                          {t('mcpForm.fields.url')} *
-                        </label>
-                        <Input
-                          value={mcpFormData.config.url}
-                          onChange={(e) => updateMcpConfig('url', e.target.value)}
-                          placeholder="https://api.example.com/mcp"
-                          type="url"
-                          required
-                        />
-                      </div>
-                    )}
-
-                    {/* Environment Variables - Only show in form mode */}
-                    {mcpFormData.importMode === 'form' && (
-                      <div>
-                      <label className="block text-sm font-medium text-foreground mb-2">
-                        {t('mcpForm.fields.envVars')}
-                      </label>
-                      <textarea
-                        value={Object.entries(mcpFormData.config.env || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
-                        onChange={(e) => {
-                          const env = {};
-                          e.target.value.split('\n').forEach(line => {
-                            const [key, ...valueParts] = line.split('=');
-                            if (key && key.trim()) {
-                              env[key.trim()] = valueParts.join('=').trim();
-                            }
-                          });
-                          updateMcpConfig('env', env);
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                        rows="3"
-                        placeholder="API_KEY=your-key&#10;DEBUG=true"
-                      />
-                    </div>
-                    )}
-
-                    {mcpFormData.importMode === 'form' && (mcpFormData.type === 'sse' || mcpFormData.type === 'http') && (
-                      <div>
-                        <label className="block text-sm font-medium text-foreground mb-2">
-                          {t('mcpForm.fields.headers')}
-                        </label>
-                        <textarea
-                          value={Object.entries(mcpFormData.config.headers || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
-                          onChange={(e) => {
-                            const headers = {};
-                            e.target.value.split('\n').forEach(line => {
-                              const [key, ...valueParts] = line.split('=');
-                              if (key && key.trim()) {
-                                headers[key.trim()] = valueParts.join('=').trim();
-                              }
-                            });
-                            updateMcpConfig('headers', headers);
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                          rows="3"
-                          placeholder="Authorization=Bearer token&#10;X-API-Key=your-key"
-                        />
-                      </div>
-                    )}
-
-
-                    <div className="flex justify-end gap-2 pt-4">
-                      <Button type="button" variant="outline" onClick={resetMcpForm}>
-                        {t('mcpForm.actions.cancel')}
-                      </Button>
-                      <Button
-                        type="submit"
-                        disabled={mcpLoading}
-                        className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50"
-                      >
-                        {mcpLoading ? t('mcpForm.actions.saving') : (editingMcpServer ? t('mcpForm.actions.updateServer') : t('mcpForm.actions.addServer'))}
-                      </Button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            {/* Codex MCP Server Form Modal */}
-            {showCodexMcpForm && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[110] p-4">
-                <div className="bg-background border border-border rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                  <div className="flex items-center justify-between p-4 border-b border-border">
-                    <h3 className="text-lg font-medium text-foreground">
-                      {editingCodexMcpServer ? t('mcpForm.title.edit') : t('mcpForm.title.add')}
-                    </h3>
-                    <Button variant="ghost" size="sm" onClick={resetCodexMcpForm}>
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <form onSubmit={handleCodexMcpSubmit} className="p-4 space-y-4">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-foreground">{t('appearance.editor.title')}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-foreground mb-2">
-                        {t('mcpForm.fields.serverName')} *
-                      </label>
+                      <label className="text-sm font-medium text-muted-foreground">{t('appearance.editor.theme')}</label>
+                      <select
+                        value={codeEditorTheme}
+                        onChange={(e) => setCodeEditorTheme(e.target.value)}
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                        <option value="vs-dark">VS Dark</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">{t('appearance.editor.fontSize')}</label>
                       <Input
-                        value={codexMcpFormData.name}
-                        onChange={(e) => setCodexMcpFormData(prev => ({...prev, name: e.target.value}))}
-                        placeholder={t('mcpForm.placeholders.serverName')}
-                        required
+                        type="number"
+                        min="10"
+                        max="28"
+                        value={codeEditorFontSize}
+                        onChange={(e) => setCodeEditorFontSize(e.target.value)}
+                        className="mt-1"
                       />
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-2">
-                        {t('mcpForm.fields.command')} *
-                      </label>
-                      <Input
-                        value={codexMcpFormData.config?.command || ''}
-                        onChange={(e) => setCodexMcpFormData(prev => ({
-                          ...prev,
-                          config: { ...prev.config, command: e.target.value }
-                        }))}
-                        placeholder="npx @my-org/mcp-server"
-                        required
-                      />
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <label className="flex items-center gap-2 text-sm text-foreground">
+                      <input type="checkbox" checked={codeEditorWordWrap} onChange={(e) => setCodeEditorWordWrap(e.target.checked)} />
+                      {t('appearance.editor.wordWrap')}
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-foreground">
+                      <input type="checkbox" checked={codeEditorShowMinimap} onChange={(e) => setCodeEditorShowMinimap(e.target.checked)} />
+                      {t('appearance.editor.minimap')}
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-foreground">
+                      <input type="checkbox" checked={codeEditorLineNumbers} onChange={(e) => setCodeEditorLineNumbers(e.target.checked)} />
+                      {t('appearance.editor.lineNumbers')}
+                    </label>
+                  </div>
+                </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-2">
-                        {t('mcpForm.fields.arguments')}
-                      </label>
-                      <textarea
-                        value={(codexMcpFormData.config?.args || []).join('\n')}
-                        onChange={(e) => setCodexMcpFormData(prev => ({
-                          ...prev,
-                          config: { ...prev.config, args: e.target.value.split('\n').filter(a => a.trim()) }
-                        }))}
-                        placeholder="--port&#10;3000"
-                        rows={3}
-                        className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-2">
-                        {t('mcpForm.fields.envVars')}
-                      </label>
-                      <textarea
-                        value={Object.entries(codexMcpFormData.config?.env || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
-                        onChange={(e) => {
-                          const env = {};
-                          e.target.value.split('\n').forEach(line => {
-                            const [key, ...valueParts] = line.split('=');
-                            if (key && valueParts.length > 0) {
-                              env[key.trim()] = valueParts.join('=').trim();
-                            }
-                          });
-                          setCodexMcpFormData(prev => ({
-                            ...prev,
-                            config: { ...prev.config, env }
-                          }));
-                        }}
-                        placeholder="API_KEY=xxx&#10;DEBUG=true"
-                        rows={3}
-                        className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-4 border-t border-border">
-                      <Button type="button" variant="outline" onClick={resetCodexMcpForm}>
-                        {t('mcpForm.actions.cancel')}
-                      </Button>
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-foreground">{t('appearance.workspaceRoot.title')}</h3>
+                  <p className="text-sm text-muted-foreground">{t('appearance.workspaceRoot.description')}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2">
+                    <Input
+                      value={workspaceRoot}
+                      onChange={(e) => {
+                        setWorkspaceRoot(e.target.value);
+                        setWorkspaceRootSaved(false);
+                        setWorkspaceRootError('');
+                      }}
+                      placeholder={workspaceRootDefault || t('appearance.workspaceRoot.placeholder')}
+                    />
+                    {isDesktop ? (
                       <Button
-                        type="submit"
-                        disabled={codexMcpLoading || !codexMcpFormData.name || !codexMcpFormData.config?.command}
-                        className="bg-green-600 hover:bg-green-700 text-white"
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            const selectedPath = await selectDirectory(workspaceRoot || workspaceRootDefault || undefined);
+                            if (selectedPath) {
+                              setWorkspaceRoot(selectedPath);
+                              setWorkspaceRootSaved(false);
+                              setWorkspaceRootError('');
+                            }
+                          } catch (error) {
+                            setWorkspaceRootError(error.message || t('appearance.workspaceRoot.browseError'));
+                          }
+                        }}
                       >
-                        {codexMcpLoading ? t('mcpForm.actions.saving') : (editingCodexMcpServer ? t('mcpForm.actions.updateServer') : t('mcpForm.actions.addServer'))}
+                        <FolderOpen className="w-4 h-4 mr-2" />
+                        {t('appearance.workspaceRoot.browse')}
                       </Button>
-                    </div>
-                  </form>
+                    ) : null}
+                    <Button onClick={saveWorkspaceRoot}>{t('appearance.workspaceRoot.save')}</Button>
+                  </div>
+                  {workspaceRootSaved && (
+                    <div className="text-sm text-green-600 dark:text-green-400">{t('appearance.workspaceRoot.saved')}</div>
+                  )}
+                  {workspaceRootError && (
+                    <div className="text-sm text-red-600 dark:text-red-400">{workspaceRootError}</div>
+                  )}
+                  {workspaceRoot && isDesktop && (
+                    <button
+                      type="button"
+                      onClick={() => showItemInFolder(workspaceRoot)}
+                      className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      {t('appearance.workspaceRoot.openInExplorer')}
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="text-lg font-medium text-foreground">Telemetry</h3>
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={telemetryEnabled}
+                      onChange={(e) => setTelemetryEnabledState(e.target.checked)}
+                    />
+                    <span>{t('appearance.telemetry.label')}</span>
+                  </label>
                 </div>
               </div>
             )}
 
-            {/* API & Tokens Tab */}
-            {activeTab === 'api' && (
-              <div className="space-y-6 md:space-y-8">
-                <CredentialsSettings />
-              </div>
-            )}
+            {activeTab === 'git' && <GitSettings />}
+            {activeTab === 'api' && <CredentialsSettings />}
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 md:p-6 border-t border-border flex-shrink-0 gap-3 pb-safe-area-inset-bottom">
-          <div className="flex items-center justify-center sm:justify-start gap-2 order-2 sm:order-1">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 md:p-6 border-t border-border gap-3">
+          <div className="flex items-center gap-2">
             {saveStatus === 'success' && (
-              <div className="text-green-600 dark:text-green-400 text-sm flex items-center gap-1">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                {t('saveStatus.success')}
-              </div>
+              <div className="text-green-600 dark:text-green-400 text-sm">{t('saveStatus.success')}</div>
             )}
             {saveStatus === 'error' && (
-              <div className="text-red-600 dark:text-red-400 text-sm flex items-center gap-1">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                {t('saveStatus.error')}
-              </div>
+              <div className="text-red-600 dark:text-red-400 text-sm">{t('saveStatus.error')}</div>
             )}
           </div>
-          <div className="flex items-center gap-3 order-1 sm:order-2">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              disabled={isSaving}
-              className="flex-1 sm:flex-none h-10 touch-manipulation"
-            >
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={onClose} disabled={isSaving}>
               {t('footerActions.cancel')}
             </Button>
-            <Button
-              onClick={saveSettings}
-              disabled={isSaving}
-              className="flex-1 sm:flex-none h-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 touch-manipulation"
-            >
-              {isSaving ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  {t('saveStatus.saving')}
-                </div>
-              ) : (
-                t('footerActions.save')
-              )}
+            <Button onClick={saveSettings} disabled={isSaving}>
+              {isSaving ? t('saveStatus.saving') : t('footerActions.save')}
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Login Modal */}
       <LoginModal
-        key={loginProvider}
+        key="codex"
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
-        provider={loginProvider}
+        provider="codex"
         project={selectedProject}
         onComplete={handleLoginComplete}
-        isAuthenticated={
-          loginProvider === 'claude' ? claudeAuthStatus.authenticated :
-          loginProvider === 'cursor' ? cursorAuthStatus.authenticated :
-          loginProvider === 'codex' ? codexAuthStatus.authenticated :
-          false
-        }
-        cliAvailable={
-          loginProvider === 'claude' ? claudeAuthStatus.cliAvailable !== false :
-          loginProvider === 'cursor' ? cursorAuthStatus.cliAvailable !== false :
-          loginProvider === 'codex' ? codexAuthStatus.cliAvailable !== false :
-          loginProvider === 'gemini' ? geminiAuthStatus.cliAvailable !== false :
-          true
-        }
-        installHint={
-          loginProvider === 'claude' ? claudeAuthStatus.installHint :
-          loginProvider === 'cursor' ? cursorAuthStatus.installHint :
-          loginProvider === 'codex' ? codexAuthStatus.installHint :
-          loginProvider === 'gemini' ? geminiAuthStatus.installHint :
-          null
-        }
-        installable={
-          loginProvider === 'claude' ? claudeAuthStatus.installable === true :
-          loginProvider === 'cursor' ? cursorAuthStatus.installable === true :
-          loginProvider === 'codex' ? codexAuthStatus.installable === true :
-          loginProvider === 'gemini' ? geminiAuthStatus.installable === true :
-          false
-        }
-        installerAvailable={
-          loginProvider === 'claude' ? claudeAuthStatus.installerAvailable !== false :
-          loginProvider === 'cursor' ? cursorAuthStatus.installerAvailable !== false :
-          loginProvider === 'codex' ? codexAuthStatus.installerAvailable !== false :
-          loginProvider === 'gemini' ? geminiAuthStatus.installerAvailable !== false :
-          true
-        }
-        installerHint={
-          loginProvider === 'claude' ? claudeAuthStatus.installerHint :
-          loginProvider === 'cursor' ? cursorAuthStatus.installerHint :
-          loginProvider === 'codex' ? codexAuthStatus.installerHint :
-          loginProvider === 'gemini' ? geminiAuthStatus.installerHint :
-          null
-        }
-        docsUrl={
-          loginProvider === 'claude' ? claudeAuthStatus.docsUrl :
-          loginProvider === 'cursor' ? cursorAuthStatus.docsUrl :
-          loginProvider === 'codex' ? codexAuthStatus.docsUrl :
-          loginProvider === 'gemini' ? geminiAuthStatus.docsUrl :
-          null
-        }
-        downloadUrl={
-          loginProvider === 'claude' ? claudeAuthStatus.downloadUrl :
-          loginProvider === 'cursor' ? cursorAuthStatus.downloadUrl :
-          loginProvider === 'codex' ? codexAuthStatus.downloadUrl :
-          loginProvider === 'gemini' ? geminiAuthStatus.downloadUrl :
-          null
-        }
-        onStatusRefresh={() => refreshProviderStatus(loginProvider)}
+        isAuthenticated={codexAuthStatus.authenticated}
+        cliAvailable={codexAuthStatus.cliAvailable !== false}
+        installHint={codexAuthStatus.installHint}
+        installable={codexAuthStatus.installable === true}
+        installerAvailable={codexAuthStatus.installerAvailable !== false}
+        installerHint={codexAuthStatus.installerHint}
+        docsUrl={codexAuthStatus.docsUrl}
+        downloadUrl={codexAuthStatus.downloadUrl}
+        onStatusRefresh={checkCodexAuthStatus}
       />
+
+      {showCodexMcpForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[110] p-4">
+          <div className="bg-background border border-border rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h3 className="text-lg font-medium text-foreground">
+                {editingCodexMcpServer ? t('mcpForm.title.edit') : t('mcpForm.title.add')}
+              </h3>
+              <Button variant="ghost" size="sm" onClick={resetCodexMcpForm}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <form onSubmit={handleCodexMcpSubmit} className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  {t('mcpForm.fields.serverName')} *
+                </label>
+                <Input
+                  value={codexMcpFormData.name}
+                  onChange={(e) => setCodexMcpFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder={t('mcpForm.placeholders.serverName')}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  {t('mcpForm.fields.command')} *
+                </label>
+                <Input
+                  value={codexMcpFormData.config?.command || ''}
+                  onChange={(e) => setCodexMcpFormData((prev) => ({
+                    ...prev,
+                    config: { ...prev.config, command: e.target.value },
+                  }))}
+                  placeholder="npx @my-org/mcp-server"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  {t('mcpForm.fields.arguments')}
+                </label>
+                <textarea
+                  value={(codexMcpFormData.config?.args || []).join('\n')}
+                  onChange={(e) => setCodexMcpFormData((prev) => ({
+                    ...prev,
+                    config: { ...prev.config, args: e.target.value.split('\n').filter((a) => a.trim()) },
+                  }))}
+                  placeholder="--port&#10;3000"
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  {t('mcpForm.fields.envVars')}
+                </label>
+                <textarea
+                  value={Object.entries(codexMcpFormData.config?.env || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
+                  onChange={(e) => {
+                    const env = {};
+                    e.target.value.split('\n').forEach((line) => {
+                      const [key, ...valueParts] = line.split('=');
+                      if (key && valueParts.length > 0) {
+                        env[key.trim()] = valueParts.join('=').trim();
+                      }
+                    });
+                    setCodexMcpFormData((prev) => ({
+                      ...prev,
+                      config: { ...prev.config, env },
+                    }));
+                  }}
+                  placeholder="API_KEY=xxx&#10;DEBUG=true"
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-border">
+                <Button type="button" variant="outline" onClick={resetCodexMcpForm}>
+                  {t('mcpForm.actions.cancel')}
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={codexMcpLoading || !codexMcpFormData.name || !codexMcpFormData.config?.command}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {codexMcpLoading
+                    ? t('mcpForm.actions.saving')
+                    : editingCodexMcpServer
+                      ? t('mcpForm.actions.updateServer')
+                      : t('mcpForm.actions.addServer')}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default Settings;
+
