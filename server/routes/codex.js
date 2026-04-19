@@ -5,6 +5,13 @@ import path from 'path';
 import os from 'os';
 import TOML from '@iarna/toml';
 import { getCodexSessions, getCodexSessionMessages, deleteCodexSession } from '../projects.js';
+import {
+  getCodexRuntimeModeFromEnv,
+} from '../utils/codexRuntimeMode.js';
+import {
+  getCodexShadowParitySnapshot,
+  resetCodexShadowParityMetrics,
+} from '../utils/codexShadowParity.js';
 
 const router = express.Router();
 
@@ -47,6 +54,45 @@ router.get('/config', async (req, res) => {
       console.error('Error reading Codex config:', error);
       res.status(500).json({ success: false, error: error.message });
     }
+  }
+});
+
+router.get('/runtime-mode', async (_req, res) => {
+  try {
+    res.json({
+      success: true,
+      runtimeMode: getCodexRuntimeModeFromEnv(),
+    });
+  } catch (error) {
+    console.error('Error reading Codex runtime mode:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/parity', async (_req, res) => {
+  try {
+    res.json({
+      success: true,
+      runtimeMode: getCodexRuntimeModeFromEnv(),
+      parity: getCodexShadowParitySnapshot(),
+    });
+  } catch (error) {
+    console.error('Error reading Codex parity metrics:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/parity/reset', async (_req, res) => {
+  try {
+    resetCodexShadowParityMetrics();
+    res.json({
+      success: true,
+      runtimeMode: getCodexRuntimeModeFromEnv(),
+      parity: getCodexShadowParitySnapshot(),
+    });
+  } catch (error) {
+    console.error('Error resetting Codex parity metrics:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
