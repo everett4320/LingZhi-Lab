@@ -31,6 +31,9 @@ const normalizeCodexChatEvent = (data: any): any | null => {
     provider: 'codex',
     projectName: scope?.projectName ?? data.projectName ?? null,
     sessionId: scope?.sessionId ?? data.sessionId ?? null,
+    provisionalSessionId:
+      scope?.provisionalSessionId ?? data.provisionalSessionId ?? null,
+    actualSessionId: scope?.actualSessionId ?? data.actualSessionId ?? null,
   };
 };
 
@@ -66,7 +69,6 @@ const useWebSocketProviderState = (): WebSocketContextType => {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
   const lastSentAtByTypeRef = useRef<Map<string, number>>(new Map());
-  const seenUnifiedSessionKeysRef = useRef<Set<string>>(new Set());
   const { token } = useAuth();
 
   // Message queue: ensures every WebSocket message is delivered to consumers
@@ -116,8 +118,6 @@ const useWebSocketProviderState = (): WebSocketContextType => {
         retryCountRef.current = 0;
         setIsConnected(true);
         wsRef.current = websocket;
-        // Reset migration dedup windows on reconnect.
-        seenUnifiedSessionKeysRef.current.clear();
         lastSentAtByTypeRef.current.clear();
       };
 
@@ -152,33 +152,6 @@ const useWebSocketProviderState = (): WebSocketContextType => {
             const lastCheckAt = lastSentAtByTypeRef.current.get('check-session-status') || 0;
             if (Date.now() - lastCheckAt > 8000) {
               return;
-            }
-          }
-
-          if (parsedType === 'chat-session-created') {
-            const scope = parsed?.scope || {};
-            const key = `${scope.projectName || ''}::${scope.sessionId || ''}`;
-            if (key !== '::') {
-              seenUnifiedSessionKeysRef.current.add(key);
-            }
-          }
-
-          // During dual-send migration, ignore legacy codex events once unified
-          // session-created has been observed for the same scope.
-          if (parsedType.startsWith('codex-')) {
-            const projectName =
-              parsed?.projectName ||
-              parsed?.data?.projectName ||
-              null;
-            const sessionId =
-              parsed?.actualSessionId ||
-              parsed?.sessionId ||
-              null;
-            if (projectName && sessionId) {
-              const key = `${projectName}::${sessionId}`;
-              if (seenUnifiedSessionKeysRef.current.has(key)) {
-                return;
-              }
             }
           }
 

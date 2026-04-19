@@ -92,9 +92,25 @@ type PendingViewSession = {
   startedAt: number;
 };
 
-type PendingCodexQueueDispatch = {
-  turn: QueuedTurn;
+type ActiveQueuedCodexTurn = {
+  turnId: string;
   shouldUpdateForegroundState: boolean;
+  hasAppendedUserMessage: boolean;
+};
+
+type QueuedTurnTerminalOutcome = "complete" | "error" | "aborted";
+
+type ShouldDispatchQueuedTurnArgs = {
+  queue: QueuedTurn[];
+  hasActiveQueuedTurn: boolean;
+  isSessionProcessing: boolean;
+};
+
+type ApplyQueuedTurnTerminalOutcomeArgs = {
+  queueBySession: SessionQueueMap;
+  sessionId: string;
+  turnId: string;
+  outcome: QueuedTurnTerminalOutcome;
 };
 
 interface UseChatComposerStateArgs {
@@ -181,8 +197,6 @@ const createFakeSubmitEvent = () => {
 
 const PROGRAMMATIC_SUBMIT_MAX_RETRIES = 12;
 const PROGRAMMATIC_SUBMIT_RETRY_DELAY_MS = 50;
-const CODEX_QUEUE_DISPATCH_AFTER_SETTLE_MS = 800;
-const CODEX_QUEUE_DISPATCH_ACK_TIMEOUT_MS = 6000;
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
 const CODEX_ATTACHMENT_DIR = ".lingzhi-lab/chat-attachments";
@@ -327,8 +341,87 @@ const getOptimisticSessionDisplayName = (input: string) => {
   return firstLine.length > 80 ? `${firstLine.slice(0, 80)}...` : firstLine;
 };
 
+export function resolvePreferredCodexSessionId({
+  selectedSessionId = null,
+  routedSessionId = null,
+  currentSessionId = null,
+  pendingViewSessionId = null,
+  pendingSessionId = null,
+  lastSubmittedSessionId = null,
+}: {
+  selectedSessionId?: string | null;
+  routedSessionId?: string | null;
+  currentSessionId?: string | null;
+  pendingViewSessionId?: string | null;
+  pendingSessionId?: string | null;
+  lastSubmittedSessionId?: string | null;
+}): string | null {
+  return (
+    selectedSessionId ||
+    routedSessionId ||
+    currentSessionId ||
+    pendingViewSessionId ||
+    pendingSessionId ||
+    lastSubmittedSessionId ||
+    null
+  );
+}
+
 const getCodexQueueStorageKey = (projectName: string) =>
   `codex_queue_${projectName}`;
+
+export function shouldDispatchQueuedTurn({
+  queue,
+  hasActiveQueuedTurn,
+  isSessionProcessing,
+}: ShouldDispatchQueuedTurnArgs): boolean {
+  if (hasActiveQueuedTurn || isSessionProcessing) {
+    return false;
+  }
+  return Boolean(getNextDispatchableTurn(queue));
+}
+
+export function applyQueuedTurnTerminalOutcome({
+  queueBySession,
+  sessionId,
+  turnId,
+  outcome,
+}: ApplyQueuedTurnTerminalOutcomeArgs): SessionQueueMap {
+  const withoutActiveTurn = removeQueuedTurn(queueBySession, sessionId, turnId);
+  if (outcome !== "aborted") {
+    return withoutActiveTurn;
+  }
+  return setSessionQueueStatus(withoutActiveTurn, sessionId, "paused");
+}
+
+export function deriveQueueDispatchState(
+  queueBySession: SessionQueueMap,
+  sessionId: string,
+  options: {
+    hasActiveQueuedTurn: boolean;
+    isSessionProcessing: boolean;
+  },
+) {
+  const queue = getSessionQueue(queueBySession, sessionId);
+  const nextTurn = getNextDispatchableTurn(queue);
+  if (nextTurn?.kind === "steer" && !nextTurn.expectedTurnId) {
+    return {
+      queue,
+      nextTurn: null,
+      shouldDispatch: false,
+    };
+  }
+  const shouldDispatch = shouldDispatchQueuedTurn({
+    queue,
+    hasActiveQueuedTurn: options.hasActiveQueuedTurn,
+    isSessionProcessing: options.isSessionProcessing,
+  });
+  return {
+    queue,
+    nextTurn,
+    shouldDispatch,
+  };
+}
 
 const readPersistedCodexQueue = (
   projectName?: string | null,
@@ -388,6 +481,10 @@ const readPersistedCodexQueue = (
             (candidate as any).sessionMode === "workspace_qa"
               ? "workspace_qa"
               : "research",
+          expectedTurnId:
+            typeof (candidate as any).expectedTurnId === "string"
+              ? (candidate as any).expectedTurnId
+              : undefined,
         } satisfies QueuedTurn;
 
         if (!turn.text.trim()) {
@@ -513,16 +610,10 @@ export function useChatComposerState({
   const attachedFilesRef = useRef<File[]>([]);
   const attachedPromptRef = useRef<AttachedPrompt | null>(null);
   const pendingStageTagKeysRef = useRef<string[]>([]);
-  const abortTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queuedTurnsBySessionRef = useRef<SessionQueueMap>(queuedTurnsBySession);
-  const queueDispatchLocksRef = useRef<Set<string>>(new Set());
-  const pendingQueueDispatchesRef = useRef<
-    Map<string, PendingCodexQueueDispatch>
-  >(new Map());
-  const queueDispatchAckTimersRef = useRef<
-    Map<string, ReturnType<typeof setTimeout>>
-  >(new Map());
-  const codexBusyRejectedDispatchesRef = useRef<Set<string>>(new Set());
+  const activeQueuedTurnBySessionRef = useRef<Map<string, ActiveQueuedCodexTurn>>(
+    new Map(),
+  );
   const queueBootstrapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -601,23 +692,11 @@ export function useChatComposerState({
 
   useEffect(() => {
     return () => {
-      if (abortTimeoutRef.current) {
-        clearTimeout(abortTimeoutRef.current);
-        abortTimeoutRef.current = null;
-      }
-
       if (queueBootstrapTimerRef.current) {
         clearTimeout(queueBootstrapTimerRef.current);
         queueBootstrapTimerRef.current = null;
       }
-
-      for (const timerId of queueDispatchAckTimersRef.current.values()) {
-        clearTimeout(timerId);
-      }
-      queueDispatchAckTimersRef.current.clear();
-      queueDispatchLocksRef.current.clear();
-      pendingQueueDispatchesRef.current.clear();
-      codexBusyRejectedDispatchesRef.current.clear();
+      activeQueuedTurnBySessionRef.current.clear();
       if (textareaLayoutTimeoutRef.current) {
         clearTimeout(textareaLayoutTimeoutRef.current);
         textareaLayoutTimeoutRef.current = null;
@@ -658,19 +737,11 @@ export function useChatComposerState({
       return;
     }
 
-    queuedSessionIds.forEach((sessionId) => {
-      sendMessage({
-        type: "check-session-status",
-        sessionId,
-        provider: "codex",
-      });
-    });
-
     queueBootstrapTimerRef.current = setTimeout(() => {
       setIsQueueBootstrapReady(true);
       queueBootstrapTimerRef.current = null;
     }, 1200);
-  }, [isQueueBootstrapReady, queuedTurnsBySession, sendMessage]);
+  }, [isQueueBootstrapReady, queuedTurnsBySession]);
 
   useEffect(() => {
     setPendingStageTagKeys([]);
@@ -1381,13 +1452,14 @@ export function useChatComposerState({
     const pendingViewSessionId =
       pendingViewSessionRef.current?.sessionId || null;
     const lastSubmittedSessionId = lastSubmittedCodexSessionRef.current;
-    const effectiveSessionId =
-      currentSessionId ||
-        selectedSession?.id ||
-        routedSessionId ||
-        pendingViewSessionId ||
-        pendingSessionId ||
-        lastSubmittedSessionId;
+    const effectiveSessionId = resolvePreferredCodexSessionId({
+      selectedSessionId: selectedSession?.id || null,
+      routedSessionId,
+      currentSessionId,
+      pendingViewSessionId,
+      pendingSessionId,
+      lastSubmittedSessionId,
+    });
     const isNewSession = !effectiveSessionId;
     const sessionToActivate = effectiveSessionId || `new-session-${Date.now()}`;
     const resolvedProjectPath =
@@ -1436,6 +1508,9 @@ export function useChatComposerState({
       sessionMode,
       updateForegroundState = true,
       appendLocalUserMessage = true,
+      turnKind = "normal",
+      expectedTurnId = undefined,
+      clientTurnId = undefined,
     }: {
       text: string;
       sessionId: string;
@@ -1444,6 +1519,9 @@ export function useChatComposerState({
       sessionMode: SessionMode;
       updateForegroundState?: boolean;
       appendLocalUserMessage?: boolean;
+      turnKind?: QueuedTurnKind;
+      expectedTurnId?: string;
+      clientTurnId?: string;
     }) => {
       if (!text.trim() || !sessionId || !projectPath) {
         return;
@@ -1502,6 +1580,20 @@ export function useChatComposerState({
               : codexReasoningEffort,
           telemetryEnabled: isTelemetryEnabled(),
           sessionMode,
+          turnKind: turnKind === "steer" ? "steer" : undefined,
+          kind: turnKind === "steer" ? "steer" : undefined,
+          clientTurnId:
+            typeof clientTurnId === "string" && clientTurnId.trim().length > 0
+              ? clientTurnId.trim()
+              : undefined,
+          expectedTurnId:
+            turnKind === "steer" && expectedTurnId
+              ? expectedTurnId
+              : undefined,
+          activeTurnId:
+            turnKind === "steer" && expectedTurnId
+              ? expectedTurnId
+              : undefined,
         },
       });
     },
@@ -1522,51 +1614,34 @@ export function useChatComposerState({
     ],
   );
 
-  const clearQueueDispatchAckTimer = useCallback((sessionId: string) => {
-    const timerId = queueDispatchAckTimersRef.current.get(sessionId);
-    if (timerId) {
-      clearTimeout(timerId);
-      queueDispatchAckTimersRef.current.delete(sessionId);
-    }
-  }, []);
-
-  const releasePendingQueueDispatch = useCallback(
-    (sessionId: string) => {
-      clearQueueDispatchAckTimer(sessionId);
-      queueDispatchLocksRef.current.delete(sessionId);
-      pendingQueueDispatchesRef.current.delete(sessionId);
-      codexBusyRejectedDispatchesRef.current.delete(sessionId);
-    },
-    [clearQueueDispatchAckTimer],
-  );
-
   const dispatchNextQueuedCodexTurn = useCallback(
     (sessionId: string, options?: { ignoreProcessingCheck?: boolean }) => {
       if (!sessionId) {
         return;
       }
 
-      if (
-        queueDispatchLocksRef.current.has(sessionId) ||
-        pendingQueueDispatchesRef.current.has(sessionId)
-      ) {
+      const hasActiveQueuedTurn = activeQueuedTurnBySessionRef.current.has(sessionId);
+      const isSessionProcessing = hasProcessingSession(
+        sessionId,
+        "codex",
+        selectedProject?.name || currentProjectName,
+      );
+      const dispatchState = deriveQueueDispatchState(
+        queuedTurnsBySessionRef.current,
+        sessionId,
+        {
+          hasActiveQueuedTurn,
+          isSessionProcessing:
+            options?.ignoreProcessingCheck === true ? false : isSessionProcessing,
+        },
+      );
+
+      if (!dispatchState.shouldDispatch) {
         return;
       }
 
-      const queue = getSessionQueue(queuedTurnsBySessionRef.current, sessionId);
-      const nextTurn = getNextDispatchableTurn(queue);
+      const nextTurn = dispatchState.nextTurn;
       if (!nextTurn) {
-        return;
-      }
-
-      if (
-        !options?.ignoreProcessingCheck &&
-        hasProcessingSession(
-          sessionId,
-          "codex",
-          nextTurn.projectName || selectedProject?.name || currentProjectName,
-        )
-      ) {
         return;
       }
 
@@ -1600,30 +1675,11 @@ export function useChatComposerState({
         (!currentViewSessionId &&
           lastSubmittedCodexSessionRef.current === sessionId);
 
-      queueDispatchLocksRef.current.add(sessionId);
-      pendingQueueDispatchesRef.current.set(sessionId, {
-        turn: nextTurn,
+      activeQueuedTurnBySessionRef.current.set(sessionId, {
+        turnId: nextTurn.id,
         shouldUpdateForegroundState,
+        hasAppendedUserMessage: false,
       });
-
-      clearQueueDispatchAckTimer(sessionId);
-      const ackTimer = setTimeout(() => {
-        const pendingDispatch =
-          pendingQueueDispatchesRef.current.get(sessionId);
-        if (!pendingDispatch || pendingDispatch.turn.id !== nextTurn.id) {
-          return;
-        }
-
-        queueDispatchAckTimersRef.current.delete(sessionId);
-        queueDispatchLocksRef.current.delete(sessionId);
-        pendingQueueDispatchesRef.current.delete(sessionId);
-        sendMessage({
-          type: "check-session-status",
-          sessionId,
-          provider: "codex",
-        });
-      }, CODEX_QUEUE_DISPATCH_ACK_TIMEOUT_MS);
-      queueDispatchAckTimersRef.current.set(sessionId, ackTimer);
 
       sendCodexTurn({
         text: nextTurn.text,
@@ -1634,22 +1690,23 @@ export function useChatComposerState({
           nextTurn.sessionMode || selectedSession?.mode || newSessionMode,
         updateForegroundState: shouldUpdateForegroundState,
         appendLocalUserMessage: false,
+        turnKind: nextTurn.kind,
+        expectedTurnId: nextTurn.expectedTurnId,
+        clientTurnId: nextTurn.id,
       });
     },
     [
-      clearQueueDispatchAckTimer,
       currentSessionId,
       newSessionMode,
       pendingViewSessionRef,
       hasProcessingSession,
+      currentProjectName,
       selectedProject?.fullPath,
       selectedProject?.name,
       selectedProject?.path,
       selectedSession?.id,
       selectedSession?.mode,
-      currentProjectName,
       sendCodexTurn,
-      sendMessage,
       setChatMessages,
     ],
   );
@@ -1660,75 +1717,80 @@ export function useChatComposerState({
         return;
       }
 
-      codexBusyRejectedDispatchesRef.current.delete(sessionId);
-      const pendingDispatch = pendingQueueDispatchesRef.current.get(sessionId);
-      if (!pendingDispatch) {
+      const activeQueuedTurn = activeQueuedTurnBySessionRef.current.get(sessionId);
+      if (!activeQueuedTurn) {
         return;
       }
 
-      releasePendingQueueDispatch(sessionId);
-      setQueuedTurnsBySession((previous) =>
-        removeQueuedTurn(previous, sessionId, pendingDispatch.turn.id),
-      );
-
-      if (pendingDispatch.shouldUpdateForegroundState) {
+      if (
+        activeQueuedTurn.shouldUpdateForegroundState &&
+        !activeQueuedTurn.hasAppendedUserMessage
+      ) {
+        const queue = getSessionQueue(queuedTurnsBySessionRef.current, sessionId);
+        const queuedTurn = queue.find((turn) => turn.id === activeQueuedTurn.turnId);
+        if (!queuedTurn) {
+          return;
+        }
         setChatMessages((previous) => [
           ...previous,
           {
             type: "user",
-            content: pendingDispatch.turn.text,
+            content: queuedTurn.text,
             timestamp: new Date(),
           },
         ]);
       }
+
+      activeQueuedTurnBySessionRef.current.set(sessionId, {
+        ...activeQueuedTurn,
+        hasAppendedUserMessage: true,
+      });
     },
-    [releasePendingQueueDispatch, setChatMessages],
+    [setChatMessages],
   );
 
   const handleCodexTurnSettled = useCallback(
     (
       sessionId?: string | null,
-      outcome: "complete" | "error" | "aborted" = "complete",
+      outcome: QueuedTurnTerminalOutcome = "complete",
     ) => {
       if (!sessionId) {
         return;
       }
 
-      codexBusyRejectedDispatchesRef.current.delete(sessionId);
-      releasePendingQueueDispatch(sessionId);
+      const activeQueuedTurn = activeQueuedTurnBySessionRef.current.get(sessionId);
+      activeQueuedTurnBySessionRef.current.delete(sessionId);
 
-      if (outcome === "aborted") {
-        setQueuedTurnsBySession((previous) =>
-          setSessionQueueStatus(previous, sessionId, "paused"),
-        );
-        return;
-      }
+      setQueuedTurnsBySession((previous) => {
+        let next = previous;
 
-      const fallbackTemporarySessionId = lastSubmittedCodexSessionRef.current;
-      if (fallbackTemporarySessionId) {
-        const reconciled = reconcileSettledSessionQueue(
-          queuedTurnsBySessionRef.current,
-          sessionId,
-          fallbackTemporarySessionId,
-        );
-        if (reconciled !== queuedTurnsBySessionRef.current) {
-          queuedTurnsBySessionRef.current = reconciled;
-          setQueuedTurnsBySession(reconciled);
+        if (activeQueuedTurn) {
+          next = applyQueuedTurnTerminalOutcome({
+            queueBySession: next,
+            sessionId,
+            turnId: activeQueuedTurn.turnId,
+            outcome,
+          });
         }
-      }
 
-      queueDispatchLocksRef.current.add(sessionId);
-      setTimeout(() => {
-        queueDispatchLocksRef.current.delete(sessionId);
-        sendMessage({
-          type: "check-session-status",
-          sessionId,
-          provider: "codex",
-        });
-        dispatchNextQueuedCodexTurn(sessionId);
-      }, CODEX_QUEUE_DISPATCH_AFTER_SETTLE_MS);
+        const fallbackTemporarySessionId = lastSubmittedCodexSessionRef.current;
+        if (fallbackTemporarySessionId) {
+          next = reconcileSettledSessionQueue(
+            next,
+            sessionId,
+            fallbackTemporarySessionId,
+          );
+        }
+
+        queuedTurnsBySessionRef.current = next;
+        return next;
+      });
+
+      if (outcome !== "aborted") {
+        dispatchNextQueuedCodexTurn(sessionId, { ignoreProcessingCheck: true });
+      }
     },
-    [dispatchNextQueuedCodexTurn, releasePendingQueueDispatch, sendMessage],
+    [dispatchNextQueuedCodexTurn],
   );
 
   const handleCodexSessionIdResolved = useCallback(
@@ -1745,55 +1807,12 @@ export function useChatComposerState({
         lastSubmittedCodexSessionRef.current = actualSessionId;
       }
 
-      if (codexBusyRejectedDispatchesRef.current.has(previousSessionId)) {
-        codexBusyRejectedDispatchesRef.current.delete(previousSessionId);
-        codexBusyRejectedDispatchesRef.current.add(actualSessionId);
+      const activeQueuedTurn =
+        activeQueuedTurnBySessionRef.current.get(previousSessionId);
+      if (activeQueuedTurn) {
+        activeQueuedTurnBySessionRef.current.set(actualSessionId, activeQueuedTurn);
       }
-
-      if (queueDispatchLocksRef.current.has(previousSessionId)) {
-        queueDispatchLocksRef.current.delete(previousSessionId);
-        queueDispatchLocksRef.current.add(actualSessionId);
-      }
-
-      const pendingDispatch =
-        pendingQueueDispatchesRef.current.get(previousSessionId);
-      if (
-        pendingDispatch &&
-        !pendingQueueDispatchesRef.current.has(actualSessionId)
-      ) {
-        pendingQueueDispatchesRef.current.set(actualSessionId, {
-          ...pendingDispatch,
-          turn: {
-            ...pendingDispatch.turn,
-            sessionId: actualSessionId,
-          },
-        });
-      }
-      pendingQueueDispatchesRef.current.delete(previousSessionId);
-
-      clearQueueDispatchAckTimer(previousSessionId);
-      if (pendingDispatch) {
-        const ackTimer = setTimeout(() => {
-          const currentPending =
-            pendingQueueDispatchesRef.current.get(actualSessionId);
-          if (
-            !currentPending ||
-            currentPending.turn.id !== pendingDispatch.turn.id
-          ) {
-            return;
-          }
-
-          queueDispatchAckTimersRef.current.delete(actualSessionId);
-          queueDispatchLocksRef.current.delete(actualSessionId);
-          pendingQueueDispatchesRef.current.delete(actualSessionId);
-          sendMessage({
-            type: "check-session-status",
-            sessionId: actualSessionId,
-            provider: "codex",
-          });
-        }, CODEX_QUEUE_DISPATCH_ACK_TIMEOUT_MS);
-        queueDispatchAckTimersRef.current.set(actualSessionId, ackTimer);
-      }
+      activeQueuedTurnBySessionRef.current.delete(previousSessionId);
 
       const reconciled = reconcileSessionQueueId(
         queuedTurnsBySessionRef.current,
@@ -1807,29 +1826,7 @@ export function useChatComposerState({
       queuedTurnsBySessionRef.current = reconciled;
       setQueuedTurnsBySession(reconciled);
     },
-    [clearQueueDispatchAckTimer, sendMessage],
-  );
-
-  const handleCodexSessionBusy = useCallback(
-    (sessionId?: string | null) => {
-      if (!sessionId) {
-        return;
-      }
-
-      codexBusyRejectedDispatchesRef.current.add(sessionId);
-      releasePendingQueueDispatch(sessionId);
-      queueDispatchLocksRef.current.delete(sessionId);
-
-      setTimeout(() => {
-        sendMessage({
-          type: "check-session-status",
-          sessionId,
-          provider: "codex",
-        });
-        dispatchNextQueuedCodexTurn(sessionId);
-      }, CODEX_QUEUE_DISPATCH_AFTER_SETTLE_MS);
-    },
-    [dispatchNextQueuedCodexTurn, releasePendingQueueDispatch, sendMessage],
+    [],
   );
 
   const handleCodexSessionStatusUpdate = useCallback(
@@ -1839,25 +1836,13 @@ export function useChatComposerState({
       }
 
       if (isProcessing) {
-        if (codexBusyRejectedDispatchesRef.current.has(sessionId)) {
-          codexBusyRejectedDispatchesRef.current.delete(sessionId);
-          return;
-        }
-        if (pendingQueueDispatchesRef.current.has(sessionId)) {
-          handleCodexTurnStarted(sessionId);
-        }
+        handleCodexTurnStarted(sessionId);
         return;
       }
 
-      releasePendingQueueDispatch(sessionId);
-      queueDispatchLocksRef.current.delete(sessionId);
       dispatchNextQueuedCodexTurn(sessionId);
     },
-    [
-      dispatchNextQueuedCodexTurn,
-      handleCodexTurnStarted,
-      releasePendingQueueDispatch,
-    ],
+    [dispatchNextQueuedCodexTurn, handleCodexTurnStarted],
   );
 
   const removeQueuedCodexTurn = useCallback(
@@ -1866,16 +1851,16 @@ export function useChatComposerState({
         return;
       }
 
-      const pendingDispatch = pendingQueueDispatchesRef.current.get(sessionId);
-      if (pendingDispatch?.turn.id === turnId) {
-        releasePendingQueueDispatch(sessionId);
+      const activeQueuedTurn = activeQueuedTurnBySessionRef.current.get(sessionId);
+      if (activeQueuedTurn?.turnId === turnId) {
+        activeQueuedTurnBySessionRef.current.delete(sessionId);
       }
 
       setQueuedTurnsBySession((previous) =>
         removeQueuedTurn(previous, sessionId, turnId),
       );
     },
-    [releasePendingQueueDispatch],
+    [],
   );
 
   const promoteQueuedCodexTurnToSteer = useCallback(
@@ -1887,14 +1872,9 @@ export function useChatComposerState({
       setQueuedTurnsBySession((previous) =>
         promoteQueuedTurnToSteer(previous, sessionId, turnId),
       );
-      sendMessage({
-        type: "check-session-status",
-        sessionId,
-        provider: "codex",
-      });
       dispatchNextQueuedCodexTurn(sessionId);
     },
-    [dispatchNextQueuedCodexTurn, sendMessage],
+    [dispatchNextQueuedCodexTurn],
   );
 
   const resumeQueuedCodexTurns = useCallback(
@@ -1906,14 +1886,9 @@ export function useChatComposerState({
       setQueuedTurnsBySession((previous) =>
         setSessionQueueStatus(previous, sessionId, "queued"),
       );
-      sendMessage({
-        type: "check-session-status",
-        sessionId,
-        provider: "codex",
-      });
       dispatchNextQueuedCodexTurn(sessionId);
     },
-    [dispatchNextQueuedCodexTurn, sendMessage],
+    [dispatchNextQueuedCodexTurn],
   );
 
   useEffect(() => {
@@ -1926,18 +1901,27 @@ export function useChatComposerState({
         continue;
       }
 
-      if (
-        queueDispatchLocksRef.current.has(sessionId) ||
-        pendingQueueDispatchesRef.current.has(sessionId)
-      ) {
+      if (activeQueuedTurnBySessionRef.current.has(sessionId)) {
         continue;
       }
 
-      if (hasProcessingSession(sessionId, "codex", selectedProject?.name || currentProjectName)) {
+      const dispatchState = deriveQueueDispatchState(
+        queuedTurnsBySession,
+        sessionId,
+        {
+          hasActiveQueuedTurn: false,
+          isSessionProcessing: hasProcessingSession(
+            sessionId,
+            "codex",
+            selectedProject?.name || currentProjectName,
+          ),
+        },
+      );
+      if (!dispatchState.shouldDispatch) {
         continue;
       }
 
-      dispatchNextQueuedCodexTurn(sessionId);
+      dispatchNextQueuedCodexTurn(sessionId, { ignoreProcessingCheck: true });
     }
   }, [
     dispatchNextQueuedCodexTurn,
@@ -2021,10 +2005,6 @@ export function useChatComposerState({
         }
       }
 
-      if (isLoading) {
-        return;
-      }
-
       const normalizedInput =
         currentInput.trim() ||
         t("input.attachmentOnlyFallback", {
@@ -2068,16 +2048,85 @@ export function useChatComposerState({
         sessionToActivate,
         resolvedProjectPath,
       } = resolveSessionContext();
+      const isCurrentViewSession =
+        !selectedSession?.id ||
+        selectedSession.id === sessionToActivate ||
+        currentSessionId === sessionToActivate;
       const isCodexSessionBusy =
         hasProcessingSession(
           sessionToActivate,
           "codex",
           selectedProject?.name || currentProjectName,
-        );
+        ) ||
+        (isLoading && isCurrentViewSession);
       const useSteerForThisSubmit =
         steerMode || forceSteerForSubmit;
+      const activeTurnIdForSubmit =
+        typeof selectedSession?.activeTurnId === "string" &&
+        selectedSession.activeTurnId.trim().length > 0
+          ? selectedSession.activeTurnId.trim()
+          : undefined;
 
       if (isCodexSessionBusy) {
+        if (useSteerForThisSubmit && !activeTurnIdForSubmit) {
+          setChatMessages((previous) => [
+            ...previous,
+            {
+              type: "error",
+              content:
+                "Unable to queue steer: no active turn is available for this session.",
+              timestamp: new Date(),
+            },
+          ]);
+          return;
+        }
+
+        if (useSteerForThisSubmit && activeTurnIdForSubmit) {
+          if (attachedFiles.length > 0) {
+            setChatMessages((previous) => [
+              ...previous,
+              {
+                type: "error",
+                content:
+                  "Steer during an active turn currently supports text-only input. Remove attachments and resend.",
+                timestamp: new Date(),
+              },
+            ]);
+            return;
+          }
+
+          sendCodexTurn({
+            text: messageContent,
+            sessionId: sessionToActivate,
+            projectName: selectedProject.name,
+            projectPath: resolvedProjectPath,
+            sessionMode: selectedSession?.mode || newSessionMode,
+            updateForegroundState: isCurrentViewSession,
+            appendLocalUserMessage: isCurrentViewSession,
+            turnKind: "steer",
+            expectedTurnId: activeTurnIdForSubmit,
+          });
+
+          setInput("");
+          inputValueRef.current = "";
+          setPendingStageTagKeys([]);
+          resetCommandMenuState();
+          setAttachedPrompt(null);
+          setAttachedFiles([]);
+          setUploadingFiles(new Map());
+          setFileErrors(new Map());
+          setIsTextareaExpanded(false);
+          setThinkingMode("none");
+          setSteerMode(false);
+          if (draftStorageKey) {
+            safeLocalStorage.removeItem(draftStorageKey);
+          }
+          if (textareaRef.current) {
+            textareaRef.current.style.height = "auto";
+          }
+          return;
+        }
+
         if (attachedFiles.length > 0) {
           setChatMessages((previous) => [
             ...previous,
@@ -2114,11 +2163,33 @@ export function useChatComposerState({
           projectName: selectedProject.name,
           projectPath: resolvedProjectPath,
           sessionMode: selectedSession?.mode || newSessionMode,
+          expectedTurnId:
+            useSteerForThisSubmit && activeTurnIdForSubmit
+              ? activeTurnIdForSubmit
+              : undefined,
         });
 
         setQueuedTurnsBySession((previous) =>
           enqueueSessionTurn(previous, queuedTurn),
         );
+        sendMessage({
+          type: "codex-command",
+          command: messageContent,
+          sessionId: sessionToActivate,
+          options: {
+            cwd: resolvedProjectPath,
+            projectPath: resolvedProjectPath,
+            sessionId: sessionToActivate,
+            resume: true,
+            queueOnly: true,
+            queuedTurnId: queuedTurn.id,
+            clientTurnId: queuedTurn.id,
+            telemetryEnabled: isTelemetryEnabled(),
+            sessionMode: selectedSession?.mode || newSessionMode,
+            projectName: selectedProject.name,
+            provider: "codex",
+          },
+        });
         setInput("");
         inputValueRef.current = "";
         setPendingStageTagKeys([]);
@@ -2136,6 +2207,19 @@ export function useChatComposerState({
         if (textareaRef.current) {
           textareaRef.current.style.height = "auto";
         }
+        return;
+      }
+
+      if (useSteerForThisSubmit && !activeTurnIdForSubmit) {
+        setChatMessages((previous) => [
+          ...previous,
+          {
+            type: "error",
+            content:
+              "Unable to send steer: no active turn is available for this session.",
+            timestamp: new Date(),
+          },
+        ]);
         return;
       }
 
@@ -2250,10 +2334,6 @@ export function useChatComposerState({
 
       setChatMessages((previous) => applyEditedMessageToHistory(previous, userMessage, editedMessageId));
       pendingEditedMessageIdRef.current = null;
-      if (abortTimeoutRef.current) {
-        clearTimeout(abortTimeoutRef.current);
-        abortTimeoutRef.current = null;
-      }
       const turnStartTime = Date.now();
       setIsLoading(true);
       setCanAbortSession(true);
@@ -2326,11 +2406,11 @@ export function useChatComposerState({
       sendMessage({
         type: "codex-command",
         command: messageContent,
-        sessionId: effectiveSessionId,
+        sessionId: sessionToActivate,
         options: {
           cwd: resolvedProjectPath,
           projectPath: resolvedProjectPath,
-          sessionId: effectiveSessionId,
+          sessionId: effectiveSessionId || undefined,
           resume: Boolean(effectiveSessionId),
           model: codexModel,
           permissionMode:
@@ -2345,11 +2425,21 @@ export function useChatComposerState({
           sessionMode: isNewSession ? newSessionMode : selectedSession?.mode,
           stageTagKeys: pendingStageTagKeys,
           stageTagSource: "task_context",
-          clientTurnId: userMessage.id,
+          clientTurnId: userMessageId,
           projectName: selectedProject.name,
           provider: "codex",
           provisionalSessionId: isNewSession ? sessionToActivate : undefined,
           resumeSessionId: effectiveSessionId || undefined,
+          turnKind: useSteerForThisSubmit ? "steer" : undefined,
+          kind: useSteerForThisSubmit ? "steer" : undefined,
+          expectedTurnId:
+            useSteerForThisSubmit && activeTurnIdForSubmit
+              ? activeTurnIdForSubmit
+              : undefined,
+          activeTurnId:
+            useSteerForThisSubmit && activeTurnIdForSubmit
+              ? activeTurnIdForSubmit
+              : undefined,
         },
       });
 
@@ -2714,12 +2804,6 @@ export function useChatComposerState({
 
       for (const sessionId of recoverySessionIds) {
         clearSessionTimerStart(sessionId);
-        releasePendingQueueDispatch(sessionId);
-        sendMessage({
-          type: "check-session-status",
-          sessionId,
-          provider: "codex",
-        });
       }
 
       setIsLoading(false);
@@ -2735,16 +2819,6 @@ export function useChatComposerState({
       provider: "codex",
     });
 
-    if (abortTimeoutRef.current) {
-      clearTimeout(abortTimeoutRef.current);
-    }
-    abortTimeoutRef.current = setTimeout(() => {
-      abortTimeoutRef.current = null;
-      setIsLoading(false);
-      setCanAbortSession(false);
-      setClaudeStatus(null);
-      if (targetSessionId) clearSessionTimerStart(targetSessionId);
-    }, 5000);
   }, [
     canAbortSession,
     currentProjectName,
@@ -2753,7 +2827,6 @@ export function useChatComposerState({
     pendingViewSessionRef,
     selectedSession?.id,
     sendMessage,
-    releasePendingQueueDispatch,
     setCanAbortSession,
     setClaudeStatus,
     setIsLoading,
@@ -2925,7 +2998,6 @@ export function useChatComposerState({
     handleCodexTurnStarted,
     handleCodexTurnSettled,
     handleCodexSessionIdResolved,
-    handleCodexSessionBusy,
     handleCodexSessionStatusUpdate,
   };
 }

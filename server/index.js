@@ -50,7 +50,7 @@ import {
     buildLifecycleMessageFromPayload as _buildLifecycleMessageFromPayload,
 } from './utils/sessionLifecycle.js';
 import { getProjectTokenUsageSummary } from './project-token-usage.js';
-import { queryCodex, abortCodexSession, isCodexSessionActive, getCodexSessionStartTime, getActiveCodexSessions, rebindCodexSessionWriter } from './openai-codex.js';
+import { queryCodexUnified, abortCodexSessionUnified, isCodexSessionActiveUnified, getActiveCodexSessionsUnified, rebindCodexSessionWriterUnified, getCodexSessionStatusUnified, getCodexRuntimeMode } from './codex-runtime-facade.js';
 import gitRoutes from './routes/git.js';
 import authRoutes from './routes/auth.js';
 import mcpRoutes from './routes/mcp.js';
@@ -1469,15 +1469,9 @@ function hasAgentResponseContent(payload) {
         return false;
     }
 
-    if (payload.type === 'codex-response') {
-        const codexData = payload.data;
-        if (!codexData || typeof codexData !== 'object') {
-            return false;
-        }
-        if (codexData.type === 'item' && codexData.itemType === 'agent_message') {
-            const content = codexData.message?.content;
-            return typeof content === 'string' && Boolean(content.trim());
-        }
+    if (payload.type === 'chat-turn-delta') {
+        const content = payload.textDelta;
+        return typeof content === 'string' && Boolean(content.trim());
     }
 
     return false;
@@ -1545,64 +1539,6 @@ function handleChatConnection(ws, request) {
         });
     };
 
-    const sendSessionAccepted = ({
-        provider,
-        sessionId = null,
-        requestType,
-        projectPath = null,
-        projectName = null,
-    }) => {
-        const resolvedProjectName = resolveProjectName(projectName, projectPath || writer.getProjectPath() || null);
-        writer.send({
-            type: 'session-accepted',
-            provider,
-            sessionId,
-            requestType,
-            acceptedAt: Date.now(),
-            ...(resolvedProjectName ? { projectName: resolvedProjectName } : {}),
-        });
-        // Keep these writes adjacent and synchronous so clients always see
-        // `session-accepted` before the corresponding `running` state transition.
-        sendSessionStateChanged({
-            provider,
-            sessionId,
-            state: 'running',
-            reason: 'command-accepted',
-            projectPath,
-            projectName: resolvedProjectName,
-        });
-    };
-
-    const sendSessionBusy = ({
-        provider,
-        sessionId = null,
-        requestType,
-        projectPath = null,
-        projectName = null,
-    }) => {
-        const resolvedProjectName = resolveProjectName(projectName, projectPath || writer.getProjectPath() || null);
-        writer.send({
-            type: 'session-busy',
-            provider,
-            sessionId,
-            requestType,
-            projectPath,
-            isProcessing: true,
-            reason: 'session-already-active',
-            message: 'Session is already running. Wait for completion or stop it before sending another command.',
-            reportedAt: Date.now(),
-            ...(resolvedProjectName ? { projectName: resolvedProjectName } : {}),
-        });
-        sendSessionStateChanged({
-            provider,
-            sessionId,
-            state: 'running',
-            reason: 'session-already-active',
-            projectPath,
-            projectName: resolvedProjectName,
-        });
-    };
-
     const sendUnsupportedCommandIgnored = (type) => {
         writer.send({
             type: 'command-ignored',
@@ -1631,16 +1567,89 @@ function handleChatConnection(ws, request) {
                 console.log('[DEBUG] Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
                 console.log('[DEBUG] Session:', data.options?.sessionId ? 'Resume' : 'New');
                 console.log('[DEBUG] Model:', data.options?.model || 'default');
+                if (data.options?.queueOnly === true) {
+                    const queuedTurnId = typeof data.options?.queuedTurnId === 'string'
+                        ? data.options.queuedTurnId
+                        : null;
+                    const projectName = data.options?.projectName || resolveProjectName(null, data.options?.projectPath || data.options?.cwd || null);
+                    writer.send({
+                        type: 'chat-turn-queued',
+                        provider: 'codex',
+                        projectName: projectName || null,
+                        sessionId:
+                            (typeof data.options?.sessionId === 'string' && data.options.sessionId.trim().length > 0)
+                                ? data.options.sessionId.trim()
+                                : (typeof data.sessionId === 'string' && data.sessionId.trim().length > 0 ? data.sessionId.trim() : null),
+                        clientTurnId:
+                            typeof data.options?.clientTurnId === 'string' && data.options.clientTurnId.trim().length > 0
+                                ? data.options.clientTurnId.trim()
+                                : queuedTurnId,
+                        queuedTurnId,
+                        queued: true,
+                        queuedAt: Date.now(),
+                    });
+                    return;
+                }
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
-                const sessionId = data.options?.sessionId || data.sessionId;
+                const provisionalSessionId =
+                    typeof data.sessionId === 'string' && data.sessionId.trim().length > 0
+                        ? data.sessionId.trim()
+                        : null;
+                const sessionId =
+                    (typeof data.options?.sessionId === 'string' && data.options.sessionId.trim().length > 0)
+                        ? data.options.sessionId.trim()
+                        : provisionalSessionId;
+                const runtimeMode = getCodexRuntimeMode();
 
-                if (sessionId && isCodexSessionActive(sessionId)) {
+                const isSteerAttempt =
+                    data.options?.turnKind === 'steer'
+                    || data.options?.kind === 'steer'
+                    || (typeof data.options?.expectedTurnId === 'string' && data.options.expectedTurnId.trim().length > 0)
+                    || (typeof data.options?.activeTurnId === 'string' && data.options.activeTurnId.trim().length > 0);
+
+                const isResumeAttempt = Boolean(data.options?.resume || data.options?.resumeSessionId || data.options?.sessionId);
+
+                if (!isSteerAttempt && sessionId && isCodexSessionActiveUnified(sessionId)) {
                     console.log(`[WARN] Codex session ${sessionId} is already active. Ignoring concurrent request.`);
-                    sendSessionBusy({
+                    sendSessionStateChanged({
                         provider: 'codex',
                         sessionId,
-                        requestType: data.type,
+                        state: 'running',
+                        reason: 'session-already-active',
                         projectPath: data.options?.projectPath || data.options?.cwd || null,
+                        projectName: data.options?.projectName || null,
+                    });
+                    return;
+                }
+
+                if (isSteerAttempt && !sessionId) {
+                    writer.send({
+                        type: 'chat-turn-error',
+                        scope: {
+                            projectName: data.options?.projectName || resolveProjectName(null, data.options?.projectPath || data.options?.cwd || null),
+                            provider: 'codex',
+                            sessionId: null,
+                        },
+                        clientTurnId: data.options?.clientTurnId || null,
+                        error: 'sessionId is required for steer',
+                        errorType: 'steer_precondition_failed',
+                        isRetryable: false,
+                    });
+                    return;
+                }
+
+                if (isResumeAttempt && !sessionId) {
+                    writer.send({
+                        type: 'chat-turn-error',
+                        scope: {
+                            projectName: data.options?.projectName || resolveProjectName(null, data.options?.projectPath || data.options?.cwd || null),
+                            provider: 'codex',
+                            sessionId: null,
+                        },
+                        clientTurnId: data.options?.clientTurnId || null,
+                        error: 'sessionId is required for resume',
+                        errorType: 'session_precondition_failed',
+                        isRetryable: false,
                     });
                     return;
                 }
@@ -1658,14 +1667,85 @@ function handleChatConnection(ws, request) {
                 );
                 writer.telemetryContext = { ...telemetryContext, provider: 'codex', telemetryEnabled: commandTelemetryEnabled };
                 writer.setProjectPath(data.options?.projectPath || data.options?.cwd || null);
-                sendSessionAccepted({
+                const runtimeSessionId = isResumeAttempt ? sessionId : null;
+                let codexOptions = {
+                    ...data.options,
+                    env: sessionEnv,
+                    runtimeMode,
+                    sessionId: runtimeSessionId || data.options?.sessionId || null,
+                    resumeSessionId: runtimeSessionId || data.options?.resumeSessionId || null,
+                    provisionalSessionId: provisionalSessionId || data.options?.provisionalSessionId || null,
+                };
+                if (isSteerAttempt && sessionId) {
+                    const hasExpectedTurnId =
+                        (typeof codexOptions.expectedTurnId === 'string' && codexOptions.expectedTurnId.trim().length > 0)
+                        || (typeof codexOptions.activeTurnId === 'string' && codexOptions.activeTurnId.trim().length > 0);
+                    if (!hasExpectedTurnId) {
+                        const activeStatus = getCodexSessionStatusUnified(sessionId);
+                        const inferredTurnId =
+                            typeof activeStatus?.activeTurnId === 'string'
+                                ? activeStatus.activeTurnId.trim()
+                                : '';
+                        if (!inferredTurnId) {
+                            writer.send({
+                                type: 'chat-turn-error',
+                                scope: {
+                                    projectName: data.options?.projectName || resolveProjectName(null, data.options?.projectPath || data.options?.cwd || null),
+                                    provider: 'codex',
+                                    sessionId: sessionId || null,
+                                },
+                                clientTurnId: data.options?.clientTurnId || sessionId || null,
+                                error: 'No active turn available for steer',
+                                errorType: 'steer_precondition_failed',
+                                isRetryable: false,
+                            });
+                            sendSessionStateChanged({
+                                provider: 'codex',
+                                sessionId,
+                                state: 'running',
+                                reason: 'steer-precondition-failed',
+                                projectPath: data.options?.projectPath || data.options?.cwd || null,
+                                projectName: data.options?.projectName || null,
+                            });
+                            return;
+                        }
+                        codexOptions = {
+                            ...codexOptions,
+                            expectedTurnId: inferredTurnId,
+                            activeTurnId: inferredTurnId,
+                        };
+                    }
+                }
+                sendSessionStateChanged({
                     provider: 'codex',
                     sessionId,
-                    requestType: data.type,
+                    state: 'running',
+                    reason: 'command-accepted',
                     projectPath: data.options?.projectPath || data.options?.cwd || null,
+                    projectName: data.options?.projectName || null,
                 });
-                queryCodex(data.command, { ...data.options, env: sessionEnv }, writer).catch(error => {
+                queryCodexUnified(data.command, codexOptions, writer).catch(error => {
                     console.error('[ERROR] Codex query error:', error);
+                    writer.send({
+                        type: 'chat-turn-error',
+                        scope: {
+                            projectName: data.options?.projectName || resolveProjectName(null, data.options?.projectPath || data.options?.cwd || null),
+                            provider: 'codex',
+                            sessionId: sessionId || null,
+                        },
+                        clientTurnId: data.options?.clientTurnId || sessionId || null,
+                        error: error?.message || 'Codex query error',
+                        errorType: 'runtime_error',
+                        isRetryable: true,
+                    });
+                    sendSessionStateChanged({
+                        provider: 'codex',
+                        sessionId,
+                        state: 'failed',
+                        reason: 'query-failed',
+                        projectPath: data.options?.projectPath || data.options?.cwd || null,
+                        projectName: data.options?.projectName || null,
+                    });
                 });
                 return;
             }
@@ -1675,9 +1755,10 @@ function handleChatConnection(ws, request) {
                 const provider = data.provider || 'codex';
                 if (provider !== 'codex') {
                     writer.send({
-                        type: 'session-aborted',
+                        type: 'chat-turn-aborted',
                         sessionId: data.sessionId,
                         provider: 'codex',
+                        projectName: data.options?.projectName || resolveProjectName(null, data.options?.projectPath || data.options?.cwd || null),
                         success: false,
                         ignored: true,
                         reason: 'unsupported-provider',
@@ -1685,12 +1766,13 @@ function handleChatConnection(ws, request) {
                     return;
                 }
 
-                const success = abortCodexSession(data.sessionId);
+                const success = await abortCodexSessionUnified(data.sessionId);
 
                 writer.send({
-                    type: 'session-aborted',
+                    type: 'chat-turn-aborted',
                     sessionId: data.sessionId,
                     provider: 'codex',
+                    projectName: data.options?.projectName || resolveProjectName(null, data.options?.projectPath || data.options?.cwd || null),
                     success,
                 });
                 sendSessionStateChanged({
@@ -1729,13 +1811,19 @@ function handleChatConnection(ws, request) {
                 }
 
                 const sessionId = data.sessionId;
-                const isActive = isCodexSessionActive(sessionId);
-                const startTime = getCodexSessionStartTime(sessionId);
+                const sessionStatus = getCodexSessionStatusUnified(sessionId);
+                const isActive = Boolean(sessionStatus?.isProcessing);
+                const startTime = sessionStatus?.startTime ?? null;
 
-                // Rebind active session writer after reconnect.
-                if (isActive && sessionId) {
-                    const rebound = rebindCodexSessionWriter(sessionId, writer);
+                // Rebind active session writer after reconnect when status was explicitly requested.
+                if (isActive && sessionId && data.intent === 'reconnect-status') {
+                    const currentBoundSessionId = writer.getSessionId();
+                    const shouldRebindWriter = currentBoundSessionId !== sessionId;
+                    const rebound = shouldRebindWriter
+                        ? rebindCodexSessionWriterUnified(sessionId, writer)
+                        : false;
                     if (rebound) {
+                        writer.setSessionId(sessionId);
                         console.log(`[INFO] Rebound codex session ${sessionId} writer to new WebSocket`);
                     }
                 }
@@ -1746,6 +1834,8 @@ function handleChatConnection(ws, request) {
                     provider: 'codex',
                     isProcessing: isActive,
                     startTime,
+                    status: sessionStatus?.status || (isActive ? 'running' : 'idle'),
+                    activeTurnId: sessionStatus?.activeTurnId || null,
                 });
                 return;
             }
@@ -1754,7 +1844,7 @@ function handleChatConnection(ws, request) {
                 writer.send({
                     type: 'active-sessions',
                     sessions: {
-                        codex: getActiveCodexSessions(),
+                        codex: getActiveCodexSessionsUnified(),
                     },
                 });
                 return;

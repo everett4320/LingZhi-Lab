@@ -224,15 +224,9 @@ function mapItemToChatTurnItem(item, { scope, clientTurnId, lifecycle }) {
   if (!item || !scope) return null;
 
   if (item.type === 'agentMessage') {
-    return {
-      type: 'chat-turn-delta',
-      scope,
-      clientTurnId,
-      messageId: item.id,
-      role: 'assistant',
-      partKind: item.phase === 'commentary' ? 'thinking' : 'text',
-      textDelta: String(item.text || ''),
-    };
+    // Agent text is streamed via `item/agentMessage/delta`.
+    // Emitting again from item start/completed duplicates assistant content.
+    return null;
   }
 
   if (item.type === 'commandExecution') {
@@ -686,6 +680,9 @@ class CodexBridgeRuntime {
     if (!runtime) return;
 
     const writer = writerOverride || runtime.writer;
+    if (writer && typeof writer.setSessionId === 'function') {
+      writer.setSessionId(runtime.sessionId);
+    }
     const scope = buildScope(runtime.projectName, runtime.sessionId);
     if (!scope) return;
 
@@ -703,7 +700,7 @@ class CodexBridgeRuntime {
     });
   }
 
-  emitTurnAccepted({ sessionId, clientTurnId = null }) {
+  emitTurnAccepted({ sessionId, clientTurnId = null, turnId = null }) {
     const runtime = this.getSessionRuntime(sessionId);
     if (!runtime) return;
 
@@ -717,6 +714,7 @@ class CodexBridgeRuntime {
       provider: 'codex',
       projectName: runtime.projectName,
       clientTurnId: clientTurnId || runtime.clientTurnId || runtime.sessionId,
+      turnId: toSessionKey(turnId) || runtime.lastTurnId || null,
       provisionalSessionId: runtime.provisionalSessionId || undefined,
       queued: false,
     });
@@ -945,7 +943,7 @@ class CodexBridgeRuntime {
         this.sessionStore.setActiveTurn({ sessionId, threadId: sessionId, turnId, clientTurnId: runtime.clientTurnId });
         this.sessionStore.setStatus({ sessionId, status: 'running' });
 
-        this.emitTurnAccepted({ sessionId, clientTurnId: runtime.clientTurnId });
+        this.emitTurnAccepted({ sessionId, clientTurnId: runtime.clientTurnId, turnId });
         emitSessionStateChanged({
           writer: runtime.writer,
           scope: buildScope(runtime.projectName, runtime.sessionId),
@@ -1339,6 +1337,9 @@ class CodexBridgeRuntime {
       reboundRuntime.projectName = projectName;
       reboundRuntime.projectPath = projectPath;
       reboundRuntime.writer = writer || reboundRuntime.writer;
+      if (reboundRuntime.writer && typeof reboundRuntime.writer.setSessionId === 'function') {
+        reboundRuntime.writer.setSessionId(reboundRuntime.sessionId);
+      }
       reboundRuntime.clientTurnId = clientTurnId || reboundRuntime.clientTurnId;
       reboundRuntime.startTime = reboundRuntime.startTime || nowMs();
       reboundRuntime.provisionalSessionId = runtime.provisionalSessionId;
@@ -1393,6 +1394,7 @@ class CodexBridgeRuntime {
       this.emitTurnAccepted({
         sessionId: threadId,
         clientTurnId: reboundRuntime.clientTurnId,
+        turnId,
       });
 
       const completion = await this.waitForTurnCompletion(threadId, turnId);
@@ -1560,6 +1562,7 @@ class CodexBridgeRuntime {
       this.emitTurnAccepted({
         sessionId: normalizedSessionId,
         clientTurnId: runtime.clientTurnId,
+        turnId: resultTurnId,
       });
 
       emitSessionStateChanged({

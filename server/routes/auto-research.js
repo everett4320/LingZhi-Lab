@@ -7,7 +7,7 @@ import { appSettingsDb, autoResearchDb, userDb } from '../database/db.js';
 import { extractProjectDirectory } from '../projects.js';
 import { CLAUDE_MODELS, CODEX_MODELS, GEMINI_MODELS, OPENROUTER_MODELS } from '../../shared/modelConstants.js';
 import { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive } from '../claude-sdk.js';
-import { queryCodex, abortCodexSession, isCodexSessionActive } from '../openai-codex.js';
+import { queryCodexUnified, abortCodexSessionUnified, isCodexSessionActiveUnified } from '../codex-runtime-facade.js';
 import { spawnGemini, abortGeminiSession, isGeminiSessionActive } from '../gemini-cli.js';
 import { queryOpenRouter, abortOpenRouterSession, isOpenRouterSessionActive } from '../openrouter.js';
 import { sendAutoResearchCompletionEmail } from '../utils/auto-research-mailer.js';
@@ -51,7 +51,7 @@ function normalizePermissionMode(permissionMode) {
 
 function abortActiveSession(provider, sessionId) {
   if (provider === 'codex') {
-    return abortCodexSession(sessionId);
+    return abortCodexSessionUnified(sessionId);
   }
   if (provider === 'gemini') {
     return abortGeminiSession(sessionId);
@@ -64,7 +64,7 @@ function abortActiveSession(provider, sessionId) {
 
 function isSessionActiveForProvider(provider, sessionId) {
   if (provider === 'codex') {
-    return isCodexSessionActive(sessionId);
+    return isCodexSessionActiveUnified(sessionId);
   }
   if (provider === 'gemini') {
     return isGeminiSessionActive(sessionId);
@@ -216,8 +216,11 @@ class AutoResearchWriter {
   }
 
   send(data) {
-    if (data?.type === 'session-created' && data.sessionId) {
-      this.sessionId = data.sessionId;
+    if (data?.type === 'chat-session-created') {
+      const scopedSessionId = data?.scope?.sessionId;
+      if (typeof scopedSessionId === 'string' && scopedSessionId) {
+        this.sessionId = scopedSessionId;
+      }
     }
     if (typeof this.onEvent === 'function') {
       this.onEvent(data, this.sessionId);
@@ -338,7 +341,7 @@ async function runAutoResearch(runId, userId, projectName, projectPath) {
       });
 
       const writer = new AutoResearchWriter((event, sessionId) => {
-        if (event?.type === 'session-created' && sessionId) {
+        if (event?.type === 'chat-session-created' && sessionId) {
           runState.sessionId = sessionId;
           autoResearchDb.updateRun(runId, { sessionId });
         }
@@ -359,7 +362,7 @@ async function runAutoResearch(runId, userId, projectName, projectPath) {
       };
 
       const agentPromise =
-        provider === 'codex'   ? queryCodex(prompt, agentOptions, writer)
+        provider === 'codex'   ? queryCodexUnified(prompt, agentOptions, writer)
         : provider === 'gemini'  ? spawnGemini(prompt, agentOptions, writer)
         : provider === 'openrouter' ? queryOpenRouter(prompt, agentOptions, writer)
         : queryClaudeSDK(prompt, agentOptions, writer);

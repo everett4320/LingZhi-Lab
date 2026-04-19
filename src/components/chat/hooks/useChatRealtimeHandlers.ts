@@ -61,15 +61,12 @@ type LatestChatMessage = {
 const CODEX_REALTIME_MESSAGE_TYPES = new Set<string>([
   "projects_updated",
   "taskmaster-project-updated",
-  "session-created",
-  "session-aborted",
   "session-status",
-  "session-accepted",
-  "session-busy",
   "session-state-changed",
   "chat-session-created",
   "chat-session-upsert",
   "chat-turn-accepted",
+  "chat-turn-queued",
   "chat-turn-delta",
   "chat-turn-item",
   "chat-turn-complete",
@@ -167,7 +164,10 @@ interface UseChatRealtimeHandlersArgs {
     sessionId?: string | null,
     outcome?: "complete" | "error" | "aborted",
   ) => void;
-  onCodexSessionBusy?: (sessionId?: string | null) => void;
+  onCodexSessionStatusUpdate?: (
+    sessionId?: string | null,
+    isProcessing?: boolean,
+  ) => void;
   onCodexSessionIdResolved?: (
     previousSessionId?: string | null,
     actualSessionId?: string | null,
@@ -260,7 +260,7 @@ export function useChatRealtimeHandlers({
   onSessionStatusResolved,
   onCodexTurnStarted,
   onCodexTurnSettled,
-  onCodexSessionBusy,
+  onCodexSessionStatusUpdate,
   onCodexSessionIdResolved,
   onReplaceTemporarySession,
   onNavigateToSession,
@@ -571,11 +571,8 @@ export function useChatRealtimeHandlers({
     const globalMessageTypes = [
       "projects_updated",
       "taskmaster-project-updated",
-      "session-created",
-      "session-aborted",
+      "chat-turn-queued",
       "session-status",
-      "session-accepted",
-      "session-busy",
       "session-state-changed",
     ];
     const isGlobalMessage = globalMessageTypes.includes(
@@ -583,7 +580,7 @@ export function useChatRealtimeHandlers({
     );
     const lifecycleMessageTypes = new Set([
       "chat-turn-complete",
-      "session-aborted",
+      "chat-turn-aborted",
       "chat-turn-error",
     ]);
 
@@ -607,11 +604,7 @@ export function useChatRealtimeHandlers({
       const messageType = String(normalizedLatestMessage.type || "");
       if (messageType.startsWith("chat-")) return "codex";
       if (
-        messageType === "session-created" ||
         messageType === "session-status" ||
-        messageType === "session-aborted" ||
-        messageType === "session-accepted" ||
-        messageType === "session-busy" ||
         messageType === "session-state-changed"
       ) {
         return typeof normalizedLatestMessage.provider === "string"
@@ -800,6 +793,16 @@ export function useChatRealtimeHandlers({
       );
     };
 
+    const isSessionScopedTurnSignal =
+      routedMessageSessionId &&
+      (
+        normalizedLatestMessage.type === "chat-turn-accepted" ||
+        (
+          normalizedLatestMessage.type === "chat-turn-item" &&
+          normalizedLatestMessage.lifecycle === "started"
+        )
+      );
+
     if (normalizedLatestMessage.type === "chat-turn-complete") {
       const completedSessionId =
         normalizedLatestMessage.sessionId || currentSessionId || null;
@@ -827,26 +830,13 @@ export function useChatRealtimeHandlers({
         "error",
       );
     } else if (
-      normalizedLatestMessage.type === "session-aborted" &&
+      normalizedLatestMessage.type === "chat-turn-aborted" &&
       normalizedLatestMessage.provider === "codex"
     ) {
       onCodexTurnSettled?.(
         routedMessageSessionId || currentSessionId || null,
         "aborted",
       );
-    }
-
-    if (
-      routedMessageSessionId &&
-      (
-        normalizedLatestMessage.type === "chat-turn-accepted" ||
-        (
-          normalizedLatestMessage.type === "chat-turn-item" &&
-          normalizedLatestMessage.lifecycle === "started"
-        )
-      )
-    ) {
-        onCodexTurnStarted?.(routedMessageSessionId);
     }
 
     const notifySessionProcessing = (
@@ -1050,8 +1040,19 @@ export function useChatRealtimeHandlers({
       }
     }
 
+    if (
+      isSessionScopedTurnSignal &&
+      routedMessageSessionId &&
+      isMessageInActiveScope(
+        routedMessageSessionId,
+        latestMessageProvider,
+        latestMessageProjectName,
+      )
+    ) {
+      onCodexTurnStarted?.(routedMessageSessionId);
+    }
+
     switch (normalizedLatestMessage.type) {
-      case "session-accepted":
       case "chat-turn-accepted": {
         const acceptedSessionId =
           routedMessageSessionId ||
@@ -1103,74 +1104,6 @@ export function useChatRealtimeHandlers({
         break;
       }
 
-      case "session-busy": {
-        const busySessionId =
-          routedMessageSessionId ||
-          pendingViewSessionRef.current?.sessionId ||
-          currentSessionId ||
-          selectedSession?.id ||
-          null;
-        const busyAt = Number.isFinite(normalizedLatestMessage.reportedAt)
-          ? (normalizedLatestMessage.reportedAt as number)
-          : Date.now();
-        const busyProvider = resolveProvider(
-          typeof normalizedLatestMessage.provider === "string"
-            ? normalizedLatestMessage.provider
-            : provider,
-        );
-        const busyProjectName = resolveProjectName(
-          typeof normalizedLatestMessage.projectName === "string"
-            ? normalizedLatestMessage.projectName
-            : selectedProject?.name || null,
-        );
-        const isCurrentSession =
-          !busySessionId ||
-          isMessageInActiveScope(busySessionId, busyProvider, busyProjectName);
-
-        if (busySessionId) {
-          persistStartTime(
-            busyAt,
-            busySessionId,
-            currentSessionId,
-            selectedSession?.id,
-          );
-          notifySessionProcessing(busySessionId, busyProvider, busyProjectName);
-        }
-
-        if (busyProvider === "codex") {
-          onCodexSessionBusy?.(busySessionId);
-        }
-
-        if (isCurrentSession) {
-          const busyMessage = String(
-            normalizedLatestMessage.message ||
-              "Session is busy. Waiting for the current turn to finish.",
-          );
-          setIsLoading(true);
-          setCanAbortSession(true);
-          setStatusTextOverride(busyMessage);
-          setChatMessages((previous) => {
-            const lastMessage = previous[previous.length - 1];
-            if (
-              lastMessage &&
-              lastMessage.type === "assistant" &&
-              String(lastMessage.content || "") === busyMessage
-            ) {
-              return previous;
-            }
-            return [
-              ...previous,
-              {
-                type: "assistant",
-                content: busyMessage,
-                timestamp: new Date(),
-              },
-            ];
-          });
-        }
-        break;
-      }
-
       case "chat-sidebar-remove":
         break;
 
@@ -1217,6 +1150,7 @@ export function useChatRealtimeHandlers({
           state === "idle";
 
         if (isProcessingState) {
+          onCodexSessionStatusUpdate?.(stateSessionId, true);
           notifySessionProcessing(stateSessionId, stateProvider, stateProjectName);
           if (isCurrentSession) {
             setIsLoading(true);
@@ -1226,6 +1160,7 @@ export function useChatRealtimeHandlers({
         }
 
         if (isTerminalState) {
+          onCodexSessionStatusUpdate?.(stateSessionId, false);
           clearSessionTimerStart(stateSessionId);
           notifySessionCompleted(stateSessionId, stateProvider, stateProjectName);
           if (isCurrentSession) {
@@ -1236,7 +1171,6 @@ export function useChatRealtimeHandlers({
       }
 
       case "chat-session-created":
-      case "session-created":
         if (normalizedLatestMessage.sessionId) {
           const createdSessionProvider =
             resolveProvider(
@@ -1967,7 +1901,7 @@ export function useChatRealtimeHandlers({
         }
         break;
 
-      case "session-aborted": {
+      case "chat-turn-aborted": {
         const abortedProvider = resolveProvider(
           typeof normalizedLatestMessage.provider === "string"
             ? normalizedLatestMessage.provider
@@ -2020,6 +1954,36 @@ export function useChatRealtimeHandlers({
         break;
       }
 
+      case "chat-turn-queued": {
+        const queuedSessionId =
+          routedMessageSessionId ||
+          routedMessageProvisionalSessionId ||
+          pendingViewSessionRef.current?.sessionId ||
+          currentSessionId ||
+          selectedSession?.id ||
+          null;
+        if (!queuedSessionId) {
+          break;
+        }
+
+        const queuedProvider = resolveProvider(
+          typeof normalizedLatestMessage.provider === "string"
+            ? normalizedLatestMessage.provider
+            : provider,
+        );
+        const queuedProjectName = resolveProjectName(
+          typeof normalizedLatestMessage.projectName === "string"
+            ? normalizedLatestMessage.projectName
+            : selectedProject?.name || null,
+        );
+        notifySessionProcessing(
+          queuedSessionId,
+          queuedProvider,
+          queuedProjectName,
+        );
+        break;
+      }
+
       case "session-status": {
         const statusSessionId = routedMessageSessionId;
         if (!statusSessionId) {
@@ -2042,6 +2006,7 @@ export function useChatRealtimeHandlers({
           statusProjectName,
         );
         if (normalizedLatestMessage.isProcessing) {
+          onCodexSessionStatusUpdate?.(statusSessionId, true);
           persistStartTime(
             normalizedLatestMessage.startTime,
             statusSessionId,
@@ -2068,6 +2033,7 @@ export function useChatRealtimeHandlers({
             );
           }
         } else if (normalizedLatestMessage.isProcessing === false) {
+          onCodexSessionStatusUpdate?.(statusSessionId, false);
           clearSessionTimerStart(statusSessionId);
           notifySessionCompleted(
             statusSessionId,
@@ -2108,7 +2074,7 @@ export function useChatRealtimeHandlers({
     onSessionStatusResolved,
     onCodexTurnStarted,
     onCodexTurnSettled,
-    onCodexSessionBusy,
+    onCodexSessionStatusUpdate,
     onCodexSessionIdResolved,
     onReplaceTemporarySession,
     onNavigateToSession,

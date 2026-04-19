@@ -4,6 +4,7 @@ import {
   hasPendingOptimisticSessionState,
   hasTemporaryProcessingSessionKeys,
 } from '../useChatSessionState';
+import { reconcileSessionQueueId } from '../../utils/codexQueue';
 
 describe('useChatSessionState temporary session helpers', () => {
   it('treats temp sessions as pending optimistic sessions', () => {
@@ -20,5 +21,32 @@ describe('useChatSessionState temporary session helpers', () => {
     expect(hasTemporaryProcessingSessionKeys(new Set(['proj-a::codex::temp-2']))).toBe(true);
     expect(hasTemporaryProcessingSessionKeys(new Set(['proj-a::codex::sess-2']))).toBe(false);
     expect(hasTemporaryProcessingSessionKeys(new Set(['sess-2']))).toBe(false);
+  });
+
+  it('keeps queue ownership stable when provisional session id is rebound after reconnect', () => {
+    const provisionalSessionId = 'new-session-123';
+    const actualSessionId = 'session-abc';
+    const queue = {
+      [provisionalSessionId]: [
+        {
+          id: 'turn-1',
+          sessionId: provisionalSessionId,
+          text: 'queued turn',
+          kind: 'normal',
+          status: 'queued',
+          createdAt: Date.now(),
+        },
+      ],
+    };
+
+    const reconciled = reconcileSessionQueueId(
+      queue as any,
+      provisionalSessionId,
+      actualSessionId,
+    );
+
+    expect(reconciled[provisionalSessionId]).toBeUndefined();
+    expect(reconciled[actualSessionId]?.[0]?.sessionId).toBe(actualSessionId);
+    expect(reconciled[actualSessionId]?.[0]?.id).toBe('turn-1');
   });
 });

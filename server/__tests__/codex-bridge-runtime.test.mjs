@@ -297,6 +297,57 @@ describe('codex bridge runtime', () => {
     }));
   });
 
+  it('does not emit duplicate assistant payload from item/agentMessage events when delta stream is active', async () => {
+    const mod = await import('../codex-bridge-runtime.js');
+    const runtime = mod.getCodexBridgeRuntime();
+
+    const writer = { send: vi.fn() };
+    const queryPromise = runtime.query('hello', {
+      projectPath: '/tmp/project',
+      projectName: 'proj',
+    }, writer);
+
+    const onNotification = await getOnNotification();
+    onNotification('item/agentMessage/delta', {
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      itemId: 'item-msg-1',
+      delta: 'hello from delta',
+    });
+    onNotification('item/started', {
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      item: {
+        type: 'agentMessage',
+        id: 'item-msg-1',
+        text: 'hello from item-started',
+        phase: 'final',
+      },
+    });
+    onNotification('item/completed', {
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      item: {
+        type: 'agentMessage',
+        id: 'item-msg-1',
+        text: 'hello from item-completed',
+        phase: 'final',
+      },
+    });
+
+    await completeTurn('completed');
+    await queryPromise;
+
+    const sentPayloads = writer.send.mock.calls.map((entry) => entry[0]);
+    const deltaMessages = sentPayloads.filter((payload) => payload?.type === 'chat-turn-delta');
+    const agentItems = sentPayloads.filter(
+      (payload) => payload?.type === 'chat-turn-item' && payload?.itemType === 'agent_message',
+    );
+
+    expect(deltaMessages.length).toBeGreaterThan(0);
+    expect(agentItems).toHaveLength(0);
+  });
+
   it('responds to app-server initiated approval and elicitation requests', async () => {
     const mod = await import('../codex-bridge-runtime.js');
     const runtime = mod.getCodexBridgeRuntime();
@@ -425,6 +476,38 @@ describe('codex bridge runtime', () => {
       method: 'initialized',
       params: undefined,
     });
+  });
+
+  it('keeps session runtime writer/session binding precise after provisional rebinding', async () => {
+    const mod = await import('../codex-bridge-runtime.js');
+    const runtime = mod.getCodexBridgeRuntime();
+
+    const writer = {
+      send: vi.fn(),
+      setSessionId: vi.fn(),
+      getSessionId: vi.fn(() => null),
+    };
+    const queryPromise = runtime.query('hello', {
+      projectPath: '/tmp/project',
+      projectName: 'proj',
+      provisionalSessionId: 'new-session-abc',
+      clientTurnId: 'client-turn-1',
+    }, writer);
+
+    await waitForCondition(
+      () => runtime.getSessionStatus('thread-1')?.sessionId === 'thread-1',
+      { errorMessage: 'session did not rebind to actual thread id' },
+    );
+
+    await waitForCondition(
+      () => runtime.rebindSessionWriter('thread-1', writer) === true,
+      { errorMessage: 'actual session runtime writer was not rebound to thread id' },
+    );
+    expect(runtime.rebindSessionWriter('thread-1', writer)).toBe(true);
+    expect(runtime.rebindSessionWriter('new-session-abc', writer)).toBe(false);
+
+    await completeTurn('completed');
+    await queryPromise;
   });
 
   it('includes usage payload on chat-turn-complete from token usage notifications', async () => {

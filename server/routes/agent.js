@@ -6,7 +6,7 @@ import { promises as fs } from 'fs';
 import crypto from 'crypto';
 import { userDb, apiKeysDb, githubTokensDb } from '../database/db.js';
 import { addProjectManually } from '../projects.js';
-import { queryCodex } from '../openai-codex.js';
+import { queryCodexUnified } from '../codex-runtime-facade.js';
 import { Octokit } from '@octokit/rest';
 import { CODEX_MODELS } from '../../shared/modelConstants.js';
 import { IS_PLATFORM } from '../constants/config.js';
@@ -534,17 +534,28 @@ class ResponseCollector {
         continue;
       }
 
-      // Handle JSON strings
+      let data = msg;
       if (typeof msg === 'string') {
         try {
-          const parsed = JSON.parse(msg);
-          // Only include codex-response messages with assistant type
-          if (parsed.type === 'codex-response' && parsed.data && parsed.data.type === 'assistant') {
-            assistantMessages.push(parsed.data);
-          }
+          data = JSON.parse(msg);
         } catch (e) {
-          // Not JSON, skip
+          continue;
         }
+      }
+
+      if (!data || typeof data !== 'object') {
+        continue;
+      }
+
+      // Bridge/unified event compatibility
+      if (data.type === 'chat-turn-delta' && typeof data.textDelta === 'string') {
+        assistantMessages.push({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: data.textDelta,
+          },
+        });
       }
     }
 
@@ -572,16 +583,14 @@ class ResponseCollector {
         }
       }
 
-      // Extract usage from codex-response messages
-      if (data && data.type === 'codex-response' && data.data) {
-        const msgData = data.data;
-        if (msgData.message && msgData.message.usage) {
-          const usage = msgData.message.usage;
-          totalInput += usage.input_tokens || 0;
-          totalOutput += usage.output_tokens || 0;
-          totalCacheRead += usage.cache_read_input_tokens || 0;
-          totalCacheCreation += usage.cache_creation_input_tokens || 0;
-        }
+
+      // Extract usage from unified completion events
+      if (data && data.type === 'chat-turn-complete' && data.usage && typeof data.usage === 'object') {
+        const usage = data.usage;
+        totalInput += usage.input_tokens || usage.inputTokens || 0;
+        totalOutput += usage.output_tokens || usage.outputTokens || 0;
+        totalCacheRead += usage.cache_read_input_tokens || usage.cachedInputTokens || 0;
+        totalCacheCreation += usage.cache_creation_input_tokens || 0;
       }
     }
 
@@ -934,7 +943,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
     }
     console.log('Starting Codex SDK session');
 
-    await queryCodex(message.trim(), {
+    await queryCodexUnified(message.trim(), {
       projectPath: finalProjectPath,
       cwd: finalProjectPath,
       sessionId: null,

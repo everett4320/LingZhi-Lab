@@ -12,6 +12,7 @@ type BuildQueuedTurnArgs = {
   projectName?: string;
   projectPath?: string;
   sessionMode?: 'research' | 'workspace_qa';
+  expectedTurnId?: string;
 };
 
 export function buildQueuedTurn({
@@ -24,6 +25,7 @@ export function buildQueuedTurn({
   projectName,
   projectPath,
   sessionMode,
+  expectedTurnId,
 }: BuildQueuedTurnArgs): QueuedTurn {
   return {
     id,
@@ -35,6 +37,7 @@ export function buildQueuedTurn({
     projectName,
     projectPath,
     sessionMode,
+    expectedTurnId,
   };
 }
 

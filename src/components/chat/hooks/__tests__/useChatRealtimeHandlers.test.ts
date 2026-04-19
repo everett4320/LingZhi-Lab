@@ -59,9 +59,32 @@ describe("isCodexRealtimeMessageSupported", () => {
     ).toBe(true);
     expect(
       isCodexRealtimeMessageSupported({
+        type: "chat-turn-queued",
+        scope: { provider: "codex" },
+      }),
+    ).toBe(true);
+    expect(
+      isCodexRealtimeMessageSupported({
         type: "some-legacy-event",
         provider: "codex",
       }),
     ).toBe(false);
+  });
+
+  it("keeps strict codex scope contract for turn events", () => {
+    const event = {
+      type: "chat-turn-accepted",
+      scope: {
+        provider: "codex",
+        projectName: "project-a",
+        sessionId: "session-a",
+      },
+      sessionId: "session-a",
+      provider: "codex",
+    };
+
+    expect(isCodexRealtimeMessageSupported(event)).toBe(true);
+    expect(event.scope.sessionId).toBe("session-a");
+    expect(event.sessionId).toBe("session-a");
   });
 });

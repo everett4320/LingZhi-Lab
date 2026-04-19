@@ -63,6 +63,7 @@ export interface ProjectSession {
   updated_at?: string;
   lastActivity?: string;
   messageCount?: number;
+  activeTurnId?: string;
   __provider?: SessionProvider;
   __projectName?: string;
   [key: string]: unknown;

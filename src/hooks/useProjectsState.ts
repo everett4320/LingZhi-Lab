@@ -392,7 +392,8 @@ export function useProjectsState({
       return;
     }
 
-    if (latestMessage.type === 'session-created' && latestMessage.sessionId && latestMessage.provider) {
+    const isUnifiedSessionCreated = latestMessage.type === 'chat-session-created';
+    if (isUnifiedSessionCreated && latestMessage.sessionId && latestMessage.provider) {
       const rawMode = latestMessage.mode;
       const modeValue = typeof rawMode === 'string' ? rawMode : null;
       const sessionMode: SessionMode = isSessionMode(modeValue) ? modeValue : 'research';
@@ -504,6 +505,137 @@ export function useProjectsState({
           loadingProgressTimeoutRef.current = null;
         }, 500);
       }
+
+      return;
+    }
+
+    if (latestMessage.type === 'session-status' && latestMessage.sessionId) {
+      const statusSessionId = latestMessage.sessionId as string;
+      const statusProjectName = (latestMessage.projectName as string | undefined)
+        || selectedProject?.name
+        || null;
+      const statusProvider = normalizeProvider(
+        (latestMessage.provider as SessionProvider | undefined) || 'codex',
+      ) as SessionProvider;
+      const activeTurnId =
+        typeof latestMessage.activeTurnId === 'string' && latestMessage.activeTurnId.trim().length > 0
+          ? latestMessage.activeTurnId.trim()
+          : undefined;
+
+      if (statusProjectName) {
+        setProjects((prevProjects) => prevProjects.map((project) => {
+          if (project.name !== statusProjectName) {
+            return project;
+          }
+
+          return upsertProjectSession(project, {
+            projectName: statusProjectName,
+            provider: statusProvider,
+            sessionId: statusSessionId,
+            activeTurnId,
+            createdAt: new Date().toISOString(),
+          });
+        }));
+      }
+
+      setSelectedSession((previous) => {
+        if (!previous || previous.id !== statusSessionId) {
+          return previous;
+        }
+        if (previous.activeTurnId === activeTurnId) {
+          return previous;
+        }
+        return {
+          ...previous,
+          activeTurnId,
+        };
+      });
+
+      return;
+    }
+
+    if (latestMessage.type === 'chat-turn-accepted' && latestMessage.sessionId) {
+      const acceptedSessionId = latestMessage.sessionId as string;
+      const acceptedProjectName = (latestMessage.projectName as string | undefined)
+        || selectedProject?.name
+        || null;
+      const acceptedProvider = normalizeProvider(
+        (latestMessage.provider as SessionProvider | undefined) || 'codex',
+      ) as SessionProvider;
+      const acceptedTurnId =
+        typeof latestMessage.turnId === 'string' && latestMessage.turnId.trim().length > 0
+          ? latestMessage.turnId.trim()
+          : undefined;
+
+      if (acceptedProjectName) {
+        setProjects((prevProjects) => prevProjects.map((project) => {
+          if (project.name !== acceptedProjectName) {
+            return project;
+          }
+
+          return upsertProjectSession(project, {
+            projectName: acceptedProjectName,
+            provider: acceptedProvider,
+            sessionId: acceptedSessionId,
+            activeTurnId: acceptedTurnId,
+            createdAt: new Date().toISOString(),
+          });
+        }));
+      }
+
+      setSelectedSession((previous) => {
+        if (!previous || previous.id !== acceptedSessionId) {
+          return previous;
+        }
+        if (previous.activeTurnId === acceptedTurnId) {
+          return previous;
+        }
+        return {
+          ...previous,
+          activeTurnId: acceptedTurnId,
+        };
+      });
+
+      return;
+    }
+
+    if (latestMessage.type === 'chat-turn-complete' && latestMessage.sessionId) {
+      const completedSessionId = latestMessage.sessionId as string;
+      const completedProjectName = (latestMessage.projectName as string | undefined)
+        || selectedProject?.name
+        || null;
+      const completedProvider = normalizeProvider(
+        (latestMessage.provider as SessionProvider | undefined) || 'codex',
+      ) as SessionProvider;
+
+      if (completedProjectName) {
+        setProjects((prevProjects) => prevProjects.map((project) => {
+          if (project.name !== completedProjectName) {
+            return project;
+          }
+
+          return upsertProjectSession(project, {
+            projectName: completedProjectName,
+            provider: completedProvider,
+            sessionId: completedSessionId,
+            activeTurnId: undefined,
+            createdAt: new Date().toISOString(),
+          });
+        }));
+      }
+
+      setSelectedSession((previous) => {
+        if (!previous || previous.id !== completedSessionId) {
+          return previous;
+        }
+        if (previous.activeTurnId == null) {
+          return previous;
+        }
+        return {
+          ...previous,
+          activeTurnId: undefined,
+        };
+      });
 
       return;
     }

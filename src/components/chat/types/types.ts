@@ -149,6 +149,7 @@ export interface QueuedTurn {
   projectName?: string;
   projectPath?: string;
   sessionMode?: SessionMode;
+  expectedTurnId?: string;
 }
 
 export interface ChatInterfaceProps {

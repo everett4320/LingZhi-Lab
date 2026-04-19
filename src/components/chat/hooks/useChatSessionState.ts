@@ -842,6 +842,7 @@ export function useChatSessionState({
             type: 'check-session-status',
             sessionId: selectedSession.id,
             provider: currentProvider,
+            intent: 'reconnect-status',
           });
         }
 

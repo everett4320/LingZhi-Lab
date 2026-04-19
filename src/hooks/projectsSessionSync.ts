@@ -36,10 +36,11 @@ type UpsertProviderSessionOptions = {
   provider: SessionProvider;
   sessionId: string;
   projectName: string;
-  mode: SessionMode;
+  mode?: SessionMode;
   displayName?: string;
   createdAt?: string;
   temporarySessionId?: string | null;
+  activeTurnId?: string | undefined;
 };
 
 export function upsertProviderSessionList(
@@ -55,6 +56,7 @@ export function upsertProviderSessionList(
     displayName,
     createdAt,
     temporarySessionId = null,
+    activeTurnId = undefined,
   } = options;
   const timestamp = createdAt || new Date().toISOString();
   const fallbackName = FALLBACK_SESSION_NAME_BY_PROVIDER[provider] || 'New Session';
@@ -89,6 +91,7 @@ export function upsertProviderSessionList(
       name: displayName || session.name || summary,
       summary: displayName || session.summary || summary,
       mode: mode || session.mode || 'research',
+      activeTurnId,
       __provider: provider,
       __projectName: projectName,
       createdAt: session.createdAt || timestamp,
@@ -101,7 +104,8 @@ export function upsertProviderSessionList(
       id: sessionId,
       name: summary,
       summary,
-      mode,
+      mode: mode || 'research',
+      activeTurnId,
       __provider: provider,
       __projectName: projectName,
       createdAt: timestamp,
