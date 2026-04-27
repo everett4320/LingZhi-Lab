@@ -35,6 +35,7 @@ import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import os from 'os';
 import http from 'http';
+import https from 'https';
 import cors from 'cors';
 import { promises as fsPromises } from 'fs';
 import { spawn } from 'child_process';
@@ -107,6 +108,232 @@ let isGetProjectsRunning = false; // Flag to prevent reentrant calls
 let hasPendingProjectsUpdate = false;
 let lastWatcherEvent = null;
 let lastProjectsUpdateSignature = '';
+
+const HTTP_TRACE_ENABLED = process.env.LINGZHI_HTTP_TRACE !== '0';
+const HTTP_TRACE_MAX_BODY_CHARS = Number.parseInt(process.env.LINGZHI_HTTP_TRACE_MAX_BODY_CHARS || '4000', 10);
+const HTTP_TRACE_SLOW_WARN_MS = Number.parseInt(process.env.LINGZHI_HTTP_TRACE_SLOW_WARN_MS || '15000', 10);
+const HTTP_TRACE_SKIP_PATH_PREFIXES = [
+    '/health',
+    '/favicon.ico',
+    '/assets/',
+    '/api/news/logs/',
+];
+const SERVER_FETCH_TIMEOUT_MS = Number.parseInt(process.env.LINGZHI_SERVER_FETCH_TIMEOUT_MS || '45000', 10);
+let requestTraceSequence = 0;
+
+const nowIso = () => new Date().toISOString();
+const trimTraceValue = (value, maxChars = HTTP_TRACE_MAX_BODY_CHARS) => {
+    if (typeof value !== 'string') {
+        return value;
+    }
+    if (value.length <= maxChars) {
+        return value;
+    }
+    return `${value.slice(0, maxChars)}...(truncated)`;
+};
+
+function sanitizeForLog(value, depth = 0) {
+    if (value == null || typeof value === 'boolean' || typeof value === 'number') {
+        return value;
+    }
+    if (typeof value === 'string') {
+        return trimTraceValue(value);
+    }
+    if (value instanceof Error) {
+        return {
+            name: value.name,
+            message: value.message,
+            stack: trimTraceValue(value.stack || '', 12000),
+        };
+    }
+    if (depth >= 4) {
+        return '[depth-limit]';
+    }
+    if (Array.isArray(value)) {
+        return value.slice(0, 20).map((item) => sanitizeForLog(item, depth + 1));
+    }
+    if (typeof value === 'object') {
+        const out = {};
+        for (const [key, nestedValue] of Object.entries(value)) {
+            if (typeof nestedValue === 'function') continue;
+            out[key] = sanitizeForLog(nestedValue, depth + 1);
+        }
+        return out;
+    }
+    return String(value);
+}
+
+function shouldSkipHttpTrace(req) {
+    const method = String(req.method || '').toUpperCase();
+    const pathName = req.path || req.originalUrl || '';
+    if (method === 'OPTIONS') return true;
+    return HTTP_TRACE_SKIP_PATH_PREFIXES.some((prefix) => pathName.startsWith(prefix));
+}
+
+function installServerFetchTrace() {
+    if (globalThis.__lingzhiServerFetchTraced) {
+        return;
+    }
+    globalThis.__lingzhiServerFetchTraced = true;
+
+    const originalFetch = globalThis.fetch;
+    if (typeof originalFetch !== 'function') {
+        return;
+    }
+
+    globalThis.fetch = async function tracedServerFetch(input, init = {}) {
+        const traceId = `fetch-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        const startedAt = Date.now();
+        const controller = new AbortController();
+        const timeout = Number.isFinite(SERVER_FETCH_TIMEOUT_MS) && SERVER_FETCH_TIMEOUT_MS > 0
+            ? setTimeout(() => controller.abort(new Error(`fetch-timeout-${SERVER_FETCH_TIMEOUT_MS}ms`)), SERVER_FETCH_TIMEOUT_MS)
+            : null;
+
+        let url = '';
+        try {
+            url = typeof input === 'string' ? input : (input?.url || String(input));
+        } catch {
+            url = '[unresolved-url]';
+        }
+
+        const method = String(init?.method || 'GET').toUpperCase();
+
+        if (HTTP_TRACE_ENABLED) {
+            console.log(JSON.stringify({
+                ts: nowIso(),
+                channel: 'server-fetch',
+                phase: 'start',
+                traceId,
+                method,
+                url,
+            }));
+        }
+
+        try {
+            const response = await originalFetch(input, {
+                ...init,
+                signal: init.signal || controller.signal,
+            });
+            const durationMs = Date.now() - startedAt;
+
+            if (HTTP_TRACE_ENABLED) {
+                console.log(JSON.stringify({
+                    ts: nowIso(),
+                    channel: 'server-fetch',
+                    phase: 'finish',
+                    traceId,
+                    method,
+                    url,
+                    status: response.status,
+                    ok: response.ok,
+                    durationMs,
+                }));
+            }
+
+            return response;
+        } catch (error) {
+            const durationMs = Date.now() - startedAt;
+            console.error(JSON.stringify({
+                ts: nowIso(),
+                channel: 'server-fetch',
+                phase: 'error',
+                traceId,
+                method,
+                url,
+                durationMs,
+                error: sanitizeForLog(error),
+            }));
+            throw error;
+        } finally {
+            if (timeout) clearTimeout(timeout);
+        }
+    };
+}
+
+function installHttpClientTrace() {
+    if (globalThis.__lingzhiHttpClientTraced) {
+        return;
+    }
+    globalThis.__lingzhiHttpClientTraced = true;
+
+    const patchRequest = (mod, protocol) => {
+        const originalRequest = mod.request.bind(mod);
+
+        mod.request = function tracedRequest(...args) {
+            const traceId = `http-client-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+            const startedAt = Date.now();
+            const req = originalRequest(...args);
+
+            let method = 'GET';
+            let host = '';
+            let pathName = '';
+
+            try {
+                const options = args[0] || {};
+                method = String(options.method || 'GET').toUpperCase();
+                host = options.hostname || options.host || '';
+                pathName = options.path || '';
+            } catch {
+                // ignore parse failures
+            }
+
+            req.on('response', (res) => {
+                const durationMs = Date.now() - startedAt;
+                console.log(JSON.stringify({
+                    ts: nowIso(),
+                    channel: 'server-http-client',
+                    phase: 'finish',
+                    traceId,
+                    protocol,
+                    method,
+                    host,
+                    path: pathName,
+                    status: res.statusCode,
+                    durationMs,
+                }));
+            });
+
+            req.on('error', (error) => {
+                const durationMs = Date.now() - startedAt;
+                console.error(JSON.stringify({
+                    ts: nowIso(),
+                    channel: 'server-http-client',
+                    phase: 'error',
+                    traceId,
+                    protocol,
+                    method,
+                    host,
+                    path: pathName,
+                    durationMs,
+                    error: sanitizeForLog(error),
+                }));
+            });
+
+            req.on('timeout', () => {
+                const durationMs = Date.now() - startedAt;
+                console.error(JSON.stringify({
+                    ts: nowIso(),
+                    channel: 'server-http-client',
+                    phase: 'timeout',
+                    traceId,
+                    protocol,
+                    method,
+                    host,
+                    path: pathName,
+                    durationMs,
+                }));
+            });
+
+            return req;
+        };
+    };
+
+    patchRequest(http, 'http');
+    patchRequest(https, 'https');
+}
+
+installServerFetchTrace();
+installHttpClientTrace();
 
 function shouldProcessProjectsWatcherEvent(eventType, filePath, provider) {
     if (eventType === 'addDir' || eventType === 'unlinkDir') {
@@ -427,6 +654,87 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+if (HTTP_TRACE_ENABLED) {
+    app.use((req, res, next) => {
+        if (shouldSkipHttpTrace(req)) {
+            return next();
+        }
+
+        const requestId = `${Date.now()}-${++requestTraceSequence}`;
+        const startedAt = Date.now();
+        req.requestId = requestId;
+        let pendingTimer = null;
+
+        const user = req.user || {};
+        const ip = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+
+        console.log(JSON.stringify({
+            ts: nowIso(),
+            channel: 'http-server',
+            phase: 'request:start',
+            requestId,
+            method: req.method,
+            path: req.originalUrl,
+            ip,
+            userId: user.id || user.userId || null,
+            userAgent: trimTraceValue(req.headers['user-agent'] || '', 1024),
+            query: sanitizeForLog(req.query),
+            body: sanitizeForLog(req.body),
+        }));
+
+        let finished = false;
+        const done = (phase, extra = {}) => {
+            if (finished) return;
+            finished = true;
+            if (pendingTimer) {
+                clearTimeout(pendingTimer);
+                pendingTimer = null;
+            }
+            const durationMs = Date.now() - startedAt;
+            console.log(JSON.stringify({
+                ts: nowIso(),
+                channel: 'http-server',
+                phase,
+                requestId,
+                method: req.method,
+                path: req.originalUrl,
+                status: res.statusCode,
+                durationMs,
+                ...sanitizeForLog(extra),
+            }));
+        };
+
+        res.on('finish', () => {
+            done('request:finish', { bytesWritten: Number(res.getHeader('content-length')) || null });
+        });
+
+        res.on('close', () => {
+            done('request:close');
+        });
+
+        res.on('error', (error) => {
+            done('request:error', { error: sanitizeForLog(error) });
+        });
+
+        if (Number.isFinite(HTTP_TRACE_SLOW_WARN_MS) && HTTP_TRACE_SLOW_WARN_MS > 0) {
+            pendingTimer = setTimeout(() => {
+                if (finished) return;
+                console.warn(JSON.stringify({
+                    ts: nowIso(),
+                    channel: 'http-server',
+                    phase: 'request:slow',
+                    requestId,
+                    method: req.method,
+                    path: req.originalUrl,
+                    elapsedMs: Date.now() - startedAt,
+                }));
+            }, HTTP_TRACE_SLOW_WARN_MS);
+        }
+
+        next();
+    });
+}
 
 // Public health check endpoint (no authentication required)
 app.get('/health', (req, res) => {
@@ -1418,6 +1726,14 @@ class WebSocketWriter {
   send(data) {
     if (this.ws.readyState === 1) { // WebSocket.OPEN
       const outboundData = enrichSessionEventPayload(data, this.projectPath);
+      console.log(JSON.stringify({
+          ts: nowIso(),
+          channel: 'ws-server',
+          phase: 'send',
+          wsPath: '/ws',
+          sessionId: this.sessionId || outboundData?.sessionId || null,
+          type: outboundData?.type || null,
+      }));
       this.ws.send(JSON.stringify(outboundData));
       trackAgentResponseTelemetry(outboundData, this.telemetryContext);
 
@@ -1553,6 +1869,14 @@ function handleChatConnection(ws, request) {
     ws.on('message', async (message) => {
         try {
             const data = JSON.parse(message);
+            console.log(JSON.stringify({
+                ts: nowIso(),
+                channel: 'ws-server',
+                phase: 'recv',
+                wsPath: '/ws',
+                sessionId: data?.sessionId || data?.options?.sessionId || null,
+                type: data?.type || null,
+            }));
 
             if (data.type === 'telemetry-settings') {
                 const enabled = data.enabled !== false;
@@ -1859,6 +2183,14 @@ function handleShellConnection(ws) {
         try {
             const data = JSON.parse(message);
             console.log('[SHELL] Message received:', data.type);
+            console.log(JSON.stringify({
+                ts: nowIso(),
+                channel: 'ws-server',
+                phase: 'recv',
+                wsPath: '/shell',
+                sessionId: data?.sessionId || ptySessionKey || null,
+                type: data?.type || null,
+            }));
 
             if (data.type === 'init') {
                 const projectPath = data.projectPath || process.cwd();
@@ -2100,6 +2432,15 @@ function handleShellConnection(ws) {
                                 type: 'output',
                                 data: outputData
                             }));
+                            console.log(JSON.stringify({
+                                ts: nowIso(),
+                                channel: 'ws-server',
+                                phase: 'send',
+                                wsPath: '/shell',
+                                sessionId: ptySessionKey,
+                                type: 'output',
+                                bytes: typeof outputData === 'string' ? outputData.length : null,
+                            }));
                         }
                     });
 
@@ -2198,6 +2539,14 @@ function handleComputeShellConnection(ws, urlNodeId) {
         try {
             const data = JSON.parse(message);
             console.log('[COMPUTE_SHELL] Message received:', data.type);
+            console.log(JSON.stringify({
+                ts: nowIso(),
+                channel: 'ws-server',
+                phase: 'recv',
+                wsPath: '/compute-shell',
+                sessionId: ptySessionKey || null,
+                type: data?.type || null,
+            }));
 
             if (data.type === 'init') {
                 const requestedNodeId = data.nodeId;
@@ -2323,6 +2672,15 @@ function handleComputeShellConnection(ws, urlNodeId) {
                             session.ws.send(JSON.stringify({
                                 type: 'output',
                                 data: outputData
+                            }));
+                            console.log(JSON.stringify({
+                                ts: nowIso(),
+                                channel: 'ws-server',
+                                phase: 'send',
+                                wsPath: '/compute-shell',
+                                sessionId: ptySessionKey,
+                                type: 'output',
+                                bytes: typeof outputData === 'string' ? outputData.length : null,
                             }));
                         }
                     });

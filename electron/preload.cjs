@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+﻿const { contextBridge, ipcRenderer } = require('electron');
 
 const ALLOWED_CHANNELS_INVOKE = new Set([
   'app:getInfo',
@@ -798,3 +798,4 @@ if (!stampRuntimeDataAttributes() && typeof window !== 'undefined') {
     stampRuntimeDataAttributes();
   }, { once: true });
 }
+

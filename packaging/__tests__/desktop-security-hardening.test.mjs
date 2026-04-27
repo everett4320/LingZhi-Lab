@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
 
 const packageJsonPath = path.join(repoRoot, 'package.json');
-const preloadPath = path.join(repoRoot, 'electron', 'preload.mjs');
+const preloadPath = path.join(repoRoot, 'electron', 'preload.cjs');
 const mainPath = path.join(repoRoot, 'electron', 'main.mjs');
 const playbookPath = path.join(repoRoot, 'docs', 'custom-branch-playbook.zh-CN.md');
 
@@ -106,7 +106,8 @@ describe('desktop packaging: security and anti-reverse-engineering hardening', (
 
     it('marks renderer runtime with explicit electron flags', () => {
       expectContains(preloadSource, "contextBridge.exposeInMainWorld('isElectron', true);");
-      expectContains(preloadSource, "document.documentElement.dataset.electron = 'true';");
+      expectContains(preloadSource, "root.dataset.electron = 'true';");
+      expectContains(preloadSource, "window.addEventListener('DOMContentLoaded'");
     });
   });
 

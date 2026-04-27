@@ -124,6 +124,7 @@ git push origin custom
 - When user asks to package the Windows desktop app, do not stop at build/package completion.
 - Before installing a new package, fully remove old installed app files first (uninstall if available, then clean the install directory).
 - After packaging, install the produced Windows app so the user can launch it immediately.
+- Treat local Windows install as a single linear version: keep exactly one active install in `%LOCALAPPDATA%\\Programs\\lingzhi-lab` and always replace it in-place.
 - Required verification after install:
   1. Confirm a launchable exe exists in the install directory.
   2. Start the app once and confirm it starts (process must stay alive during verification window; immediate exit is failure).

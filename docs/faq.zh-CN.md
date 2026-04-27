@@ -103,3 +103,23 @@ npm install
 ```
 
 这样不会修改项目的 `package.json`，并且会按仓库锁定版本完成完整安装流程。
+
+---
+
+## 6. 桌面版如何查看“这一次运行”的详细日志？
+
+**问题：** 现在是本地桌面应用，希望每次运行都有可追踪记录，方便反馈“这次运行遇到什么问题”。
+
+**解决方案：**
+
+- 先看专用手册：
+  - [Windows 本地安装与运行日志（复用手册）](./desktop-local-install-and-logs.zh-CN.md)
+- 核心路径：
+  - 汇总日志：`%APPDATA%\\Lingzhi Lab\\desktop.log`
+  - 单次运行日志目录：`%APPDATA%\\Lingzhi Lab\\run-logs`
+  - 单次运行日志文件：`desktop-run-<timestamp>-pid<pid>.log`
+- 应用内也可直接打开：
+  - `Help -> View Current Run Log`
+  - `Help -> Open Logs Folder`
+
+说明：本地安装是线性唯一版本，`npm run desktop:fresh:win` 每次都会先清理旧安装，再安装并验证新版本。

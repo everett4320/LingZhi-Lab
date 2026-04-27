@@ -6,7 +6,7 @@ This directory contains the Electron wrapper for Lingzhi Lab.
 
 - The existing Express/WebSocket backend runs unchanged as a child process.
 - A `BrowserWindow` loads the local app URL after the embedded server starts.
-- A **preload script** (`preload.mjs`) exposes a safe IPC bridge (`window.electronAPI`) using `contextBridge`.
+- A **preload script** (`preload.cjs`) exposes a safe IPC bridge (`window.electronAPI`) using `contextBridge`.
 - The renderer stays fully sandboxed with `contextIsolation: true` and `sandbox: true`.
 
 ## Features
@@ -36,6 +36,8 @@ Standard macOS/Windows menu bar with:
 - **View**: Reload, DevTools, Zoom, Fullscreen
 - **Window**: Minimize, Zoom/Close
 - **Help**: Documentation, Report Issue, View Logs, Open Data Directory
+  - `View Current Run Log` opens the current launch's dedicated log file.
+  - `Open Logs Folder` opens `run-logs/`, which stores recent per-run logs.
 - **macOS App menu**: About, Settings (Cmd+,), Services, Hide, Quit
 
 ### Window State Persistence
@@ -66,6 +68,10 @@ All `window.open` calls in the renderer are intercepted and opened in the system
 - Native modules (`node-pty`, `better-sqlite3`, `sqlite3`) are rebuilt for Electron via `scripts/native-runtime.mjs`.
 - Electron rebuild caches live in `.electron-gyp/` and `.electron-cache/` inside the repo.
 - Window state, logs, and runtime data are stored under `app.getPath('userData')` (e.g., `~/Library/Application Support/Lingzhi Lab/` on macOS).
+- Logging outputs:
+  - `desktop.log`: rolling global log stream.
+  - `run-logs/desktop-run-<timestamp>-pid<id>.log`: one detailed file per app launch.
+  - Retention: keeps recent run logs with automatic pruning (max 40 files or 14 days).
 - The `LINGZHI_LAB_DESKTOP=1` environment variable distinguishes desktop from web/npm server mode.
 
 ## CI/CD

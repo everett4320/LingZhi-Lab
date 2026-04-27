@@ -33,6 +33,9 @@ interface AppInfo {
   userData: string;
   appRoot: string;
   logsPath: string;
+  currentRunLogPath?: string;
+  runLogsDir?: string;
+  runId?: string;
 }
 
 interface SystemInfo {

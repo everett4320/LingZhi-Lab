@@ -37,6 +37,22 @@ let mainWindow = null;
 let serverProcess = null;
 let serverOrigin = null;
 let quitting = false;
+let runLogInitialized = false;
+let currentRunId = null;
+let currentRunLogPath = null;
+let logSequence = 0;
+let networkErrorLoggingAttached = false;
+
+const RUN_LOG_FILE_PREFIX = 'desktop-run-';
+const RUN_LOG_FILE_SUFFIX = '.log';
+const RUN_LOG_KEEP_MAX_FILES = 40;
+const RUN_LOG_KEEP_MAX_AGE_DAYS = 14;
+const RUN_LOG_HIDE_HIGH_VOLUME_EVENTS = process.env.LINGZHI_LOG_HIDE_HIGH_VOLUME_EVENTS === '1';
+const HIGH_VOLUME_EVENTS = new Set([
+  'renderer:event',
+  'renderer:console',
+  'network:error',
+]);
 
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
@@ -49,20 +65,136 @@ if (!singleInstanceLock) {
 // ---------------------------------------------------------------------------
 
 function getDesktopLogPath() {
-  const baseDir = app.isReady()
-    ? app.getPath('userData')
-    : path.join(process.cwd(), '.electron-home', 'logs');
-
+  const baseDir = app.getPath('userData');
   return path.join(baseDir, 'desktop.log');
 }
 
-function logDesktop(message, details = null) {
-  const line = `[${new Date().toISOString()}] ${message}${details ? ` ${typeof details === 'string' ? details : JSON.stringify(details)}` : ''}`;
-  console.log(line);
+function getRunLogsDir() {
+  return path.join(app.getPath('userData'), 'run-logs');
+}
+
+function serializeError(error) {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+  };
+}
+
+function normalizeLogDetails(details) {
+  if (details == null) {
+    return null;
+  }
+
+  if (details instanceof Error) {
+    return serializeError(details);
+  }
+
+  if (typeof details === 'string' || typeof details === 'number' || typeof details === 'boolean') {
+    return details;
+  }
 
   try {
-    fs.mkdirSync(path.dirname(getDesktopLogPath()), { recursive: true });
+    return JSON.parse(JSON.stringify(details));
+  } catch {
+    return String(details);
+  }
+}
+
+function trimLogValue(value, maxLength = 8000) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}...(truncated)`;
+}
+
+function pruneRunLogs(runLogsDir) {
+  const ttlMs = RUN_LOG_KEEP_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  const runLogs = fs.readdirSync(runLogsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.startsWith(RUN_LOG_FILE_PREFIX) && entry.name.endsWith(RUN_LOG_FILE_SUFFIX))
+    .map((entry) => {
+      const fullPath = path.join(runLogsDir, entry.name);
+      let mtimeMs = 0;
+      try {
+        mtimeMs = fs.statSync(fullPath).mtimeMs;
+      } catch {
+        // Ignore unreadable files.
+      }
+      return { fullPath, mtimeMs };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  const staleByAge = runLogs.filter((item) => now - item.mtimeMs > ttlMs).map((item) => item.fullPath);
+  const staleByCount = runLogs.slice(RUN_LOG_KEEP_MAX_FILES).map((item) => item.fullPath);
+  const staleTargets = new Set([...staleByAge, ...staleByCount]);
+
+  for (const fullPath of staleTargets) {
+    if (fullPath === currentRunLogPath) {
+      continue;
+    }
+    try {
+      fs.unlinkSync(fullPath);
+    } catch {
+      // Ignore cleanup failures.
+    }
+  }
+}
+
+function ensureRunLogInitialized() {
+  if (runLogInitialized) {
+    return;
+  }
+
+  const userDataDir = app.getPath('userData');
+  const runLogsDir = getRunLogsDir();
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.mkdirSync(runLogsDir, { recursive: true });
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  currentRunId = `${stamp}-pid${process.pid}`;
+  currentRunLogPath = path.join(runLogsDir, `${RUN_LOG_FILE_PREFIX}${currentRunId}${RUN_LOG_FILE_SUFFIX}`);
+
+  fs.appendFileSync(currentRunLogPath, '', 'utf8');
+  pruneRunLogs(runLogsDir);
+  runLogInitialized = true;
+}
+
+function getCurrentRunLogPath() {
+  ensureRunLogInitialized();
+  return currentRunLogPath;
+}
+
+function logDesktop(message, details = null) {
+  ensureRunLogInitialized();
+
+  const payload = {
+    ts: new Date().toISOString(),
+    runId: currentRunId,
+    seq: ++logSequence,
+    pid: process.pid,
+    message,
+    details: normalizeLogDetails(details),
+  };
+
+  const line = JSON.stringify(payload);
+  if (!RUN_LOG_HIDE_HIGH_VOLUME_EVENTS || !HIGH_VOLUME_EVENTS.has(message)) {
+    console.log(line);
+  }
+
+  try {
     fs.appendFileSync(getDesktopLogPath(), `${line}\n`, 'utf8');
+    fs.appendFileSync(getCurrentRunLogPath(), `${line}\n`, 'utf8');
   } catch {
     // Ignore log write failures.
   }
@@ -81,6 +213,41 @@ process.on('unhandledRejection', (reason) => {
     stack: reason.stack,
   } : String(reason));
 });
+
+app.on('child-process-gone', (_event, details) => {
+  logDesktop('child-process-gone', details);
+});
+
+app.on('render-process-gone', (_event, _webContents, details) => {
+  logDesktop('app:render-process-gone', details);
+});
+
+app.on('gpu-info-update', () => {
+  logDesktop('gpu-info-update');
+});
+
+function attachNetworkErrorLogging(window) {
+  if (networkErrorLoggingAttached || !window || window.isDestroyed()) {
+    return;
+  }
+
+  const session = window.webContents.session;
+  session.webRequest.onErrorOccurred((details) => {
+    if (details.url.startsWith('devtools://')) {
+      return;
+    }
+
+    logDesktop('network:error', {
+      error: details.error,
+      method: details.method,
+      statusCode: details.statusCode,
+      url: details.url,
+      resourceType: details.resourceType,
+    });
+  });
+
+  networkErrorLoggingAttached = true;
+}
 
 // ---------------------------------------------------------------------------
 // Window state persistence
@@ -573,9 +740,15 @@ function buildAppMenu() {
       },
       { type: 'separator' },
       {
-        label: 'View Logs',
+        label: 'View Current Run Log',
         click: () => {
-          shell.showItemInFolder(getDesktopLogPath());
+          shell.showItemInFolder(getCurrentRunLogPath());
+        },
+      },
+      {
+        label: 'Open Logs Folder',
+        click: () => {
+          shell.openPath(getRunLogsDir());
         },
       },
       {
@@ -616,7 +789,18 @@ function registerIpcHandlers() {
       userData: app.getPath('userData'),
       appRoot: resolveAppRoot(),
       logsPath: getDesktopLogPath(),
+      currentRunLogPath: getCurrentRunLogPath(),
+      runLogsDir: getRunLogsDir(),
+      runId: currentRunId,
     };
+  });
+
+  ipcMain.on('telemetry:renderer-log', (_event, payload) => {
+    const record = payload && typeof payload === 'object'
+      ? payload
+      : { value: String(payload) };
+
+    logDesktop('renderer:event', record);
   });
 
   ipcMain.handle('dialog:selectDirectory', async (_event, options = {}) => {
@@ -764,7 +948,7 @@ function createWindow(baseUrl) {
   logDesktop('Creating BrowserWindow', { baseUrl });
 
   const iconPath = path.join(resolveAppRoot(), 'build', 'icon.png');
-  const preloadPath = path.join(__dirname, 'preload.mjs');
+  const preloadPath = path.join(__dirname, 'preload.cjs');
 
   const savedState = loadWindowState();
   const defaultWidth = 1440;
@@ -795,6 +979,7 @@ function createWindow(baseUrl) {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
+  attachNetworkErrorLogging(mainWindow);
 
   if (savedState?.isMaximized) {
     mainWindow.maximize();
@@ -829,6 +1014,8 @@ function createWindow(baseUrl) {
       event.preventDefault();
       shell.openExternal(url);
     }
+
+    logDesktop('renderer:will-navigate', { url });
   });
 
   // Persist window state on move/resize.
@@ -858,6 +1045,10 @@ function createWindow(baseUrl) {
     logDesktop('BrowserWindow became unresponsive');
   });
 
+  mainWindow.on('responsive', () => {
+    logDesktop('BrowserWindow became responsive');
+  });
+
   mainWindow.once('ready-to-show', () => {
     logDesktop('BrowserWindow ready-to-show');
     revealWindow('ready-to-show');
@@ -874,6 +1065,23 @@ function createWindow(baseUrl) {
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     logDesktop('render-process-gone', details);
+  });
+
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    logDesktop('renderer:console', {
+      level,
+      message: trimLogValue(message),
+      line,
+      sourceId,
+    });
+  });
+
+  mainWindow.webContents.on('did-start-loading', () => {
+    logDesktop('renderer:did-start-loading');
+  });
+
+  mainWindow.webContents.on('did-stop-loading', () => {
+    logDesktop('renderer:did-stop-loading');
   });
 
   mainWindow.loadURL(baseUrl);
@@ -986,10 +1194,14 @@ app.on('activate', () => {
 
 logDesktop('Electron main process starting', {
   pid: process.pid,
+  runId: currentRunId,
   isDev,
   platform: process.platform,
   cwd: process.cwd(),
   userData: app.getPath('userData'),
+  desktopLogPath: getDesktopLogPath(),
+  runLogPath: getCurrentRunLogPath(),
+  runLogsDir: getRunLogsDir(),
 });
 
 app.whenReady()
