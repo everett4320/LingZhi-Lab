@@ -122,11 +122,13 @@ git push origin custom
 ## Desktop Packaging And Install Rule (lingzhi-lab)
 
 - When user asks to package the Windows desktop app, do not stop at build/package completion.
+- Before installing a new package, fully remove old installed app files first (uninstall if available, then clean the install directory).
 - After packaging, install the produced Windows app so the user can launch it immediately.
 - Required verification after install:
   1. Confirm a launchable exe exists in the install directory.
-  2. Start the app once and confirm it starts (non-error process start is sufficient).
+  2. Start the app once and confirm it starts (process must stay alive during verification window; immediate exit is failure).
   3. Ensure or update a desktop shortcut pointing to the installed exe.
+  4. Open the app for the user at the end of the packaging flow.
 - Preferred sequence:
   1. Build installer with npm run desktop:dist:win.
   2. Attempt silent NSIS install.

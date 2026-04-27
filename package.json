@@ -51,6 +51,7 @@
     "desktop:pack:win": "node electron/cli.mjs pack --win",
     "desktop:dist:mac": "node electron/cli.mjs dist --mac dmg --publish never",
     "desktop:dist:win": "node electron/cli.mjs dist --win nsis --publish never",
+    "desktop:fresh:win": "npm run desktop:dist:win && node scripts/desktop-fresh-install-win.mjs",
     "desktop:prune:unpacked": "node packaging/prune-windows-unpacked.mjs",
     "desktop:audit:artifact": "node packaging/audit-desktop-artifact.mjs",
     "desktop:ci:gate": "npm run test -- packaging/__tests__/desktop-package-config.test.mjs packaging/__tests__/desktop-runtime-robustness.test.mjs packaging/__tests__/desktop-security-hardening.test.mjs packaging/__tests__/desktop-workflow-contract.test.mjs && npm run desktop:audit:artifact"

@@ -127,7 +127,48 @@ function saveWindowState(window) {
 
 function resolveAppRoot() {
   if (!app.isPackaged) return process.cwd();
-  return path.join(process.resourcesPath, 'app');
+
+  const candidates = [
+    app.getAppPath(),
+    path.join(process.resourcesPath, 'app.asar'),
+    path.join(process.resourcesPath, 'app'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'server', 'index.js'))) {
+      return candidate;
+    }
+  }
+
+  return app.getAppPath();
+}
+
+function resolveServerEntrypoint(appRoot) {
+  const candidates = [
+    path.join(appRoot, 'server', 'index.js'),
+    path.join(process.resourcesPath, 'app.asar', 'server', 'index.js'),
+    path.join(process.resourcesPath, 'app', 'server', 'index.js'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return candidates[0];
+}
+
+function resolveServerCwd(appRoot, entrypoint) {
+  if (!app.isPackaged) {
+    return appRoot;
+  }
+
+  if (entrypoint.includes(`${path.sep}app.asar${path.sep}`)) {
+    return process.resourcesPath;
+  }
+
+  return appRoot;
 }
 
 function resolveNodeBinary() {
@@ -293,7 +334,8 @@ async function startServer() {
   const requestedPort = Number.parseInt(env.PORT, 10) || 3001;
   const selectedPort = await findAvailablePort(requestedPort, env.HOST);
   env.PORT = String(selectedPort);
-  const entrypoint = path.join(appRoot, 'server', 'index.js');
+  const entrypoint = resolveServerEntrypoint(appRoot);
+  const serverCwd = resolveServerCwd(appRoot, entrypoint);
   const nodeBinary = resolveNodeBinary();
 
   if (!fs.existsSync(entrypoint)) {
@@ -308,11 +350,12 @@ async function startServer() {
     port: env.PORT,
     host: env.HOST,
     appRoot,
+    serverCwd,
     userData: app.getPath('userData'),
   });
 
   serverProcess = spawn(nodeBinary, [entrypoint], {
-    cwd: appRoot,
+    cwd: serverCwd,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
