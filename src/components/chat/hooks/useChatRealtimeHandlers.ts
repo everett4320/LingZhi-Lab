@@ -66,12 +66,13 @@ const CODEX_REALTIME_MESSAGE_TYPES = new Set<string>([
   "chat-session-created",
   "chat-session-upsert",
   "chat-turn-accepted",
-  "chat-turn-queued",
   "chat-turn-delta",
   "chat-turn-item",
   "chat-turn-complete",
   "chat-turn-error",
   "chat-turn-aborted",
+  "chat-turn-user-message-committed",
+  "chat-turn-steer-rejected",
   "chat-sidebar-remove",
   "token-budget",
 ]);
@@ -168,6 +169,15 @@ interface UseChatRealtimeHandlersArgs {
     sessionId?: string | null,
     isProcessing?: boolean,
   ) => void;
+  onCodexSteerCommitted?: (
+    sessionId?: string | null,
+    compareKey?: Record<string, unknown> | null,
+  ) => void;
+  onCodexSteerRejected?: (payload?: {
+    sessionId?: string | null;
+    clientTurnId?: string | null;
+    turnKind?: string | null;
+  }) => void;
   onCodexSessionIdResolved?: (
     previousSessionId?: string | null,
     actualSessionId?: string | null,
@@ -261,6 +271,8 @@ export function useChatRealtimeHandlers({
   onCodexTurnStarted,
   onCodexTurnSettled,
   onCodexSessionStatusUpdate,
+  onCodexSteerCommitted,
+  onCodexSteerRejected,
   onCodexSessionIdResolved,
   onReplaceTemporarySession,
   onNavigateToSession,
@@ -571,8 +583,7 @@ export function useChatRealtimeHandlers({
     const globalMessageTypes = [
       "projects_updated",
       "taskmaster-project-updated",
-      "chat-turn-queued",
-      "session-status",
+          "session-status",
       "session-state-changed",
     ];
     const isGlobalMessage = globalMessageTypes.includes(
@@ -581,6 +592,8 @@ export function useChatRealtimeHandlers({
     const lifecycleMessageTypes = new Set([
       "chat-turn-complete",
       "chat-turn-aborted",
+  "chat-turn-user-message-committed",
+  "chat-turn-steer-rejected",
       "chat-turn-error",
     ]);
 
@@ -1901,6 +1914,35 @@ export function useChatRealtimeHandlers({
         }
         break;
 
+      case "chat-turn-user-message-committed": {
+        onCodexSteerCommitted?.(
+          routedMessageSessionId || currentSessionId || selectedSession?.id || null,
+          normalizedLatestMessage.compareKey && typeof normalizedLatestMessage.compareKey === "object"
+            ? (normalizedLatestMessage.compareKey as Record<string, unknown>)
+            : null,
+        );
+        break;
+      }
+
+      case "chat-turn-steer-rejected": {
+        onCodexSteerRejected?.({
+          sessionId:
+            routedMessageSessionId ||
+            currentSessionId ||
+            selectedSession?.id ||
+            null,
+          clientTurnId:
+            typeof normalizedLatestMessage.clientTurnId === "string"
+              ? normalizedLatestMessage.clientTurnId
+              : null,
+          turnKind:
+            typeof normalizedLatestMessage.turnKind === "string"
+              ? normalizedLatestMessage.turnKind
+              : null,
+        });
+        break;
+      }
+
       case "chat-turn-aborted": {
         const abortedProvider = resolveProvider(
           typeof normalizedLatestMessage.provider === "string"
@@ -1951,36 +1993,6 @@ export function useChatRealtimeHandlers({
             },
           ]);
         }
-        break;
-      }
-
-      case "chat-turn-queued": {
-        const queuedSessionId =
-          routedMessageSessionId ||
-          routedMessageProvisionalSessionId ||
-          pendingViewSessionRef.current?.sessionId ||
-          currentSessionId ||
-          selectedSession?.id ||
-          null;
-        if (!queuedSessionId) {
-          break;
-        }
-
-        const queuedProvider = resolveProvider(
-          typeof normalizedLatestMessage.provider === "string"
-            ? normalizedLatestMessage.provider
-            : provider,
-        );
-        const queuedProjectName = resolveProjectName(
-          typeof normalizedLatestMessage.projectName === "string"
-            ? normalizedLatestMessage.projectName
-            : selectedProject?.name || null,
-        );
-        notifySessionProcessing(
-          queuedSessionId,
-          queuedProvider,
-          queuedProjectName,
-        );
         break;
       }
 
@@ -2075,6 +2087,8 @@ export function useChatRealtimeHandlers({
     onCodexTurnStarted,
     onCodexTurnSettled,
     onCodexSessionStatusUpdate,
+    onCodexSteerCommitted,
+    onCodexSteerRejected,
     onCodexSessionIdResolved,
     onReplaceTemporarySession,
     onNavigateToSession,

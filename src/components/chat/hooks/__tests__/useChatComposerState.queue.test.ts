@@ -1,174 +1,97 @@
 import { describe, expect, it } from "vitest";
 
+import { resolvePreferredCodexSessionId } from "../useChatComposerState";
 import {
-  applyQueuedTurnTerminalOutcome,
-  deriveQueueDispatchState,
-  resolvePreferredCodexSessionId,
-} from "../useChatComposerState";
-import {
-  buildQueuedTurn,
-  type SessionQueueMap,
+  createCodexInputMessage,
+  createEmptyCodexInputState,
+  reduceCodexInputSubmit,
+  reduceCodexSteerCommitted,
+  reduceCodexSteerRejected,
+  reduceCodexTurnCompleted,
+  reduceCodexTurnAborted,
 } from "../../utils/codexQueue";
 
-describe("useChatComposerState queue lifecycle helpers", () => {
-  it("allows only one active dispatch for a session in UI state", () => {
-    const sessionId = "session-1";
-    const queueBySession: SessionQueueMap = {
-      [sessionId]: [
-        buildQueuedTurn({
-          id: "turn-1",
-          sessionId,
-          text: "first",
-          kind: "normal",
-        }),
-        buildQueuedTurn({
-          id: "turn-2",
-          sessionId,
-          text: "second",
-          kind: "normal",
-        }),
-      ],
-    };
-
-    const noActive = deriveQueueDispatchState(queueBySession, sessionId, {
-      hasActiveQueuedTurn: false,
-      isSessionProcessing: false,
+describe("useChatComposerState reducer semantics", () => {
+  it("moves steer from pending preview after committed compareKey", () => {
+    const base = createEmptyCodexInputState();
+    const steer = createCodexInputMessage({
+      id: "steer-1",
+      text: "please adjust output",
+      localImages: ["/tmp/a.png"],
+      mentionBindings: [{ path: "src/a.ts" }],
     });
-    expect(noActive.shouldDispatch).toBe(true);
-    expect(noActive.nextTurn?.id).toBe("turn-1");
 
-    const withActive = deriveQueueDispatchState(queueBySession, sessionId, {
-      hasActiveQueuedTurn: true,
-      isSessionProcessing: false,
+    const submitted = reduceCodexInputSubmit(base, steer, "steer");
+    expect(submitted.state.pendingSteers).toHaveLength(1);
+
+    const committed = reduceCodexSteerCommitted(submitted.state, {
+      text: "please adjust output",
+      localImagesCount: 1,
+      remoteImageUrlsCount: 0,
+      mentionBindingsCount: 1,
+      documentCount: 0,
     });
-    expect(withActive.shouldDispatch).toBe(false);
-    expect(withActive.nextTurn?.id).toBe("turn-1");
+
+    expect(committed.pendingSteers).toHaveLength(0);
   });
 
-  it("applies steer success path by removing the settled turn and keeping queue running", () => {
-    const sessionId = "session-1";
-    const queueBySession: SessionQueueMap = {
-      [sessionId]: [
-        buildQueuedTurn({
-          id: "steer-1",
-          sessionId,
-          text: "steer turn",
-          kind: "steer",
-          expectedTurnId: "turn-active-1",
-        }),
-        buildQueuedTurn({
-          id: "normal-1",
-          sessionId,
-          text: "normal turn",
-          kind: "normal",
-        }),
-      ],
-    };
-
-    const next = applyQueuedTurnTerminalOutcome({
-      queueBySession,
-      sessionId,
-      turnId: "steer-1",
-      outcome: "complete",
+  it("moves rejected steer to rejected queue", () => {
+    const steer = createCodexInputMessage({
+      id: "steer-2",
+      clientTurnId: "ct-2",
+      text: "follow this constraint",
     });
 
-    expect(next[sessionId].map((turn) => turn.id)).toEqual(["normal-1"]);
-    expect(next[sessionId][0].status).toBe("queued");
+    const submitted = reduceCodexInputSubmit(createEmptyCodexInputState(), steer, "steer");
+    const rejected = reduceCodexSteerRejected(submitted.state, {
+      clientTurnId: "ct-2",
+      turnKind: "steer",
+      rejectedAt: Date.now(),
+    });
+
+    expect(rejected.pendingSteers).toHaveLength(0);
+    expect(rejected.rejectedSteersQueue).toHaveLength(1);
+    expect(rejected.rejectedSteersQueue[0].text).toBe("follow this constraint");
   });
 
-  it("preserves expectedTurnId metadata for steer queued turns", () => {
-    const queued = buildQueuedTurn({
-      id: "steer-with-turn",
-      sessionId: "session-1",
-      text: "steer next response",
-      kind: "steer",
-      expectedTurnId: "turn-123",
-    });
-
-    expect(queued.kind).toBe("steer");
-    expect(queued.expectedTurnId).toBe("turn-123");
-  });
-
-  it("applies steer failure path by removing the settled turn and preserving queue continuity", () => {
-    const sessionId = "session-1";
-    const queueBySession: SessionQueueMap = {
-      [sessionId]: [
-        buildQueuedTurn({
-          id: "steer-1",
-          sessionId,
-          text: "steer turn",
-          kind: "steer",
-        }),
-        buildQueuedTurn({
-          id: "normal-1",
-          sessionId,
-          text: "normal turn",
-          kind: "normal",
-        }),
+  it("turn complete prioritizes rejected steers over queued follow-up", () => {
+    const state = {
+      ...createEmptyCodexInputState(),
+      rejectedSteersQueue: [
+        createCodexInputMessage({ id: "r1", text: "rejected one" }),
+        createCodexInputMessage({ id: "r2", text: "rejected two" }),
       ],
+      queuedUserMessages: [
+        createCodexInputMessage({ id: "q1", text: "queued one" }),
+      ],
+      taskRunning: true,
     };
 
-    const next = applyQueuedTurnTerminalOutcome({
-      queueBySession,
-      sessionId,
-      turnId: "steer-1",
-      outcome: "error",
-    });
-
-    expect(next[sessionId].map((turn) => turn.id)).toEqual(["normal-1"]);
-    expect(next[sessionId][0].status).toBe("queued");
+    const settled = reduceCodexTurnCompleted(state);
+    expect(settled.resolution.action).toBe("dispatch-merge-start");
+    if (settled.resolution.action === "dispatch-merge-start") {
+      expect(settled.resolution.merged.text).toContain("rejected one");
+      expect(settled.resolution.merged.text).toContain("rejected two");
+    }
+    expect(settled.state.rejectedSteersQueue).toHaveLength(0);
   });
 
-  it("converges to paused queue state after interrupt-style aborted terminal outcome", () => {
-    const sessionId = "session-1";
-    const queueBySession: SessionQueueMap = {
-      [sessionId]: [
-        buildQueuedTurn({
-          id: "turn-1",
-          sessionId,
-          text: "first",
-          kind: "normal",
-        }),
-        buildQueuedTurn({
-          id: "turn-2",
-          sessionId,
-          text: "second",
-          kind: "normal",
-        }),
-      ],
+  it("turn aborted without interrupt restores all unsent content to composer draft", () => {
+    const state = {
+      ...createEmptyCodexInputState(),
+      rejectedSteersQueue: [createCodexInputMessage({ id: "r1", text: "r" })],
+      pendingSteers: [createCodexInputMessage({ id: "p1", text: "p" })],
+      queuedUserMessages: [createCodexInputMessage({ id: "q1", text: "q" })],
+      composerDraft: createCodexInputMessage({ id: "d1", text: "d" }),
+      taskRunning: true,
     };
 
-    const next = applyQueuedTurnTerminalOutcome({
-      queueBySession,
-      sessionId,
-      turnId: "turn-1",
-      outcome: "aborted",
-    });
-
-    expect(next[sessionId].map((turn) => turn.id)).toEqual(["turn-2"]);
-    expect(next[sessionId][0].status).toBe("paused");
-  });
-
-  it("blocks dispatch for steer queued turn when expectedTurnId is missing", () => {
-    const sessionId = "session-1";
-    const queueBySession: SessionQueueMap = {
-      [sessionId]: [
-        buildQueuedTurn({
-          id: "steer-missing-turn",
-          sessionId,
-          text: "steer without active turn",
-          kind: "steer",
-        }),
-      ],
-    };
-
-    const state = deriveQueueDispatchState(queueBySession, sessionId, {
-      hasActiveQueuedTurn: false,
-      isSessionProcessing: false,
-    });
-
-    expect(state.shouldDispatch).toBe(false);
-    expect(state.nextTurn).toBeNull();
+    const aborted = reduceCodexTurnAborted(state, { interruptForPendingSteers: false });
+    expect(aborted.resolution.action).toBe("dispatch-none");
+    expect(aborted.state.composerDraft?.text).toContain("r");
+    expect(aborted.state.composerDraft?.text).toContain("p");
+    expect(aborted.state.composerDraft?.text).toContain("q");
+    expect(aborted.state.composerDraft?.text).toContain("d");
   });
 
   it("prefers selected/routed session over stale current session when resolving codex target session", () => {

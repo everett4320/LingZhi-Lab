@@ -136,20 +136,40 @@ export interface Question {
   multiSelect?: boolean;
 }
 
-export type QueuedTurnKind = 'normal' | 'steer';
-export type QueuedTurnStatus = 'queued' | 'paused';
-
-export interface QueuedTurn {
+export interface CodexInputMessage {
   id: string;
-  sessionId: string;
   text: string;
-  kind: QueuedTurnKind;
-  status: QueuedTurnStatus;
+  textElements: unknown[];
+  localImages: string[];
+  remoteImageUrls: string[];
+  mentionBindings: unknown[];
   createdAt: number;
   projectName?: string;
   projectPath?: string;
   sessionMode?: SessionMode;
   expectedTurnId?: string;
+  clientTurnId?: string;
+}
+
+export interface CodexInputSteerRejection {
+  clientTurnId: string | null;
+  turnKind: string | null;
+  rejectedAt: number;
+}
+
+export interface CodexInputState {
+  composerDraft: CodexInputMessage | null;
+  queuedUserMessages: CodexInputMessage[];
+  pendingSteers: CodexInputMessage[];
+  rejectedSteersQueue: CodexInputMessage[];
+  recentSteerRejections: CodexInputSteerRejection[];
+  activeTurnId: string | null;
+  taskRunning: boolean;
+  sessionBinding: {
+    provisionalSessionId: string | null;
+    sessionId: string | null;
+  };
+  interruptRequestedForPendingSteers: boolean;
 }
 
 export interface ChatInterfaceProps {

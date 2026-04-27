@@ -8,6 +8,7 @@ import { createJsonRpcMux, normalizeRpcError } from './utils/codexAppServerRpc.j
 import { createCodexSessionStateStore } from './utils/codexSessionStateStore.js';
 import { normalizeSessionMode } from './utils/sessionMode.js';
 import { buildCodexRealtimeTokenBudget } from './utils/sessionTokenUsage.js';
+import { buildLingzhiCodexRuntimeEnv, getLingzhiCodexHome } from './utils/codexHome.js';
 
 const APP_SERVER_BOOT_TIMEOUT_MS =
   Number.parseInt(process.env.CODEX_APP_SERVER_BOOT_TIMEOUT_MS || '', 10) || 15000;
@@ -199,6 +200,51 @@ function mapRpcErrorToTurnError(rpcError) {
       code: normalized.code,
       data: normalized.data,
     },
+  };
+}
+
+function buildSteerCompareKey(item = null) {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+
+  const textParts = [];
+  let localImageCount = 0;
+  let remoteImageCount = 0;
+  let mentionCount = 0;
+  let documentCount = 0;
+
+  if (Array.isArray(item.content)) {
+    for (const part of item.content) {
+      if (!part || typeof part !== 'object') continue;
+      const partType = String(part.type || '').trim();
+      if (partType === 'text') {
+        const text = typeof part.text === 'string' ? part.text.trim() : '';
+        if (text) textParts.push(text);
+      } else if (partType === 'local_image') {
+        localImageCount += 1;
+      } else if (partType === 'remote_image') {
+        remoteImageCount += 1;
+      } else if (partType === 'mention') {
+        mentionCount += 1;
+      } else if (partType === 'document') {
+        documentCount += 1;
+      }
+    }
+  }
+
+  const rawText = textParts.join('\n').trim();
+  if (!rawText && localImageCount === 0 && remoteImageCount === 0 && mentionCount === 0 && documentCount === 0) {
+    return null;
+  }
+
+  return {
+    text: rawText,
+    textElements: [],
+    localImagesCount: localImageCount,
+    remoteImageUrlsCount: remoteImageCount,
+    mentionBindingsCount: mentionCount,
+    documentCount,
   };
 }
 
@@ -418,10 +464,12 @@ class CodexBridgeRuntime {
 
     this.closing = false;
     this.lineBuffer = '';
+    const runtimeEnv = buildLingzhiCodexRuntimeEnv(process.env);
+    const codexHome = getLingzhiCodexHome(runtimeEnv);
 
     const child = this.spawnFn(cliCommand, ['app-server', '--listen', 'stdio://'], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: process.env,
+      env: runtimeEnv,
       shell: process.platform === 'win32',
     });
 
@@ -459,6 +507,7 @@ class CodexBridgeRuntime {
     }
 
     await this.performInitializationHandshake();
+    this.logger?.info?.(`[CodexBridge] app-server started with CODEX_HOME=${codexHome}`);
   }
 
   async handleServerRequest(method, params = {}) {
@@ -1030,6 +1079,18 @@ class CodexBridgeRuntime {
         if (!mappedItem) return;
 
         emit(runtime.writer, toWriterItemPayload(mappedItem, runtime.sessionId, runtime.projectName));
+
+        if (method === NOTIFICATION.ITEM_COMPLETED && params?.item?.type === 'userMessage') {
+          const compareKey = buildSteerCompareKey(params.item);
+          emit(runtime.writer, {
+            type: 'chat-turn-user-message-committed',
+            sessionId: runtime.sessionId,
+            provider: 'codex',
+            projectName: runtime.projectName,
+            turnId: toSessionKey(params.turnId || params?.item?.turnId || runtime.lastTurnId),
+            compareKey,
+          });
+        }
         break;
       }
 
@@ -1580,6 +1641,17 @@ class CodexBridgeRuntime {
       };
     } catch (error) {
       const mappedError = mapRpcErrorToTurnError(error);
+      const errorCode = String(mappedError?.details?.code || '').trim().toLowerCase();
+      if (errorCode === 'activeturnnotsteerable') {
+        emit(runtime.writer, {
+          type: 'chat-turn-steer-rejected',
+          sessionId: runtime.sessionId,
+          provider: 'codex',
+          projectName: runtime.projectName,
+          clientTurnId: runtime.clientTurnId || null,
+          turnKind: 'steer',
+        });
+      }
       this.emitTurnError({
         sessionId: normalizedSessionId,
         clientTurnId: runtime.clientTurnId,

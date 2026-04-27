@@ -244,6 +244,7 @@ function ChatInterface({
     isDragActive,
     openFilePicker,
     handleSubmit,
+    handleQueueSubmit,
     handleInputChange,
     handleKeyDown,
     handlePaste,
@@ -265,10 +266,16 @@ function ChatInterface({
     closeBtwOverlay,
     submitProgrammaticMessage,
     loadMessageIntoComposer,
+    rejectedSteersPreview,
+    pendingSteersPreview,
+    queuedFollowupPreview,
+    restoreLastQueuedToComposer,
     handleCodexTurnStarted,
     handleCodexTurnSettled,
     handleCodexSessionIdResolved,
     handleCodexSessionStatusUpdate,
+    handleCodexSteerCommitted,
+    handleCodexSteerRejected,
   } = useChatComposerState({
     selectedProject,
     selectedSession,
@@ -325,6 +332,8 @@ function ChatInterface({
     onCodexTurnSettled: handleCodexTurnSettled,
     onCodexSessionIdResolved: handleCodexSessionIdResolved,
     onCodexSessionStatusUpdate: handleCodexSessionStatusUpdate,
+    onCodexSteerCommitted: handleCodexSteerCommitted,
+    onCodexSteerRejected: handleCodexSteerRejected,
     onReplaceTemporarySession,
     onNavigateToSession,
     sendMessage,
@@ -811,6 +820,7 @@ function ChatInterface({
           hasMessages={chatMessages.length > 0}
           onScrollToBottom={scrollToBottomAndReset}
           onSubmit={handleSubmit}
+          onQueue={handleQueueSubmit}
           isDragActive={isDragActive}
           attachedFiles={attachedFiles}
           onRemoveFile={removeAttachedFile}
@@ -864,6 +874,10 @@ function ChatInterface({
           setCodexModel={setCodexModel}
           newSessionMode={newSessionMode}
           onNewSessionModeChange={onNewSessionModeChange}
+          rejectedSteersPreview={rejectedSteersPreview}
+          pendingSteersPreview={pendingSteersPreview}
+          queuedFollowupPreview={queuedFollowupPreview}
+          onRestoreLastQueued={restoreLastQueuedToComposer}
         />
 
         {isEmpty && newSessionMode === 'research' && (

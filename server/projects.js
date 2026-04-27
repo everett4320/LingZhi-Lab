@@ -86,6 +86,7 @@ import {
   readExplicitSessionModeFromMetadata,
 } from './utils/sessionMode.js';
 import { resolveNanoSessionAbsPath, safeNanoSessionFilename } from './nanoSessionPaths.js';
+import { getLingzhiCodexSessionsRoot } from './utils/codexHome.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LINGZHILAB_SKILLS_DIR = path.join(__dirname, '..', 'skills');
@@ -3851,7 +3852,7 @@ async function buildCodexSessionsIndex(options = {}) {
   }
 
   const buildPromise = (async () => {
-    const codexSessionsDir = path.join(os.homedir(), '.codex', 'sessions');
+    const codexSessionsDir = getLingzhiCodexSessionsRoot(process.env);
     const sessionsByProject = new Map();
 
     try {
@@ -4119,7 +4120,7 @@ async function resolveCodexSessionFilePath(sessionId) {
     return refreshedCachedPath;
   }
 
-  const codexSessionsDir = path.join(os.homedir(), '.codex', 'sessions');
+  const codexSessionsDir = getLingzhiCodexSessionsRoot(process.env);
   const jsonlFiles = await findCodexJsonlFiles(codexSessionsDir);
 
   for (const filePath of jsonlFiles) {
@@ -4398,7 +4399,7 @@ async function getCodexSessionMessages(sessionId, limit = null, offset = 0) {
 async function deleteCodexSession(sessionId) {
   try {
     const { sessionDb } = await import('./database/db.js');
-    const codexSessionsDir = path.join(os.homedir(), '.codex', 'sessions');
+    const codexSessionsDir = getLingzhiCodexSessionsRoot(process.env);
     const indexedSession = sessionDb.getSessionById(sessionId);
     const normalizedSessionId = normalizeCodexSessionId(sessionId);
 

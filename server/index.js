@@ -84,10 +84,11 @@ import {
     setRuntimePortSync,
 } from './utils/runtimePorts.js';
 import { buildCodexTokenUsageFromJsonl } from './utils/sessionTokenUsage.js';
+import { getLingzhiCodexSessionsRoot } from './utils/codexHome.js';
 
 // File system watchers for provider project/session folders
 const PROVIDER_WATCH_PATHS = [
-    { provider: 'codex', rootPath: path.join(os.homedir(), '.codex', 'sessions') },
+    { provider: 'codex', rootPath: getLingzhiCodexSessionsRoot(process.env) },
 ];
 const WATCHER_IGNORED_PATTERNS = [
     '**/node_modules/**',
@@ -1567,29 +1568,6 @@ function handleChatConnection(ws, request) {
                 console.log('[DEBUG] Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
                 console.log('[DEBUG] Session:', data.options?.sessionId ? 'Resume' : 'New');
                 console.log('[DEBUG] Model:', data.options?.model || 'default');
-                if (data.options?.queueOnly === true) {
-                    const queuedTurnId = typeof data.options?.queuedTurnId === 'string'
-                        ? data.options.queuedTurnId
-                        : null;
-                    const projectName = data.options?.projectName || resolveProjectName(null, data.options?.projectPath || data.options?.cwd || null);
-                    writer.send({
-                        type: 'chat-turn-queued',
-                        provider: 'codex',
-                        projectName: projectName || null,
-                        sessionId:
-                            (typeof data.options?.sessionId === 'string' && data.options.sessionId.trim().length > 0)
-                                ? data.options.sessionId.trim()
-                                : (typeof data.sessionId === 'string' && data.sessionId.trim().length > 0 ? data.sessionId.trim() : null),
-                        clientTurnId:
-                            typeof data.options?.clientTurnId === 'string' && data.options.clientTurnId.trim().length > 0
-                                ? data.options.clientTurnId.trim()
-                                : queuedTurnId,
-                        queuedTurnId,
-                        queued: true,
-                        queuedAt: Date.now(),
-                    });
-                    return;
-                }
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
                 const provisionalSessionId =
                     typeof data.sessionId === 'string' && data.sessionId.trim().length > 0

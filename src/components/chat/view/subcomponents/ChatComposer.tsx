@@ -8,6 +8,7 @@ import ChatInputControls from './ChatInputControls';
 import ReferencePicker from '../../../references/view/ReferencePicker';
 import PromptBadgeDropdown from './PromptBadgeDropdown';
 import { Plus } from 'lucide-react';
+import { ListPlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import type {
@@ -23,7 +24,7 @@ import type {
   TouchEvent,
 } from 'react';
 import type { CodexReasoningEffortId } from '../../constants/codexReasoningEfforts';
-import type { AttachedPrompt, PendingPermissionRequest, PermissionMode, Provider, TokenBudget } from '../../types/types';
+import type { AttachedPrompt, CodexInputMessage, PendingPermissionRequest, PermissionMode, Provider, TokenBudget } from '../../types/types';
 import type { SessionMode, SessionProvider } from '../../../../types/app';
 import { CODEX_MODELS } from '../../../../../shared/modelConstants';
 import { isAutoResearchScenario } from '../../utils/autoResearch';
@@ -82,6 +83,7 @@ interface ChatComposerProps {
   hasMessages: boolean;
   onScrollToBottom: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement> | MouseEvent<HTMLButtonElement> | TouchEvent<HTMLButtonElement>) => void;
+  onQueue?: (event: MouseEvent<HTMLButtonElement> | TouchEvent<HTMLButtonElement>) => void;
   isDragActive: boolean;
   attachedFiles: File[];
   onRemoveFile: (index: number) => void;
@@ -127,6 +129,10 @@ interface ChatComposerProps {
   setCodexModel?: (model: string) => void;
   newSessionMode?: SessionMode;
   onNewSessionModeChange?: (mode: SessionMode) => void;
+  rejectedSteersPreview?: CodexInputMessage[];
+  pendingSteersPreview?: CodexInputMessage[];
+  queuedFollowupPreview?: CodexInputMessage[];
+  onRestoreLastQueued?: () => void;
 }
 
 export default function ChatComposer({
@@ -151,6 +157,7 @@ export default function ChatComposer({
   hasMessages,
   onScrollToBottom,
   onSubmit,
+  onQueue,
   isDragActive,
   attachedFiles,
   onRemoveFile,
@@ -196,6 +203,10 @@ export default function ChatComposer({
   setCodexModel,
   newSessionMode,
   onNewSessionModeChange,
+  rejectedSteersPreview = [],
+  pendingSteersPreview = [],
+  queuedFollowupPreview = [],
+  onRestoreLastQueued,
 }: ChatComposerProps) {
   const { t } = useTranslation('chat');
   const [showReferencePicker, setShowReferencePicker] = useState(false);
@@ -243,7 +254,55 @@ export default function ChatComposer({
         />
       </div>
 
+      {(rejectedSteersPreview.length > 0 || pendingSteersPreview.length > 0 || queuedFollowupPreview.length > 0) && (
+        <div className={`mx-auto mb-2 ${centered ? 'max-w-3xl' : 'max-w-5xl'}`}>
+          <div className="rounded-xl border border-border/50 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            {rejectedSteersPreview.length > 0 && (
+              <div className="mb-1">
+                <div className="font-semibold text-amber-600 dark:text-amber-400">Rejected steers</div>
+                <div className="space-y-1">
+                  {rejectedSteersPreview.map((entry) => (
+                    <div key={entry.id} className="truncate">{entry.text || '[non-text input]'}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {pendingSteersPreview.length > 0 && (
+              <div className="mb-1">
+                <div className="font-semibold text-blue-600 dark:text-blue-400">Pending steers</div>
+                <div className="space-y-1">
+                  {pendingSteersPreview.map((entry) => (
+                    <div key={entry.id} className="truncate">{entry.text || '[non-text input]'}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {queuedFollowupPreview.length > 0 && (
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="font-semibold text-foreground">Queued follow-up messages</span>
+                  <button
+                    type="button"
+                    onClick={() => onRestoreLastQueued?.()}
+                    className="rounded border border-border/60 px-2 py-0.5 text-[11px] hover:bg-accent"
+                    disabled={!onRestoreLastQueued}
+                  >
+                    Restore last
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {queuedFollowupPreview.map((entry) => (
+                    <div key={entry.id} className="truncate">{entry.text || '[non-text input]'}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {!hasQuestionPanel && <form onSubmit={onSubmit as (event: FormEvent<HTMLFormElement>) => void} className={`relative mx-auto ${centered ? 'max-w-3xl' : 'max-w-5xl'}`}>
+
         {!centered && !hasQuestionPanel && (isLoading || (isUserScrolledUp && hasMessages)) && (
           <div className="pointer-events-none absolute bottom-full left-0 right-0 flex justify-center pb-1.5">
             <div className="pointer-events-auto relative flex items-center">
@@ -446,6 +505,23 @@ export default function ChatComposer({
                   >
                     <Plus className="w-4 h-4" />
                   </button>
+                  {provider === 'codex' && isLoading && onQueue && (
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        onQueue(event);
+                      }}
+                      onTouchStart={(event) => {
+                        event.preventDefault();
+                        onQueue(event);
+                      }}
+                      className="p-1 hover:bg-accent/60 rounded-full transition-colors flex items-center justify-center text-muted-foreground"
+                      title="Queue follow-up"
+                    >
+                      <ListPlus className="w-4 h-4" />
+                    </button>
+                  )}
 
                   {/* Skill shortcuts — only in normal chat mode */}
                   {!centered && (

@@ -59,7 +59,13 @@ describe("isCodexRealtimeMessageSupported", () => {
     ).toBe(true);
     expect(
       isCodexRealtimeMessageSupported({
-        type: "chat-turn-queued",
+        type: "chat-turn-user-message-committed",
+        scope: { provider: "codex" },
+      }),
+    ).toBe(true);
+    expect(
+      isCodexRealtimeMessageSupported({
+        type: "chat-turn-steer-rejected",
         scope: { provider: "codex" },
       }),
     ).toBe(true);

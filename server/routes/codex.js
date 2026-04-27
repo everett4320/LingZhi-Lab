@@ -1,8 +1,6 @@
 import express from 'express';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
-import path from 'path';
-import os from 'os';
 import TOML from '@iarna/toml';
 import { getCodexSessions, getCodexSessionMessages, deleteCodexSession } from '../projects.js';
 import {
@@ -12,6 +10,7 @@ import {
   getCodexShadowParitySnapshot,
   resetCodexShadowParityMetrics,
 } from '../utils/codexShadowParity.js';
+import { getLingzhiCodexConfigPath } from '../utils/codexHome.js';
 
 const router = express.Router();
 
@@ -28,7 +27,7 @@ function createCliResponder(res) {
 
 router.get('/config', async (req, res) => {
   try {
-    const configPath = path.join(os.homedir(), '.codex', 'config.toml');
+    const configPath = getLingzhiCodexConfigPath(process.env);
     const content = await fs.readFile(configPath, 'utf8');
     const config = TOML.parse(content);
 
@@ -296,7 +295,7 @@ router.get('/mcp/cli/get/:name', async (req, res) => {
 
 router.get('/mcp/config/read', async (req, res) => {
   try {
-    const configPath = path.join(os.homedir(), '.codex', 'config.toml');
+    const configPath = getLingzhiCodexConfigPath(process.env);
 
     let configData = null;
 

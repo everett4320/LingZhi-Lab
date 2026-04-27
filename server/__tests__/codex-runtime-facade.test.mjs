@@ -112,15 +112,13 @@ describe('codex runtime facade', () => {
     expect(legacyFns.queryCodex).not.toHaveBeenCalled();
   });
 
-  it('uses bridge query path with queueOnly payload in bridge mode', async () => {
+  it('passes through regular query payload in bridge mode', async () => {
     delete process.env.CODEX_RUNTIME_MODE;
     const mod = await import('../codex-runtime-facade.js');
 
     const writer = createWriter().writer;
     const result = await mod.queryCodexUnified('queued-message', {
       sessionId: 'session-q-1',
-      queueOnly: true,
-      queuedTurnId: 'queued-turn-1',
       projectName: 'proj',
     }, writer);
 
@@ -130,8 +128,6 @@ describe('codex runtime facade', () => {
       'queued-message',
       expect.objectContaining({
         sessionId: 'session-q-1',
-        queueOnly: true,
-        queuedTurnId: 'queued-turn-1',
       }),
       writer,
     );
