@@ -93,7 +93,8 @@ const LINGZHILAB_SKILLS_DIR = path.join(__dirname, '..', 'skills');
 const PROJECT_SKILL_FOLDERS = ['.claude', '.agents', '.cursor', '.gemini'];
 const PROJECT_PIPELINE_FOLDERS = ['Survey', 'Ideation', 'Experiment', 'Publication', 'Promotion'];
 const LEGACY_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'vibelab');
-const CURRENT_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), 'lingzhi-lab');
+const CURRENT_DEFAULT_WORKSPACES_ROOT = path.join(os.homedir(), '灵智Lab');
+const CURRENT_DEFAULT_WORKSPACES_ROOT_LEGACY_ASCII = path.join(os.homedir(), 'lingzhi-lab');
 const DELETED_PROJECTS_CONFIG_KEY = '_deletedProjects';
 const PROJECT_CONFIG_FILENAME = 'project-config.json';
 const CURRENT_PROJECT_CONFIG_DIR = path.join(os.homedir(), '.lingzhi-lab');
@@ -836,6 +837,7 @@ async function getVisibleWorkspaceRoots(configRoot = null) {
   if (usesDefaultWorkspaceRoot) {
     candidateRoots.push(LEGACY_DEFAULT_WORKSPACES_ROOT);
     candidateRoots.push(CURRENT_DEFAULT_WORKSPACES_ROOT);
+    candidateRoots.push(CURRENT_DEFAULT_WORKSPACES_ROOT_LEGACY_ASCII);
   }
 
   return normalizeWorkspaceRoots(candidateRoots);
@@ -1611,11 +1613,11 @@ async function getProjects(userId, progressCallback = null) {
 
       project.sessions = claudeSessions.slice(0, 5).map((session) => mapIndexedSessionToProjectSession(session, 'claude'));
       project.sessionMeta = {
-        total: claudeSessions.length,
-        hasMore: claudeSessions.length > 5,
+        total: codexSessions.length,
+        hasMore: false,
       };
       project.cursorSessions = cursorSessions.slice(0, 5).map((session) => mapIndexedSessionToProjectSession(session, 'cursor'));
-      project.codexSessions = codexSessions.slice(0, 5).map((session) => mapIndexedSessionToProjectSession(session, 'codex'));
+      project.codexSessions = codexSessions.map((session) => mapIndexedSessionToProjectSession(session, 'codex'));
       project.geminiSessions = geminiSessions.slice(0, 5).map((session) => mapIndexedSessionToProjectSession(session, 'gemini'));
       project.openrouterSessions = openrouterSessions.slice(0, 5).map((session) => mapIndexedSessionToProjectSession(session, 'openrouter'));
       project.localSessions = localSessions.slice(0, 5).map((session) => mapIndexedSessionToProjectSession(session, 'local'));
@@ -2125,7 +2127,7 @@ function extractNanoMessageText(content) {
 }
 
 /**
- * Real cwd for Nano session files. encodeProjectPath ↔ simple decode in extractProjectDirectory
+ * Real cwd for Nano session files. encodeProjectPath 鈫?simple decode in extractProjectDirectory
  * is lossy; session metadata and projects.path store the authoritative path.
  */
 async function resolveNanoProjectDirectory(projectName, sessionId) {
@@ -4146,7 +4148,9 @@ async function getCodexSessionMessages(sessionId, limit = null, offset = 0) {
   try {
     const normalizedSessionId = normalizeCodexSessionId(sessionId);
     if (!normalizedSessionId || isTemporaryCodexSessionId(normalizedSessionId)) {
-      return { messages: [], total: 0, hasMore: false };
+      const error = new Error('Temporary Codex session ids cannot be used for persisted message retrieval');
+      error.code = 'PROVISIONAL_SESSION_ID';
+      throw error;
     }
 
     const sessionFilePath = await resolveCodexSessionFilePath(normalizedSessionId);
@@ -4285,7 +4289,7 @@ async function getCodexSessionMessages(sessionId, limit = null, offset = 0) {
             ));
           }
 
-          // web_search_call events are self-contained display items — no separate result
+          // web_search_call events are self-contained display items 鈥?no separate result
           // event and no call_id in the payload. We push directly instead of upsertToolUse
           // because there is no toolCallId to match against a future tool_result.
           if (entry.type === 'response_item' && entry.payload?.type === 'web_search_call') {
@@ -4388,6 +4392,9 @@ async function getCodexSessionMessages(sessionId, limit = null, offset = 0) {
     return { messages, tokenUsage };
 
   } catch (error) {
+    if (error?.code === 'PROVISIONAL_SESSION_ID') {
+      throw error;
+    }
     if (error?.code === 'ENOENT') {
       clearCachedCodexSessionFilePath(sessionId);
     }

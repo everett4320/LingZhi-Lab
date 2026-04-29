@@ -163,6 +163,17 @@ function sanitizeForLog(value, depth = 0) {
     return String(value);
 }
 
+function isTemporarySessionId(sessionId) {
+    if (typeof sessionId !== 'string') {
+        return false;
+    }
+    const normalized = sessionId.trim();
+    if (!normalized) {
+        return false;
+    }
+    return normalized.startsWith('new-session-') || normalized.startsWith('temp-');
+}
+
 function shouldSkipHttpTrace(req) {
     const method = String(req.method || '').toUpperCase();
     const pathName = req.path || req.originalUrl || '';
@@ -1100,6 +1111,13 @@ app.get('/api/projects/:projectName/sessions/:sessionId/messages', authenticateT
         const { limit, offset } = req.query;
         const provider = 'codex';
 
+        if (isTemporarySessionId(sessionId)) {
+            return res.status(409).json({
+                error: 'Temporary session ids cannot be used for persisted message retrieval',
+                errorCode: 'PROVISIONAL_SESSION_ID',
+            });
+        }
+
         // Parse limit and offset if provided
         const parsedLimit = limit ? parseInt(limit, 10) : null;
         const parsedOffset = offset ? parseInt(offset, 10) : 0;
@@ -1890,26 +1908,44 @@ function handleChatConnection(ws, request) {
             if (data.type === 'codex-command') {
                 console.log('[DEBUG] Codex message:', data.command || '[Continue/Resume]');
                 console.log('[DEBUG] Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
-                console.log('[DEBUG] Session:', data.options?.sessionId ? 'Resume' : 'New');
                 console.log('[DEBUG] Model:', data.options?.model || 'default');
                 const commandTelemetryEnabled = data.options?.telemetryEnabled !== false;
-                const provisionalSessionId =
-                    typeof data.sessionId === 'string' && data.sessionId.trim().length > 0
-                        ? data.sessionId.trim()
-                        : null;
-                const sessionId =
-                    (typeof data.options?.sessionId === 'string' && data.options.sessionId.trim().length > 0)
-                        ? data.options.sessionId.trim()
-                        : provisionalSessionId;
                 const runtimeMode = getCodexRuntimeMode();
+
+                const inboundSessionId =
+                    typeof data.options?.sessionId === 'string' && data.options.sessionId.trim().length > 0
+                        ? data.options.sessionId.trim()
+                        : (typeof data.sessionId === 'string' && data.sessionId.trim().length > 0
+                            ? data.sessionId.trim()
+                            : null);
+
+                const inboundResumeSessionId =
+                    typeof data.options?.resumeSessionId === 'string' && data.options.resumeSessionId.trim().length > 0
+                        ? data.options.resumeSessionId.trim()
+                        : null;
+
+                const explicitResumeFlag = data.options?.resume === true;
+                const hasExplicitResumeSessionId = Boolean(inboundResumeSessionId);
+                const isResumeAttempt = Boolean(explicitResumeFlag || hasExplicitResumeSessionId);
+
+                // A temporary id should remain a provisional UI binding and never be used to resume runtime threads.
+                const provisionalSessionId =
+                    (typeof data.options?.provisionalSessionId === 'string' && data.options.provisionalSessionId.trim().length > 0)
+                        ? data.options.provisionalSessionId.trim()
+                        : (inboundSessionId && isTemporarySessionId(inboundSessionId) ? inboundSessionId : null);
+
+                const sessionId =
+                    isResumeAttempt
+                        ? (inboundResumeSessionId || inboundSessionId)
+                        : (inboundSessionId && !isTemporarySessionId(inboundSessionId) ? inboundSessionId : null);
+
+                console.log('[DEBUG] Session:', isResumeAttempt ? 'Resume' : 'New');
 
                 const isSteerAttempt =
                     data.options?.turnKind === 'steer'
                     || data.options?.kind === 'steer'
                     || (typeof data.options?.expectedTurnId === 'string' && data.options.expectedTurnId.trim().length > 0)
                     || (typeof data.options?.activeTurnId === 'string' && data.options.activeTurnId.trim().length > 0);
-
-                const isResumeAttempt = Boolean(data.options?.resume || data.options?.resumeSessionId || data.options?.sessionId);
 
                 if (!isSteerAttempt && sessionId && isCodexSessionActiveUnified(sessionId)) {
                     console.log(`[WARN] Codex session ${sessionId} is already active. Ignoring concurrent request.`);
@@ -1956,6 +1992,23 @@ function handleChatConnection(ws, request) {
                     return;
                 }
 
+                if (isResumeAttempt && isTemporarySessionId(sessionId)) {
+                    writer.send({
+                        type: 'chat-turn-error',
+                        scope: {
+                            projectName: data.options?.projectName || resolveProjectName(null, data.options?.projectPath || data.options?.cwd || null),
+                            provider: 'codex',
+                            sessionId: null,
+                        },
+                        clientTurnId: data.options?.clientTurnId || provisionalSessionId || null,
+                        error: 'Cannot resume with temporary session id',
+                        errorType: 'session_precondition_failed',
+                        isRetryable: false,
+                        provisionalSessionId: provisionalSessionId || undefined,
+                    });
+                    return;
+                }
+
                 enqueueConversationTelemetry(
                     {
                         name: 'agent_dialogue_meta',
@@ -1974,8 +2027,8 @@ function handleChatConnection(ws, request) {
                     ...data.options,
                     env: sessionEnv,
                     runtimeMode,
-                    sessionId: runtimeSessionId || data.options?.sessionId || null,
-                    resumeSessionId: runtimeSessionId || data.options?.resumeSessionId || null,
+                    sessionId: runtimeSessionId || null,
+                    resumeSessionId: runtimeSessionId || null,
                     provisionalSessionId: provisionalSessionId || data.options?.provisionalSessionId || null,
                 };
                 if (isSteerAttempt && sessionId) {

@@ -61,6 +61,8 @@ export function invalidateSessionMessageCache(projectName: string, sessionId: st
   sessionMessageCache.delete(`${projectName}:${sessionId}`);
 }
 
+const PROVISIONAL_SESSION_ERROR_CODE = 'PROVISIONAL_SESSION_ID';
+
 /** Grace period for WebSocket status-check response before clearing stale resume state */
 const STATUS_VALIDATION_TIMEOUT_MS = 10_000;
 const MAX_SESSION_SNAPSHOT_CACHE_ENTRIES = 40;
@@ -160,6 +162,7 @@ function mergeMessagesPreservingOrder(
   }
 
   const seenIdentity = new Set<string>();
+  const seenFallbackFingerprint = new Set<string>();
   const merged: ChatMessage[] = [];
 
   const pushUnique = (message: ChatMessage) => {
@@ -170,6 +173,11 @@ function mergeMessagesPreservingOrder(
       || null;
 
     if (!identity) {
+      const fingerprint = buildFallbackMessageFingerprint(message);
+      if (seenFallbackFingerprint.has(fingerprint)) {
+        return;
+      }
+      seenFallbackFingerprint.add(fingerprint);
       merged.push(message);
       return;
     }
@@ -551,7 +559,28 @@ export function useChatSessionState({
           provider,
         );
         if (!response.ok) {
-          throw new Error('Failed to load session messages');
+          let errorCode: string | null = null;
+          let message = 'Failed to load session messages';
+          try {
+            const payload = await response.json();
+            if (payload && typeof payload === 'object') {
+              if (typeof payload.errorCode === 'string' && payload.errorCode.trim().length > 0) {
+                errorCode = payload.errorCode.trim();
+              }
+              if (typeof payload.error === 'string' && payload.error.trim().length > 0) {
+                message = payload.error.trim();
+              }
+            }
+          } catch {
+            // Fallback to status-based message when response body is not JSON.
+            if (response.status === 409) {
+              message = 'Temporary session is not ready for persisted history yet';
+            }
+          }
+          const structuredError = new Error(message) as Error & { code?: string; status?: number };
+          structuredError.code = errorCode || undefined;
+          structuredError.status = response.status;
+          throw structuredError;
         }
 
         const data = await response.json();
@@ -579,6 +608,19 @@ export function useChatSessionState({
         }
         return messages;
       } catch (error) {
+        const errorCode =
+          typeof (error as { code?: unknown })?.code === 'string'
+            ? (error as { code: string }).code
+            : null;
+        const errorStatus =
+          typeof (error as { status?: unknown })?.status === 'number'
+            ? (error as { status: number }).status
+            : null;
+        const isProvisionalSessionError =
+          errorCode === PROVISIONAL_SESSION_ERROR_CODE || errorStatus === 409;
+        if (isProvisionalSessionError) {
+          throw error;
+        }
         console.error('Error loading session messages:', error);
         return [];
       } finally {
@@ -849,12 +891,27 @@ export function useChatSessionState({
         setCurrentSessionId(selectedSession.id);
 
         if (!isSystemSessionChange) {
-          const messages = await loadSessionMessages(
-            selectedProject.name,
-            selectedSession.id,
-            false,
-            currentProvider,
-          );
+          let messages: any[] = [];
+          try {
+            messages = await loadSessionMessages(
+              selectedProject.name,
+              selectedSession.id,
+              false,
+              currentProvider,
+            );
+          } catch (error) {
+            const errorCode =
+              typeof (error as { code?: unknown })?.code === 'string'
+                ? (error as { code: string }).code
+                : null;
+            const isProvisionalSessionError = errorCode === PROVISIONAL_SESSION_ERROR_CODE;
+            if (isProvisionalSessionError) {
+              setSessionMessages([]);
+              setIsSessionMessagesAuthoritative(false);
+              return;
+            }
+            throw error;
+          }
           if (isStaleRequest()) {
             return;
           }
@@ -971,7 +1028,9 @@ export function useChatSessionState({
       }, 250);
     };
 
-    loadMessages();
+    loadMessages().catch((error) => {
+      console.error('Error loading selected session messages:', error);
+    });
     return () => {
       cancelled = true;
     };
@@ -1020,12 +1079,26 @@ export function useChatSessionState({
           provider,
         );
 
-        const messages = await loadSessionMessages(
-          selectedProject.name,
-          selectedSession.id,
-          false,
-          provider,
-        );
+        let messages: any[] = [];
+        try {
+          messages = await loadSessionMessages(
+            selectedProject.name,
+            selectedSession.id,
+            false,
+            provider,
+          );
+        } catch (error) {
+          const errorCode =
+            typeof (error as { code?: unknown })?.code === 'string'
+              ? (error as { code: string }).code
+              : null;
+          if (errorCode === PROVISIONAL_SESSION_ERROR_CODE) {
+            setSessionMessages([]);
+            setIsSessionMessagesAuthoritative(false);
+            return;
+          }
+          throw error;
+        }
         if (isStaleReload()) {
           return;
         }

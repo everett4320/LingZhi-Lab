@@ -124,6 +124,13 @@ router.get('/sessions/:sessionId/messages', async (req, res) => {
 
     res.json({ success: true, ...result });
   } catch (error) {
+    if (error?.code === 'PROVISIONAL_SESSION_ID') {
+      return res.status(409).json({
+        success: false,
+        error: error.message || 'Temporary session id is not queryable',
+        errorCode: 'PROVISIONAL_SESSION_ID',
+      });
+    }
     console.error('Error fetching Codex session messages:', error);
     res.status(500).json({ success: false, error: error.message });
   }

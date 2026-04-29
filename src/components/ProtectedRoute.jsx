@@ -11,7 +11,7 @@ const LoadingScreen = () => (
       <div className="flex justify-center mb-4">
         <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-sm ring-1 ring-border/40 bg-background">
           <img
-            src="/lingzhi-lab.png"
+            src="/icon.png"
             alt="Lingzhi Lab"
             className="w-full h-full object-cover"
             loading="eager"

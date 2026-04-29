@@ -71,6 +71,8 @@ export const api = {
         })),
       }),
     }),
+  codexSessions: (projectPath) =>
+    authenticatedFetch(`/api/codex/sessions?projectPath=${encodeURIComponent(projectPath)}`),
   sessions: (projectName, limit = 5, offset = 0) =>
     authenticatedFetch(`/api/projects/${projectName}/sessions?limit=${limit}&offset=${offset}`),
   projectTags: (projectName, tagType = null) => {

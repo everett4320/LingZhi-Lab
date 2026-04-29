@@ -370,7 +370,7 @@ export function useSidebarController({
       try {
         const currentSessionCount =
           (project.codexSessions?.length || 0) + (additionalSessions[project.name]?.length || 0);
-        const response = await api.sessions(project.name, 5, currentSessionCount);
+        const response = await api.codexSessions(project.fullPath || project.path);
 
         if (!response.ok) {
           return;
@@ -381,15 +381,15 @@ export function useSidebarController({
           hasMore?: boolean;
         };
 
+        const fetchedSessions = (result.sessions || []).slice(currentSessionCount);
+
         setAdditionalSessions((prev) => ({
           ...prev,
-          [project.name]: [...(prev[project.name] || []), ...(result.sessions || [])],
+          [project.name]: [...(prev[project.name] || []), ...fetchedSessions],
         }));
 
-        if (result.hasMore === false) {
-          // Keep hasMore state in local hook state instead of mutating the project prop object.
-          setProjectHasMoreOverrides((prev) => ({ ...prev, [project.name]: false }));
-        }
+        const hasMoreFetched = (result.sessions || []).length > currentSessionCount + fetchedSessions.length;
+        setProjectHasMoreOverrides((prev) => ({ ...prev, [project.name]: hasMoreFetched }));
       } catch (error) {
         console.error('Error loading more sessions:', error);
       } finally {

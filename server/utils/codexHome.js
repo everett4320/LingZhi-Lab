@@ -1,7 +1,7 @@
 import os from 'os';
 import path from 'path';
 
-const DEFAULT_LINGZHI_CODEX_HOME = path.join(os.homedir(), '.lingzhi-lab', 'codex-home');
+const DEFAULT_LINGZHI_CODEX_HOME = path.join(os.homedir(), '.codex');
 
 function normalizePath(value) {
   if (typeof value !== 'string') {
@@ -18,11 +18,6 @@ export function getLingzhiCodexHome(env = process.env) {
   const fromLingzhiEnv = normalizePath(env?.LINGZHI_CODEX_HOME);
   if (fromLingzhiEnv) {
     return fromLingzhiEnv;
-  }
-
-  const fromCodexEnv = normalizePath(env?.CODEX_HOME);
-  if (fromCodexEnv) {
-    return fromCodexEnv;
   }
 
   return DEFAULT_LINGZHI_CODEX_HOME;
@@ -43,4 +38,3 @@ export function buildLingzhiCodexRuntimeEnv(baseEnv = process.env) {
     CODEX_HOME: codexHome,
   };
 }
-

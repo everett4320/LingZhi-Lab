@@ -113,6 +113,7 @@ describe('session deletion fallbacks', () => {
     process.env.HOME = tempRoot;
     process.env.USERPROFILE = tempRoot;
     process.env.DATABASE_PATH = path.join(tempRoot, 'db', 'auth.db');
+    process.env.LINGZHI_CODEX_HOME = path.join(tempRoot, '.codex');
   });
 
   afterEach(async () => {
@@ -128,6 +129,8 @@ describe('session deletion fallbacks', () => {
 
     if (originalDatabasePath === undefined) delete process.env.DATABASE_PATH;
     else process.env.DATABASE_PATH = originalDatabasePath;
+
+    delete process.env.LINGZHI_CODEX_HOME;
 
     if (tempRoot) {
       await removeTempRootWithRetry(tempRoot);
@@ -191,12 +194,13 @@ describe('session deletion fallbacks', () => {
     expect(assistantMessages.some((entry) => entry.message.content.includes('Codex responded successfully'))).toBe(true);
   });
 
-  it('short-circuits temporary Codex session ids without not-found warnings', async () => {
+  it('rejects temporary Codex session ids without not-found warnings', async () => {
     const { projects } = await loadTestModules();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const result = await projects.getCodexSessionMessages('new-session-12345');
-    expect(result).toEqual({ messages: [], total: 0, hasMore: false });
+    await expect(projects.getCodexSessionMessages('new-session-12345')).rejects.toMatchObject({
+      code: 'PROVISIONAL_SESSION_ID',
+    });
 
     expect(
       warnSpy.mock.calls.some((args) =>

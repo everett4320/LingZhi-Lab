@@ -16,6 +16,13 @@ Set mode with environment variable:
 CODEX_RUNTIME_MODE=legacy|shadow|bridge
 ```
 
+## CODEX_HOME Resolution
+- Desktop bridge runtime defaults `CODEX_HOME` to `~/.codex` (same auth/config home as Codex CLI).
+- Override priority (highest to lowest):
+  1. `LINGZHI_CODEX_HOME`
+  2. default `~/.codex`
+- `~/.codex/auth.json` and `~/.codex/config.toml` are the authoritative auth/provider config unless explicitly overridden.
+
 ## Unified Protocol Contract
 - Frontend inbound events (authoritative):
   - `chat-session-created`

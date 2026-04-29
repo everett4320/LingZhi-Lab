@@ -41,6 +41,7 @@ type UpsertProviderSessionOptions = {
   createdAt?: string;
   temporarySessionId?: string | null;
   activeTurnId?: string | undefined;
+  touchLastActivity?: boolean;
 };
 
 export function upsertProviderSessionList(
@@ -57,6 +58,7 @@ export function upsertProviderSessionList(
     createdAt,
     temporarySessionId = null,
     activeTurnId = undefined,
+    touchLastActivity = true,
   } = options;
   const timestamp = createdAt || new Date().toISOString();
   const fallbackName = FALLBACK_SESSION_NAME_BY_PROVIDER[provider] || 'New Session';
@@ -85,6 +87,10 @@ export function upsertProviderSessionList(
     }
 
     hasTargetSession = true;
+    const stableLastActivity =
+      session.lastActivity ||
+      session.createdAt ||
+      timestamp;
     nextSessions.push({
       ...session,
       id: sessionId,
@@ -95,7 +101,7 @@ export function upsertProviderSessionList(
       __provider: provider,
       __projectName: projectName,
       createdAt: session.createdAt || timestamp,
-      lastActivity: timestamp,
+      lastActivity: touchLastActivity ? timestamp : stableLastActivity,
     });
   }
 

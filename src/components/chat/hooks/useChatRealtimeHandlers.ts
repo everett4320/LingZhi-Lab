@@ -1904,6 +1904,15 @@ export function useChatRealtimeHandlers({
             timestamp: new Date(),
             errorType: normalizedLatestMessage.errorType,
             isRetryable: normalizedLatestMessage.isRetryable === true,
+            sessionId:
+              routedMessageSessionId ||
+              currentSessionId ||
+              pendingViewSessionRef.current?.sessionId ||
+              null,
+            provisionalSessionId:
+              routedMessageProvisionalSessionId ||
+              pendingViewSessionRef.current?.sessionId ||
+              null,
           },
         ]);
         break;

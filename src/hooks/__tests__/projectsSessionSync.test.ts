@@ -121,6 +121,34 @@ describe('projectsSessionSync', () => {
     expect(next.codexSessions?.[0].id).toBe('sess-1');
   });
 
+  it('preserves existing lastActivity when status-only updates should not reorder sessions', () => {
+    const project = buildBaseProject({
+      codexSessions: [
+        {
+          id: 'sess-1',
+          summary: 'Existing',
+          __provider: 'codex',
+          __projectName: 'proj-a',
+          createdAt: '2026-04-12T15:00:00.000Z',
+          lastActivity: '2026-04-12T15:00:00.000Z',
+        },
+      ],
+    });
+
+    const next = upsertProjectSession(project, {
+      projectName: 'proj-a',
+      provider: 'codex',
+      sessionId: 'sess-1',
+      activeTurnId: 'turn-1',
+      createdAt: '2026-04-12T15:05:00.000Z',
+      touchLastActivity: false,
+    });
+
+    expect(next.codexSessions).toHaveLength(1);
+    expect(next.codexSessions?.[0].activeTurnId).toBe('turn-1');
+    expect(next.codexSessions?.[0].lastActivity).toBe('2026-04-12T15:00:00.000Z');
+  });
+
   it('matches active sessions from scoped tracking keys', () => {
     const activeSessions = new Set<string>([
       'proj-a::codex::sess-1',

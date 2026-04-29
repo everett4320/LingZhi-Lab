@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
-import { api } from '../utils/api';
+import { api, authenticatedFetch } from '../utils/api';
 import { queueWorkspaceQaDraft } from '../utils/workspaceQa';
 import { queueReferenceChatDraft } from '../utils/referenceChatDraft';
 import type { Reference } from '../components/references/types';
@@ -26,11 +26,11 @@ import type {
   ProjectsUpdatedMessage,
   PendingAutoIntake,
   SessionMode,
-  SessionNavigationSource,
   SessionProvider,
   SessionTag,
   TrashProject,
 } from '../types/app';
+import { isTelemetryEnabled } from '../utils/telemetry';
 
 declare global {
   interface Window {
@@ -41,6 +41,7 @@ declare global {
 }
 
 const SESSION_MODE_STORAGE_KEY = 'lingzhi-lab-new-session-mode';
+const LAST_CHAT_SELECTION_STORAGE_KEY = 'lingzhi-lab-last-chat-selection';
 
 const isSessionMode = (value: string | null | undefined): value is SessionMode =>
   value === 'research' || value === 'workspace_qa';
@@ -77,6 +78,12 @@ type SessionTagsUpdatedDetail = {
   tags: SessionTag[];
 };
 
+type LastChatSelection = {
+  projectName: string;
+  sessionId?: string | null;
+  provider?: SessionProvider | null;
+};
+
 const serialize = (value: unknown) => JSON.stringify(value ?? null);
 
 const projectsHaveChanges = (
@@ -109,6 +116,60 @@ const projectsHaveChanges = (
 
 const getProjectSessions = (project: Project): ProjectSession[] => {
   return [...(project.codexSessions ?? [])];
+};
+
+const readLastChatSelection = (): LastChatSelection | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(LAST_CHAT_SELECTION_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as LastChatSelection;
+    if (!parsed || typeof parsed.projectName !== 'string' || parsed.projectName.trim().length === 0) {
+      return null;
+    }
+
+    return {
+      projectName: parsed.projectName.trim(),
+      sessionId:
+        typeof parsed.sessionId === 'string' && parsed.sessionId.trim().length > 0
+          ? parsed.sessionId.trim()
+          : null,
+      provider:
+        parsed.provider === 'codex'
+          ? 'codex'
+          : null,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const persistLastChatSelection = (
+  selection: LastChatSelection | null,
+) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (!selection || !selection.projectName) {
+    window.localStorage.removeItem(LAST_CHAT_SELECTION_STORAGE_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(
+    LAST_CHAT_SELECTION_STORAGE_KEY,
+    JSON.stringify({
+      projectName: selection.projectName,
+      sessionId: selection.sessionId || null,
+      provider: selection.provider || null,
+    }),
+  );
 };
 
 const matchesSessionIdentity = (
@@ -191,10 +252,6 @@ const buildTransientSession = (
     lastActivity: new Date().toISOString(),
   });
 
-export const resolveSessionNavigationSource = (
-  source?: SessionNavigationSource,
-): SessionNavigationSource => source ?? 'user';
-
 export function useProjectsState({
   sessionId,
   navigate,
@@ -206,7 +263,6 @@ export function useProjectsState({
   const [trashProjects, setTrashProjects] = useState<TrashProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedSession, setSelectedSession] = useState<ProjectSession | null>(null);
-  const [sessionNavigationSource, setSessionNavigationSource] = useState<SessionNavigationSource>('user');
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
@@ -219,10 +275,31 @@ export function useProjectsState({
   const [pendingAutoIntake, setPendingAutoIntake] = useState<PendingAutoIntake | null>(null);
   const [importedProjectAnalysisPrompt, setImportedProjectAnalysisPrompt] = useState<ImportedProjectAnalysisPrompt | null>(null);
   const [newSessionMode, setNewSessionMode] = useState<SessionMode>(() => readStoredNewSessionMode());
+  const [hasAppliedInitialSelection, setHasAppliedInitialSelection] = useState(false);
 
   const loadingProgressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectsUpdateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingProjectsMessageRef = useRef<ProjectsUpdatedMessage | null>(null);
+
+  const trackSessionNavigation = useCallback((payload: Record<string, unknown>) => {
+    if (!isTelemetryEnabled()) {
+      return;
+    }
+
+    void authenticatedFetch('/api/telemetry/events', {
+      method: 'POST',
+      body: JSON.stringify({
+        events: [
+          {
+            name: 'ui_session_navigation',
+            source: 'frontend-ui',
+            data: payload,
+            clientAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    }).catch(() => {});
+  }, []);
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -271,6 +348,81 @@ export function useProjectsState({
   useEffect(() => {
     void fetchProjects();
   }, [fetchProjects]);
+
+  useEffect(() => {
+    if (hasAppliedInitialSelection || sessionId || isLoadingProjects || projects.length === 0) {
+      return;
+    }
+
+    const lastSelection = readLastChatSelection();
+    if (!lastSelection) {
+      setHasAppliedInitialSelection(true);
+      return;
+    }
+
+    const targetProject = projects.find((project) => project.name === lastSelection.projectName);
+    if (!targetProject) {
+      setHasAppliedInitialSelection(true);
+      return;
+    }
+
+    setSelectedProject(targetProject);
+
+    if (lastSelection.sessionId) {
+      const normalizedProvider = normalizeProvider(
+        (lastSelection.provider || 'codex') as SessionProvider,
+      ) as SessionProvider;
+      const targetSession = getProjectSessions(targetProject).find((session) => (
+        session.id === lastSelection.sessionId
+        && normalizeProvider((session.__provider || 'codex') as SessionProvider) === normalizedProvider
+      ));
+      if (targetSession) {
+        setSelectedSession({
+          ...targetSession,
+          __provider: targetSession.__provider || normalizedProvider,
+          __projectName: targetSession.__projectName || targetProject.name,
+        });
+        setActiveTab('chat');
+      } else {
+        setSelectedSession(null);
+      }
+    } else {
+      setSelectedSession(null);
+      setActiveTab('chat');
+    }
+
+    setHasAppliedInitialSelection(true);
+  }, [hasAppliedInitialSelection, isLoadingProjects, projects, sessionId]);
+
+  useEffect(() => {
+    if (sessionId) {
+      return;
+    }
+
+    if (!hasAppliedInitialSelection || isLoadingProjects) {
+      return;
+    }
+
+    if (!selectedProject) {
+      persistLastChatSelection(null);
+      return;
+    }
+
+    persistLastChatSelection({
+      projectName: selectedProject.name,
+      sessionId: selectedSession?.id || null,
+      provider: normalizeProvider(
+        (selectedSession?.__provider || 'codex') as SessionProvider,
+      ) as SessionProvider,
+    });
+  }, [
+    hasAppliedInitialSelection,
+    isLoadingProjects,
+    selectedProject?.name,
+    selectedSession?.id,
+    selectedSession?.__provider,
+    sessionId,
+  ]);
 
   useEffect(() => {
     if (activeTab === 'trash') {
@@ -534,6 +686,7 @@ export function useProjectsState({
             sessionId: statusSessionId,
             activeTurnId,
             createdAt: new Date().toISOString(),
+            touchLastActivity: false,
           });
         }));
       }
@@ -753,13 +906,12 @@ export function useProjectsState({
     targetSessionId: string,
     targetProvider?: ProjectSession['__provider'],
     targetProjectName?: string,
-    options?: { source?: SessionNavigationSource },
+    options?: { source?: 'user' | 'system' },
   ) => {
     if (!targetSessionId) {
       return;
     }
-
-    setSessionNavigationSource(resolveSessionNavigationSource(options?.source));
+    const navigationSource = options?.source || 'user';
 
     const shouldSwitchTab = !selectedSession || selectedSession.id !== targetSessionId;
     let matchedProject: Project | null = null;
@@ -798,13 +950,22 @@ export function useProjectsState({
 
     if (sessionToSelect) {
       const routeProjectName = (sessionToSelect.__projectName || projectToSelect?.name || selectedProject?.name || targetProjectName);
-      if (routeProjectName) {
-        navigate(`/session/${encodeURIComponent(routeProjectName)}/${encodeURIComponent(targetSessionId)}`);
-      } else {
-        navigate(`/session/${encodeURIComponent(targetSessionId)}`);
-      }
+      const routePath = routeProjectName
+        ? `/session/${encodeURIComponent(routeProjectName)}/${encodeURIComponent(targetSessionId)}`
+        : `/session/${encodeURIComponent(targetSessionId)}`;
+      trackSessionNavigation({
+        stage: 'handleNavigateToSession',
+        source: navigationSource,
+        fromSessionId: selectedSession?.id || null,
+        toSessionId: targetSessionId,
+        selectedProjectName: selectedProject?.name || null,
+        targetProjectName: targetProjectName || null,
+        matchedProjectName: matchedProject?.name || null,
+        routePath,
+      });
+      navigate(routePath);
     }
-  }, [navigate, projects, selectedProject?.name, selectedSession?.id, selectedSession?.__provider]);
+  }, [navigate, projects, selectedProject?.name, selectedSession?.id, selectedSession?.__provider, trackSessionNavigation]);
 
   useEffect(() => {
     if (!sessionId || projects.length === 0) {
@@ -834,6 +995,7 @@ export function useProjectsState({
 
   const handleSessionSelect = useCallback(
     (session: ProjectSession) => {
+      const previousSessionId = selectedSession?.id || null;
       setSelectedSession(session);
 
       if (session.mode) {
@@ -855,18 +1017,28 @@ export function useProjectsState({
       }
 
       const routeProjectName = session.__projectName || selectedProject?.name;
+      const routePath = routeProjectName
+        ? `/session/${encodeURIComponent(routeProjectName)}/${encodeURIComponent(session.id)}`
+        : `/session/${encodeURIComponent(session.id)}`;
+      trackSessionNavigation({
+        stage: 'handleSessionSelect',
+        source: 'user',
+        fromSessionId: previousSessionId,
+        toSessionId: session.id,
+        selectedProjectName: selectedProject?.name || null,
+        routePath,
+      });
       if (routeProjectName) {
-        navigate(`/session/${encodeURIComponent(routeProjectName)}/${encodeURIComponent(session.id)}`);
+        navigate(routePath);
       } else {
-        navigate(`/session/${encodeURIComponent(session.id)}`);
+        navigate(routePath);
       }
     },
-    [activeTab, isMobile, navigate, selectedProject?.name],
+    [activeTab, isMobile, navigate, selectedProject?.name, selectedSession?.id, trackSessionNavigation],
   );
 
   const handleNewSession = useCallback(
     (project: Project, mode: SessionMode = 'research') => {
-      setSessionNavigationSource('user');
       setSelectedProject(project);
       setSelectedSession(null);
       setActiveTab('chat');
@@ -1167,8 +1339,6 @@ export function useProjectsState({
     externalMessageUpdate,
     importedProjectAnalysisPrompt,
     newSessionMode,
-    sessionNavigationSource,
-    resetSessionNavigationSource: () => setSessionNavigationSource('user'),
     setNewSessionMode,
     setActiveTab,
     setSidebarOpen,

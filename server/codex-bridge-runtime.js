@@ -408,6 +408,8 @@ class CodexBridgeRuntime {
     this.interruptWaiters = new Map();
     this.turnCompletionWaiters = new Map();
     this.completedTurns = new Map();
+    this.lastAcceptedSignalBySession = new Map();
+    this.lastSessionCreatedSignalBySession = new Map();
 
     this.lineBuffer = '';
   }
@@ -728,6 +730,17 @@ class CodexBridgeRuntime {
     const runtime = this.ensureSessionRuntime(sessionId);
     if (!runtime) return;
 
+    const normalizedProvisionalSessionId = toSessionKey(provisionalSessionId || runtime.provisionalSessionId);
+    const dedupeSignature = [
+      runtime.sessionId || '',
+      normalizedProvisionalSessionId || '',
+      normalizeSessionMode(sessionMode),
+    ].join('::');
+    if (this.lastSessionCreatedSignalBySession.get(runtime.sessionId) === dedupeSignature) {
+      return;
+    }
+    this.lastSessionCreatedSignalBySession.set(runtime.sessionId, dedupeSignature);
+
     const writer = writerOverride || runtime.writer;
     if (writer && typeof writer.setSessionId === 'function') {
       writer.setSessionId(runtime.sessionId);
@@ -738,7 +751,7 @@ class CodexBridgeRuntime {
     emit(writer, {
       type: 'chat-session-created',
       scope,
-      provisionalSessionId: provisionalSessionId || runtime.provisionalSessionId || undefined,
+      provisionalSessionId: normalizedProvisionalSessionId || undefined,
       sessionId: runtime.sessionId,
       provider: 'codex',
       projectName: runtime.projectName,
@@ -753,6 +766,18 @@ class CodexBridgeRuntime {
     const runtime = this.getSessionRuntime(sessionId);
     if (!runtime) return;
 
+    const normalizedTurnId = toSessionKey(turnId) || toSessionKey(runtime.lastTurnId);
+    const normalizedClientTurnId = toSessionKey(clientTurnId) || toSessionKey(runtime.clientTurnId);
+    const dedupeSignature = normalizedTurnId
+      ? `turn:${normalizedTurnId}`
+      : (normalizedClientTurnId ? `client:${normalizedClientTurnId}` : null);
+    if (dedupeSignature && this.lastAcceptedSignalBySession.get(runtime.sessionId) === dedupeSignature) {
+      return;
+    }
+    if (dedupeSignature) {
+      this.lastAcceptedSignalBySession.set(runtime.sessionId, dedupeSignature);
+    }
+
     const scope = buildScope(runtime.projectName, runtime.sessionId);
     if (!scope) return;
 
@@ -762,8 +787,8 @@ class CodexBridgeRuntime {
       sessionId: runtime.sessionId,
       provider: 'codex',
       projectName: runtime.projectName,
-      clientTurnId: clientTurnId || runtime.clientTurnId || runtime.sessionId,
-      turnId: toSessionKey(turnId) || runtime.lastTurnId || null,
+      clientTurnId: normalizedClientTurnId || runtime.sessionId,
+      turnId: normalizedTurnId || null,
       provisionalSessionId: runtime.provisionalSessionId || undefined,
       queued: false,
     });

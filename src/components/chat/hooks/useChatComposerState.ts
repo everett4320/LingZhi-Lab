@@ -308,7 +308,7 @@ const getRouteSessionId = () => {
     return null;
   }
 
-  const match = window.location.pathname.match(/^\/session\/([^/]+)$/);
+  const match = window.location.pathname.match(/^\/session\/[^/]+\/([^/]+)$/);
   if (!match?.[1]) {
     return null;
   }
@@ -2343,7 +2343,7 @@ export function useChatComposerState({
         dispatchCodexInputMessage(startMessage, sessionToActivate, {
           asSteer: submitMode === "steer",
           expectedTurnId: expectedTurnIdForSteer,
-          appendLocalUserMessage: true,
+          appendLocalUserMessage: false,
           isCurrentViewSession,
           includeSessionModeContext: Boolean(isNewSession),
           codexCommandText: messageContent,
