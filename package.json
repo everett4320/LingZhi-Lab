@@ -48,13 +48,15 @@
     "test": "npm run native:node && vitest run",
     "test:watch": "vitest",
     "desktop:pack:mac": "node electron/cli.mjs pack --mac",
-    "desktop:pack:win": "node electron/cli.mjs pack --win",
+    "desktop:pack:win": "node electron/cli.mjs pack --win --x64",
     "desktop:dist:mac": "node electron/cli.mjs dist --mac dmg --publish never",
-    "desktop:dist:win": "node electron/cli.mjs dist --win nsis --publish never",
+    "desktop:dist:win": "node electron/cli.mjs dist --win nsis --x64 --publish never",
     "desktop:fresh:win": "npm run desktop:dist:win && node scripts/desktop-fresh-install-win.mjs",
+    "desktop:prepare:secure": "node packaging/prepare-secure-desktop-staging.mjs",
+    "desktop:audit:asar": "node packaging/audit-desktop-asar.mjs",
     "desktop:prune:unpacked": "node packaging/prune-windows-unpacked.mjs",
     "desktop:audit:artifact": "node packaging/audit-desktop-artifact.mjs",
-    "desktop:ci:gate": "npm run test -- packaging/__tests__/desktop-package-config.test.mjs packaging/__tests__/desktop-runtime-robustness.test.mjs packaging/__tests__/desktop-security-hardening.test.mjs packaging/__tests__/desktop-workflow-contract.test.mjs && npm run desktop:audit:artifact"
+    "desktop:ci:gate": "npm run test -- packaging/__tests__/desktop-package-config.test.mjs packaging/__tests__/desktop-runtime-robustness.test.mjs packaging/__tests__/desktop-security-hardening.test.mjs packaging/__tests__/desktop-workflow-contract.test.mjs && npm run desktop:audit:artifact && npm run desktop:audit:asar"
   },
   "keywords": [
     "claude code",
@@ -158,6 +160,7 @@
       "winCodeSign": "1.1.0"
     },
     "directories": {
+      "app": ".desktop-secure",
       "output": "release"
     },
     "asar": true,
@@ -173,13 +176,15 @@
       "main": "electron/main.mjs"
     },
     "files": [
-      "dist/**/*",
-      "public/**/*",
-      "server/**/*",
-      "shared/**/*",
-      "skills/**/*",
-      "electron/**/*",
-      "package.json"
+      "!**/*.map",
+      "!**/*.d.ts",
+      "!**/*.ts",
+      "!**/*.tsx",
+      "!**/*.jsx",
+      "!**/*.test.*",
+      "!**/*.spec.*",
+      "!**/{__tests__,test,tests,powered-test,example,examples}{,/**/*}",
+      "!**/{coverage,.nyc_output}{,/**/*}"
     ],
     "mac": {
       "icon": "build/icon.icns",

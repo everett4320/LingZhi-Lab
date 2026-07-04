@@ -20,12 +20,14 @@ describe('desktop packaging: package.json contracts', () => {
       ['desktop:pack', 'node electron/cli.mjs pack'],
       ['desktop:dist', 'node electron/cli.mjs dist'],
       ['desktop:pack:mac', 'node electron/cli.mjs pack --mac'],
-      ['desktop:pack:win', 'node electron/cli.mjs pack --win'],
+      ['desktop:pack:win', 'node electron/cli.mjs pack --win --x64'],
       ['desktop:dist:mac', 'node electron/cli.mjs dist --mac dmg --publish never'],
-      ['desktop:dist:win', 'node electron/cli.mjs dist --win nsis --publish never'],
+      ['desktop:dist:win', 'node electron/cli.mjs dist --win nsis --x64 --publish never'],
+      ['desktop:prepare:secure', 'node packaging/prepare-secure-desktop-staging.mjs'],
+      ['desktop:audit:asar', 'node packaging/audit-desktop-asar.mjs'],
       ['desktop:prune:unpacked', 'node packaging/prune-windows-unpacked.mjs'],
       ['desktop:audit:artifact', 'node packaging/audit-desktop-artifact.mjs'],
-      ['desktop:ci:gate', 'npm run test -- packaging/__tests__/desktop-package-config.test.mjs packaging/__tests__/desktop-runtime-robustness.test.mjs packaging/__tests__/desktop-security-hardening.test.mjs packaging/__tests__/desktop-workflow-contract.test.mjs && npm run desktop:audit:artifact'],
+      ['desktop:ci:gate', 'npm run test -- packaging/__tests__/desktop-package-config.test.mjs packaging/__tests__/desktop-runtime-robustness.test.mjs packaging/__tests__/desktop-security-hardening.test.mjs packaging/__tests__/desktop-workflow-contract.test.mjs && npm run desktop:audit:artifact && npm run desktop:audit:asar'],
       ['prepublishOnly', 'npm run build'],
       ['postinstall', 'node scripts/fix-node-pty.js'],
     ])('defines script %s', (scriptName, expectedCommand) => {
@@ -36,6 +38,10 @@ describe('desktop packaging: package.json contracts', () => {
   describe('build metadata', () => {
     it('writes release artifacts to release/', () => {
       expect(packageJson.build.directories.output).toBe('release');
+    });
+
+    it('packages the hardened staging app directory', () => {
+      expect(packageJson.build.directories.app).toBe('.desktop-secure');
     });
 
     it('packs app resources into ASAR', () => {
@@ -123,17 +129,19 @@ describe('desktop packaging: package.json contracts', () => {
     });
   });
 
-  describe('packaged file allowlist', () => {
-    it.each([
-      'dist/**/*',
-      'public/**/*',
-      'server/**/*',
-      'shared/**/*',
-      'skills/**/*',
-      'electron/**/*',
-      'package.json',
-    ])('includes %s in electron-builder files allowlist', (allowedEntry) => {
-      expect(packageJson.build.files).toContain(allowedEntry);
+  describe('packaged file hardening', () => {
+    it('filters debug, source-map, and test artifacts from packaged payloads', () => {
+      expect(packageJson.build.files).toEqual([
+        '!**/*.map',
+        '!**/*.d.ts',
+        '!**/*.ts',
+        '!**/*.tsx',
+        '!**/*.jsx',
+        '!**/*.test.*',
+        '!**/*.spec.*',
+        '!**/{__tests__,test,tests,powered-test,example,examples}{,/**/*}',
+        '!**/{coverage,.nyc_output}{,/**/*}',
+      ]);
     });
   });
 });

@@ -87,6 +87,15 @@ describe('desktop packaging: security and anti-reverse-engineering hardening', (
       expectContains(mainSource, 'const singleInstanceLock = app.requestSingleInstanceLock();');
       expectContains(mainSource, 'if (!singleInstanceLock) {');
     });
+
+    it('does not expose the app root path to packaged clients', () => {
+      expectContains(mainSource, "appRoot: isDev ? resolveAppRoot() : null");
+    });
+
+    it('disables packaged devtools affordances', () => {
+      expectContains(mainSource, 'devTools: isDev');
+      expectContains(mainSource, '...(isDev ? [');
+    });
   });
 
   describe('preload IPC allowlist constraints', () => {

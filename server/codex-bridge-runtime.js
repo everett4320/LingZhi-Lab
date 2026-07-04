@@ -1383,7 +1383,6 @@ class CodexBridgeRuntime {
       : {
         type: 'workspaceWrite',
         writableRoots: [projectPath],
-        readOnlyAccess: {},
         networkAccess: false,
         excludeTmpdirEnvVar: false,
         excludeSlashTmp: false,

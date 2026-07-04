@@ -116,6 +116,10 @@ describe('desktop packaging: runtime script robustness', () => {
       expectContains(cliSource, "await run(npmBin(), ['run', 'native:electron']);");
     });
 
+    it('prepares hardened desktop staging before packaging', () => {
+      expectContains(cliSource, "await run(npmBin(), ['run', 'desktop:prepare:secure']);");
+    });
+
     it('ensures pack mode adds --dir builder flag', () => {
       expectContains(cliSource, "await run(commandInfo.bin, [...commandInfo.args, '--dir', ...builderArgs], builderEnv);");
     });

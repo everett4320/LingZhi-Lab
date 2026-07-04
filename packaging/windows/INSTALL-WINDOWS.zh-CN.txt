@@ -1,0 +1,35 @@
+Lingzhi Lab Windows 安装与日志回传说明
+
+适用文件：
+- Lingzhi Lab-1.1.4-win-x64.exe
+- Collect-Lingzhi-Lab-Logs.ps1
+
+安装步骤：
+1. 把整个压缩包解压到一个普通文件夹，例如桌面上的 Lingzhi-Lab-Windows。
+2. 双击运行 Lingzhi Lab-1.1.4-win-x64.exe。
+3. 如果 Windows SmartScreen 提示“Windows 已保护你的电脑”，点击“更多信息”，再点击“仍要运行”。当前测试安装包未做正式代码签名，出现这个提示是预期行为。
+4. 安装时使用默认路径即可，不需要管理员权限。
+5. 安装完成后启动 Lingzhi Lab，至少等待 30 秒。
+
+如果首次启动报错、空白、闪退或一直打不开：
+1. 关闭 Lingzhi Lab 和错误弹窗。
+2. 在解压后的文件夹里右键 Collect-Lingzhi-Lab-Logs.ps1。
+3. 选择“使用 PowerShell 运行”。
+4. 如果 PowerShell 阻止运行，在该文件夹空白处 Shift + 右键，选择“在终端中打开”或“在 PowerShell 中打开”，执行：
+
+powershell -ExecutionPolicy Bypass -File .\Collect-Lingzhi-Lab-Logs.ps1
+
+5. 脚本会在桌面生成一个文件：
+
+Lingzhi-Lab-logs-YYYYMMDD-HHMMSS.zip
+
+请把这个 zip 发回给开发者分析。
+
+手动日志位置：
+- 主日志：%APPDATA%\Lingzhi Lab\desktop.log
+- 单次启动日志目录：%APPDATA%\Lingzhi Lab\run-logs
+- 最新单次启动日志通常类似：desktop-run-2026-06-02Txx-xx-xx-xxxZ-pid1234.log
+
+如果收集脚本也无法运行，请手动打开以下路径，把 desktop.log 和 run-logs 目录里的最新 log 文件一起发回：
+
+%APPDATA%\Lingzhi Lab

@@ -49,6 +49,7 @@ pids
 .electron-gyp/
 .electron-cache/
 .electron-home/
+.desktop-secure/
 release/
 
 # Coverage directory used by tools like istanbul

@@ -28,20 +28,37 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-
-    <!-- Service Worker Registration -->
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => {
-              console.log('SW registered: ', registration);
-            })
-            .catch(registrationError => {
-              console.log('SW registration failed: ', registrationError);
+      (async () => {
+        const isLocalhost = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+
+        if ('serviceWorker' in navigator) {
+          if (isLocalhost) {
+            // Dev safety: remove stale SW/caches left from previous PWA runs.
+            try {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(registrations.map((registration) => registration.unregister()));
+
+              if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+              }
+            } catch (error) {
+              console.warn('Failed to clean service workers/caches in dev:', error);
+            }
+          } else {
+            window.addEventListener('load', () => {
+              navigator.serviceWorker.register('/sw.js')
+                .then((registration) => {
+                  console.log('SW registered:', registration);
+                })
+                .catch((registrationError) => {
+                  console.log('SW registration failed:', registrationError);
+                });
             });
-        });
-      }
+          }
+        }
+      })();
     </script>
   </body>
 </html>

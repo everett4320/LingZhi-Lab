@@ -695,9 +695,11 @@ function buildAppMenu() {
   template.push({
     label: 'View',
     submenu: [
-      { role: 'reload' },
-      { role: 'forceReload' },
-      { role: 'toggleDevTools' },
+      ...(isDev ? [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+      ] : []),
       { type: 'separator' },
       { role: 'resetZoom' },
       { role: 'zoomIn' },
@@ -787,7 +789,7 @@ function registerIpcHandlers() {
       nodeVersion: process.versions.node,
       chromeVersion: process.versions.chrome,
       userData: app.getPath('userData'),
-      appRoot: resolveAppRoot(),
+      appRoot: isDev ? resolveAppRoot() : null,
       logsPath: getDesktopLogPath(),
       currentRunLogPath: getCurrentRunLogPath(),
       runLogsDir: getRunLogsDir(),
@@ -970,6 +972,7 @@ function createWindow(baseUrl) {
       contextIsolation: true,
       sandbox: true,
       preload: preloadPath,
+      devTools: isDev,
     },
   };
 
@@ -1084,6 +1087,17 @@ function createWindow(baseUrl) {
     logDesktop('renderer:did-stop-loading');
   });
 
+  if (!isDev) {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      const key = String(input.key || '').toLowerCase();
+      const opensDevTools = key === 'f12'
+        || ((input.control || input.meta) && input.shift && key === 'i');
+      if (opensDevTools) {
+        event.preventDefault();
+      }
+    });
+  }
+
   mainWindow.loadURL(baseUrl);
   setTimeout(() => revealWindow('timeout'), 4000);
 
@@ -1195,9 +1209,23 @@ app.on('activate', () => {
 logDesktop('Electron main process starting', {
   pid: process.pid,
   runId: currentRunId,
+  appName: app.getName(),
+  appVersion: app.getVersion(),
   isDev,
+  isPackaged: app.isPackaged,
   platform: process.platform,
+  arch: process.arch,
+  osRelease: os.release(),
+  osArch: os.arch(),
+  electronVersion: process.versions.electron,
+  nodeVersion: process.versions.node,
+  chromeVersion: process.versions.chrome,
   cwd: process.cwd(),
+  execPath: process.execPath,
+  installDir: path.dirname(process.execPath),
+  appPath: app.getAppPath(),
+  resourcesPath: process.resourcesPath,
+  argv: process.argv,
   userData: app.getPath('userData'),
   desktopLogPath: getDesktopLogPath(),
   runLogPath: getCurrentRunLogPath(),

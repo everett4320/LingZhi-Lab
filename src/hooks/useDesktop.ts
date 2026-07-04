@@ -31,7 +31,7 @@ interface AppInfo {
   nodeVersion: string;
   chromeVersion: string;
   userData: string;
-  appRoot: string;
+  appRoot: string | null;
   logsPath: string;
   currentRunLogPath?: string;
   runLogsDir?: string;

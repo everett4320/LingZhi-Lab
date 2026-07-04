@@ -206,6 +206,10 @@ async function prepareNodeDevRuntime() {
   await run(npmBin(), ['run', 'native:node']);
 }
 
+async function prepareSecureDesktopStaging() {
+  await run(npmBin(), ['run', 'desktop:prepare:secure']);
+}
+
 function parseBuilderArgs(args) {
   const builderArgs = [];
   let hasPublishFlag = false;
@@ -251,6 +255,7 @@ async function main() {
 
   await prepareElectronRuntime();
   await run(npmBin(), ['run', 'build']);
+  await prepareSecureDesktopStaging();
 
   const builderArgs = parseBuilderArgs(rawArgs);
   const isWindowsBuild = hasWindowsTarget(builderArgs);

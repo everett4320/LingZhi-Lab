@@ -478,6 +478,31 @@ describe('codex bridge runtime', () => {
     });
   });
 
+  it('sends a valid workspace-write sandboxPolicy for turn/start', async () => {
+    const mod = await import('../codex-bridge-runtime.js');
+    const runtime = mod.getCodexBridgeRuntime();
+
+    const writer = { send: vi.fn() };
+    const queryPromise = runtime.query('sandbox check', {
+      projectPath: '/tmp/project',
+      projectName: 'proj',
+    }, writer);
+
+    await completeTurn('completed');
+    await queryPromise;
+
+    const turnStartIndex = requestCalls.findIndex((entry) => entry === 'turn/start');
+    expect(turnStartIndex).toBeGreaterThanOrEqual(0);
+    const turnStartPayload = requestPayloads[turnStartIndex];
+    expect(turnStartPayload.sandboxPolicy).toEqual({
+      type: 'workspaceWrite',
+      writableRoots: ['/tmp/project'],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    });
+  });
+
   it('keeps session runtime writer/session binding precise after provisional rebinding', async () => {
     const mod = await import('../codex-bridge-runtime.js');
     const runtime = mod.getCodexBridgeRuntime();
