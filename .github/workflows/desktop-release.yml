@@ -20,8 +20,6 @@ on:
           - 'unsigned'
           - 'signed'
   push:
-    branches:
-      - 'ci/windows-build-*'
     tags:
       - 'v*'
 
@@ -112,46 +110,11 @@ jobs:
         if: matrix.platform_label == 'windows'
         run: npm run desktop:audit:artifact
 
-      - name: Build Windows share package
-        if: matrix.platform_label == 'windows'
-        shell: pwsh
-        run: |
-          $package = Get-Content package.json | ConvertFrom-Json
-          $version = $package.version
-          $exe = Get-ChildItem release -Filter '*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $exe) { throw 'No Windows installer exe found in release/' }
-
-          $shareDir = "release/Lingzhi-Lab-$version-win-x64-share"
-          if (Test-Path $shareDir) { Remove-Item $shareDir -Recurse -Force }
-          New-Item -ItemType Directory -Force -Path $shareDir | Out-Null
-
-          Copy-Item $exe.FullName -Destination (Join-Path $shareDir $exe.Name) -Force
-          Copy-Item packaging/windows/INSTALL-WINDOWS.zh-CN.txt -Destination $shareDir -Force
-          Copy-Item packaging/windows/Collect-Lingzhi-Lab-Logs.ps1 -Destination $shareDir -Force
-
-          $hashLines = Get-ChildItem $shareDir -File | ForEach-Object {
-            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
-            "$hash *$($_.Name)"
-          }
-          $hashLines | Set-Content -LiteralPath (Join-Path $shareDir 'SHA256SUMS.txt') -Encoding UTF8
-
-          $zipPath = "$shareDir.zip"
-          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-          Compress-Archive -Path (Join-Path $shareDir '*') -DestinationPath $zipPath -Force
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_glob }}
-          if-no-files-found: error
-
-      - name: Upload Windows share package
-        if: matrix.platform_label == 'windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-windows-share
-          path: release/*-share.zip
           if-no-files-found: error
 
   publish-release:
