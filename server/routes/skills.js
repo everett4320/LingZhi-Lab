@@ -7,7 +7,8 @@ import { extractProjectDirectory, ensureProjectSkillLinks } from '../projects.js
 import { FORBIDDEN_PATHS } from './projects.js';
 import { findSkillMdPath } from '../utils/skillExpander.js';
 
-const GLOBAL_SKILLS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'skills');
+const GLOBAL_SKILLS_DIR = process.env.LINGZHI_SKILLS_DIR
+  || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'skills');
 
 const router = express.Router();
 
@@ -261,8 +262,6 @@ router.get('/resolve', async (req, res) => {
 // GET / — return the file tree of the global skills/ directory
 router.get('/', async (req, res) => {
   try {
-    await fs.access(GLOBAL_SKILLS_DIR);
-
     const { getFileTree } = await import('../file-tree.js').catch(() => ({}));
     // Prefer shared helper when available, but fall back if it throws.
     if (typeof getFileTree === 'function') {

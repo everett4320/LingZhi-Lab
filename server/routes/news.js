@@ -12,8 +12,8 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 
 // Data directory for news config & results
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const SCRIPTS_DIR = path.join(__dirname, '..', 'scripts');
+const DATA_DIR = process.env.LINGZHI_NEWS_DATA_DIR || path.join(__dirname, '..', 'data');
+const SCRIPTS_DIR = process.env.LINGZHI_NEWS_SCRIPTS_DIR || path.join(__dirname, '..', 'scripts');
 const PYTHON_RUNTIME_CACHE_TTL_MS = 30_000;
 const PYTHON_RUNTIME_INSPECTION_CODE = [
   'import importlib.util, json, os, ssl, sys',

@@ -105,6 +105,19 @@ function normalizeLogDetails(details) {
   }
 }
 
+function redactSensitiveLogText(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  return value
+    .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, '[REDACTED_API_KEY]')
+    .replace(/([?&]token=)[^&\s"'\\]+/gi, '$1[REDACTED_TOKEN]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi, 'Bearer [REDACTED_TOKEN]')
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[REDACTED_JWT]')
+    .replace(/("(?:apiKey|api_key|authorization|accessToken|access_token|refreshToken|refresh_token)"\s*:\s*")[^"]*(")/gi, '$1[REDACTED]$2');
+}
+
 function trimLogValue(value, maxLength = 8000) {
   if (typeof value !== 'string') {
     return value;
@@ -187,7 +200,7 @@ function logDesktop(message, details = null) {
     details: normalizeLogDetails(details),
   };
 
-  const line = JSON.stringify(payload);
+  const line = redactSensitiveLogText(JSON.stringify(payload));
   if (!RUN_LOG_HIDE_HIGH_VOLUME_EVENTS || !HIGH_VOLUME_EVENTS.has(message)) {
     console.log(line);
   }
@@ -470,15 +483,50 @@ function resolveSharedWorkspacesRoot() {
 // Server lifecycle
 // ---------------------------------------------------------------------------
 
+function prepareRuntimeAssetDirectory(sourceDir, targetDir, { refresh = false } = {}) {
+  try {
+    if (refresh) {
+      fs.rmSync(targetDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+    fs.cpSync(sourceDir, targetDir, {
+      recursive: true,
+      force: refresh,
+      errorOnExist: false,
+    });
+    return targetDir;
+  } catch (error) {
+    logDesktop('Runtime asset preparation failed', {
+      sourceDir,
+      targetDir,
+      refresh,
+      error: serializeError(error),
+    });
+    return sourceDir;
+  }
+}
+
 function buildServerEnv(appRoot) {
   const userDataDir = app.getPath('userData');
   const runtimeDir = path.join(userDataDir, 'runtime');
+  const newsDataDir = path.join(runtimeDir, 'news-data');
+  const runtimeNewsScriptsDir = path.join(runtimeDir, 'server-scripts');
+  const runtimeSkillsDir = path.join(runtimeDir, 'skills');
   const databasePath = resolveSharedDatabasePath();
   const workspacesRoot = resolveSharedWorkspacesRoot();
 
   fs.mkdirSync(runtimeDir, { recursive: true });
+  fs.mkdirSync(newsDataDir, { recursive: true });
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
   fs.mkdirSync(workspacesRoot, { recursive: true });
+
+  let newsScriptsDir = path.join(appRoot, 'server', 'scripts');
+  let skillsDir = path.join(appRoot, 'skills');
+
+  if (app.isPackaged) {
+    newsScriptsDir = prepareRuntimeAssetDirectory(newsScriptsDir, runtimeNewsScriptsDir, { refresh: true });
+    skillsDir = prepareRuntimeAssetDirectory(skillsDir, runtimeSkillsDir, { refresh: false });
+  }
 
   return {
     ...process.env,
@@ -486,6 +534,9 @@ function buildServerEnv(appRoot) {
     LINGZHI_LAB_DESKTOP: '1',
     DATABASE_PATH: process.env.DATABASE_PATH || databasePath,
     LINGZHI_LAB_RUNTIME_DIR: process.env.LINGZHI_LAB_RUNTIME_DIR || runtimeDir,
+    LINGZHI_NEWS_DATA_DIR: process.env.LINGZHI_NEWS_DATA_DIR || newsDataDir,
+    LINGZHI_NEWS_SCRIPTS_DIR: process.env.LINGZHI_NEWS_SCRIPTS_DIR || newsScriptsDir,
+    LINGZHI_SKILLS_DIR: process.env.LINGZHI_SKILLS_DIR || skillsDir,
     WORKSPACES_ROOT: process.env.WORKSPACES_ROOT || workspacesRoot,
     NODE_ENV: process.env.NODE_ENV || (isDev ? 'development' : 'production'),
     PORT: process.env.PORT || '3001',
@@ -519,6 +570,10 @@ async function startServer() {
     appRoot,
     serverCwd,
     userData: app.getPath('userData'),
+    runtimeDir: env.LINGZHI_LAB_RUNTIME_DIR,
+    newsDataDir: env.LINGZHI_NEWS_DATA_DIR,
+    newsScriptsDir: env.LINGZHI_NEWS_SCRIPTS_DIR,
+    skillsDir: env.LINGZHI_SKILLS_DIR,
   });
 
   serverProcess = spawn(nodeBinary, [entrypoint], {
@@ -528,7 +583,7 @@ async function startServer() {
   });
 
   serverProcess.stdout?.on('data', (chunk) => {
-    const text = chunk.toString();
+    const text = redactSensitiveLogText(chunk.toString());
     process.stdout.write(text);
     const trimmed = text.trim();
     if (trimmed) {
@@ -537,7 +592,7 @@ async function startServer() {
   });
 
   serverProcess.stderr?.on('data', (chunk) => {
-    const text = chunk.toString();
+    const text = redactSensitiveLogText(chunk.toString());
     process.stderr.write(text);
     const trimmed = text.trim();
     if (trimmed) {

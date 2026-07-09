@@ -9,6 +9,7 @@ if ([string]::IsNullOrWhiteSpace($desktop) -or -not (Test-Path -LiteralPath $des
 $workDir = Join-Path $env:TEMP "Lingzhi-Lab-logs-$timestamp"
 $zipPath = Join-Path $desktop "Lingzhi-Lab-logs-$timestamp.zip"
 $summaryPath = Join-Path $workDir 'diagnostics.txt'
+$utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
 
 New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
@@ -31,6 +32,22 @@ function Copy-IfExists {
   }
 }
 
+function Protect-LogFile {
+  param([string]$Path)
+
+  try {
+    $content = [System.IO.File]::ReadAllText($Path)
+    $content = [regex]::Replace($content, '(?i)\bsk-[A-Za-z0-9_-]{16,}\b', '[REDACTED_API_KEY]')
+    $content = [regex]::Replace($content, '(?i)([?&]token=)[^&\s"''\\]+', '$1[REDACTED_TOKEN]')
+    $content = [regex]::Replace($content, '(?i)\bBearer\s+[A-Za-z0-9._~+/\-=]{16,}', 'Bearer [REDACTED_TOKEN]')
+    $content = [regex]::Replace($content, '\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b', '[REDACTED_JWT]')
+    [System.IO.File]::WriteAllText($Path, $content, $utf8NoBom)
+    Add-DiagnosticLine "REDACTED: $Path"
+  } catch {
+    Add-DiagnosticLine "REDACTION_FAILED: $Path ($($_.Exception.Message))"
+  }
+}
+
 Add-DiagnosticLine "Lingzhi Lab diagnostics"
 Add-DiagnosticLine "CollectedAt=$((Get-Date).ToString('o'))"
 Add-DiagnosticLine "User=$env:USERNAME"
@@ -48,6 +65,9 @@ $runLogsDir = Join-Path $userDataDir 'run-logs'
 
 Copy-IfExists $desktopLog (Join-Path $workDir 'desktop.log')
 Copy-IfExists $runLogsDir (Join-Path $workDir 'run-logs')
+
+Get-ChildItem -LiteralPath $workDir -Recurse -File -Filter '*.log' -ErrorAction SilentlyContinue |
+  ForEach-Object { Protect-LogFile $_.FullName }
 
 $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
 $installCandidates = @(
