@@ -70,6 +70,7 @@ import telemetryRoutes from './routes/telemetry.js';
 import computeRoutes from './routes/compute.js';
 import newsRoutes from './routes/news.js';
 import autoResearchRoutes from './routes/auto-research.js';
+import communityToolsRoutes from './routes/community-tools.js';
 import referencesRoutes from './routes/references.js';
 import { initializeDatabase, projectDb, sessionDb, tagDb } from './database/db.js';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
@@ -819,6 +820,9 @@ app.use('/api/news', authenticateToken, newsRoutes);
 
 // Auto Research API Routes (protected)
 app.use('/api/auto-research', authenticateToken, autoResearchRoutes);
+
+// Community tools configuration API Routes (protected)
+app.use('/api/community-tools', authenticateToken, communityToolsRoutes);
 
 // References (literature library) API Routes (protected)
 app.use('/api/references', authenticateToken, referencesRoutes);
@@ -1926,13 +1930,23 @@ function handleChatConnection(ws, request) {
 
                 const explicitResumeFlag = data.options?.resume === true;
                 const hasExplicitResumeSessionId = Boolean(inboundResumeSessionId);
-                const isResumeAttempt = Boolean(explicitResumeFlag || hasExplicitResumeSessionId);
+                const requestedResumeSessionId = inboundResumeSessionId || (explicitResumeFlag ? inboundSessionId : null);
+                const temporaryResumeSessionId =
+                    requestedResumeSessionId && isTemporarySessionId(requestedResumeSessionId)
+                        ? requestedResumeSessionId
+                        : null;
+                const isResumeAttempt = Boolean(explicitResumeFlag || hasExplicitResumeSessionId) && !temporaryResumeSessionId;
 
                 // A temporary id should remain a provisional UI binding and never be used to resume runtime threads.
                 const provisionalSessionId =
                     (typeof data.options?.provisionalSessionId === 'string' && data.options.provisionalSessionId.trim().length > 0)
                         ? data.options.provisionalSessionId.trim()
-                        : (inboundSessionId && isTemporarySessionId(inboundSessionId) ? inboundSessionId : null);
+                        : (temporaryResumeSessionId
+                            || (inboundSessionId && isTemporarySessionId(inboundSessionId) ? inboundSessionId : null));
+
+                if (temporaryResumeSessionId) {
+                    console.warn(`[WARN] Treating temporary resume id ${temporaryResumeSessionId} as a new Codex session.`);
+                }
 
                 const sessionId =
                     isResumeAttempt
@@ -3369,7 +3383,6 @@ async function startServer() {
 }
 
 startServer();
-
 
 
 

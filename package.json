@@ -164,6 +164,16 @@
       "output": "release"
     },
     "asar": true,
+    "extraResources": [
+      {
+        "from": ".desktop-secure/server/scripts",
+        "to": "server-scripts"
+      },
+      {
+        "from": ".desktop-secure/skills",
+        "to": "skills"
+      }
+    ],
     "electronFuses": {
       "runAsNode": true,
       "enableNodeOptionsEnvironmentVariable": false,

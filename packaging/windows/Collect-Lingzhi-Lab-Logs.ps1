@@ -38,6 +38,7 @@ function Protect-LogFile {
   try {
     $content = [System.IO.File]::ReadAllText($Path)
     $content = [regex]::Replace($content, '(?i)\bsk-[A-Za-z0-9_-]{16,}\b', '[REDACTED_API_KEY]')
+    $content = [regex]::Replace($content, '(?i)\bAIza[0-9A-Za-z_-]{30,}\b', '[REDACTED_API_KEY]')
     $content = [regex]::Replace($content, '(?i)([?&]token=)[^&\s"''\\]+', '$1[REDACTED_TOKEN]')
     $content = [regex]::Replace($content, '(?i)\bBearer\s+[A-Za-z0-9._~+/\-=]{16,}', 'Bearer [REDACTED_TOKEN]')
     $content = [regex]::Replace($content, '\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b', '[REDACTED_JWT]')

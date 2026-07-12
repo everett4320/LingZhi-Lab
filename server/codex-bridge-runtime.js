@@ -452,9 +452,9 @@ class CodexBridgeRuntime {
       args: ['--version'],
     });
 
-    const cliCommand = normalizeCliCommand(resolved || process.env.CODEX_CLI_PATH || 'codex');
+    const cliCommand = normalizeCliCommand(resolved);
     if (!cliCommand) {
-      throw new Error('Codex CLI command unavailable');
+      throw new Error('Codex CLI not found. Install the official Codex CLI or set CODEX_CLI_PATH to its executable.');
     }
 
     this.currentCliCommand = cliCommand;

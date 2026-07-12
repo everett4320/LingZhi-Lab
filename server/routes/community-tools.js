@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { loadAllNodes, loadNodeConfig, ComputeNode } from '../compute-node.js';
+import { checkCommandAvailable } from '../utils/cliResolution.js';
 
 const router = express.Router();
 
@@ -14,16 +15,19 @@ const EXTENDED_ENV = {
   PATH: [
     path.join(os.homedir(), '.local', 'bin'),
     path.join(os.homedir(), '.npm-global', 'bin'),
+    process.env.APPDATA ? path.join(process.env.APPDATA, 'npm') : null,
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'pnpm') : null,
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links') : null,
     '/usr/local/bin',
-    process.env.PATH || '',
-  ].join(':'),
+    process.env.PATH || process.env.Path || '',
+  ].filter(Boolean).join(path.delimiter),
 };
 
 function spawnAsync(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       ...options,
-      shell: false,
+      shell: process.platform === 'win32',
     });
 
     let stdout = '';
@@ -70,12 +74,11 @@ router.post('/configure', async (req, res) => {
     if (projectPath && projectPath !== '.') {
       resolvedPath = path.resolve(projectPath);
     } else {
-      // Use __dirname parent (VibeLab root) as default
-      // community-tools.js is in server/routes/ — go up 2 levels to VibeLab root
-      resolvedPath = path.resolve(path.join(path.dirname(new URL(import.meta.url).pathname), '..', '..'));
+      resolvedPath = path.resolve(process.env.APP_ROOT || process.cwd());
     }
 
     const results = { steps: [], errors: [] };
+    const skillsRoot = process.env.LINGZHI_SKILLS_DIR || path.join(resolvedPath, 'skills');
 
     // ── Step 1: Write API keys to ~/.openclaw/community-tools.json ──
     // (NOT project .env — writing .env triggers Vite restart and kills the fetch)
@@ -123,8 +126,8 @@ router.post('/configure', async (req, res) => {
       try {
         const mcpCommands = {
           codex: ['mcp', 'add', 'codex', '-s', 'user', '--', 'codex', 'mcp-server'],
-          'llm-chat': ['mcp', 'add', 'llm-chat', '-s', 'user', '--', 'python3', path.join(resolvedPath, 'skills/aris-infra/mcp-servers/llm-chat/server.py')],
-          gemini: ['mcp', 'add', 'gemini-review', '-s', 'user', '--', 'python3', path.join(resolvedPath, 'skills/aris-infra/mcp-servers/gemini-review/server.py')],
+          'llm-chat': ['mcp', 'add', 'llm-chat', '-s', 'user', '--', 'python3', path.join(skillsRoot, 'aris-infra', 'mcp-servers', 'llm-chat', 'server.py')],
+          gemini: ['mcp', 'add', 'gemini-review', '-s', 'user', '--', 'python3', path.join(skillsRoot, 'aris-infra', 'mcp-servers', 'gemini-review', 'server.py')],
         };
 
         const ENV_ONLY_BACKENDS = ['gemini-figure'];
@@ -155,10 +158,9 @@ router.post('/configure', async (req, res) => {
 
         // Install codex CLI if needed
         if (mcpBackend === 'codex') {
-          try {
-            await spawnAsync('which', ['codex']);
+          if (await checkCommandAvailable('codex', ['--version'], { platform: process.platform })) {
             results.steps.push({ step: 'codex-cli', status: 'skipped', message: 'Codex CLI already installed' });
-          } catch {
+          } else {
             try {
               await spawnAsync('npm', ['install', '-g', '@openai/codex'], { env: EXTENDED_ENV });
               results.steps.push({ step: 'codex-cli', status: 'ok', message: 'Installed Codex CLI' });
@@ -198,7 +200,7 @@ router.post('/configure', async (req, res) => {
 
     // ── Step 4: Symlink skills ──
     try {
-      const skillsDir = path.join(resolvedPath, 'skills');
+      const skillsDir = skillsRoot;
       const claudeSkillsDir = path.join(os.homedir(), '.claude', 'skills');
       await fs.mkdir(claudeSkillsDir, { recursive: true });
 
@@ -211,7 +213,11 @@ router.post('/configure', async (req, res) => {
             await fs.access(target);
             // already exists
           } catch {
-            await fs.symlink(path.join(skillsDir, entry.name), target);
+            await fs.symlink(
+              path.join(skillsDir, entry.name),
+              target,
+              process.platform === 'win32' ? 'junction' : 'dir',
+            );
             linked++;
           }
         }

@@ -115,7 +115,7 @@ function redactSensitiveLogText(value) {
     .replace(/([?&]token=)[^&\s"'\\]+/gi, '$1[REDACTED_TOKEN]')
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi, 'Bearer [REDACTED_TOKEN]')
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[REDACTED_JWT]')
-    .replace(/("(?:apiKey|api_key|authorization|accessToken|access_token|refreshToken|refresh_token)"\s*:\s*")[^"]*(")/gi, '$1[REDACTED]$2');
+    .replace(/("(?:[A-Z0-9_]*API_KEY|apiKey|api_key|authorization|accessToken|access_token|refreshToken|refresh_token)"\s*:\s*")[^"]*(")/gi, '$1[REDACTED]$2');
 }
 
 function trimLogValue(value, maxLength = 8000) {
@@ -506,6 +506,71 @@ function prepareRuntimeAssetDirectory(sourceDir, targetDir, { refresh = false } 
   }
 }
 
+function getDesktopCliDirectories() {
+  if (process.platform !== 'win32') {
+    return [];
+  }
+
+  const homeDir = app.getPath('home');
+  const appDataDir = process.env.APPDATA || app.getPath('appData');
+  const localAppDataDir = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
+  const programDataDir = process.env.PROGRAMDATA || process.env.ProgramData || null;
+  const candidates = [
+    appDataDir ? path.join(appDataDir, 'npm') : null,
+    localAppDataDir ? path.join(localAppDataDir, 'pnpm') : null,
+    localAppDataDir ? path.join(localAppDataDir, 'Microsoft', 'WinGet', 'Links') : null,
+    path.join(homeDir, 'scoop', 'shims'),
+    path.join(homeDir, '.cargo', 'bin'),
+    path.join(homeDir, '.bun', 'bin'),
+    path.join(homeDir, '.local', 'bin'),
+    programDataDir ? path.join(programDataDir, 'chocolatey', 'bin') : null,
+  ].filter((candidate) => candidate && fs.existsSync(candidate));
+
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    const key = candidate.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildDesktopExecutablePath(cliDirectories) {
+  const existing = String(process.env.PATH || process.env.Path || '')
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const seen = new Set();
+  return [...cliDirectories, ...existing]
+    .filter((entry) => {
+      const key = process.platform === 'win32' ? entry.toLowerCase() : entry;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(path.delimiter);
+}
+
+function resolveDesktopCodexCli(cliDirectories) {
+  const override = String(process.env.CODEX_CLI_PATH || '').trim();
+  if (override) {
+    return override;
+  }
+  if (process.platform !== 'win32') {
+    return null;
+  }
+
+  for (const directory of cliDirectories) {
+    for (const filename of ['codex.cmd', 'codex.exe', 'codex.bat']) {
+      const candidate = path.join(directory, filename);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
 function buildServerEnv(appRoot) {
   const userDataDir = app.getPath('userData');
   const runtimeDir = path.join(userDataDir, 'runtime');
@@ -514,14 +579,27 @@ function buildServerEnv(appRoot) {
   const runtimeSkillsDir = path.join(runtimeDir, 'skills');
   const databasePath = resolveSharedDatabasePath();
   const workspacesRoot = resolveSharedWorkspacesRoot();
+  const cliDirectories = getDesktopCliDirectories();
+  const executablePath = buildDesktopExecutablePath(cliDirectories);
+  const codexCliPath = resolveDesktopCodexCli(cliDirectories);
+  const inheritedEnv = { ...process.env };
+  for (const key of Object.keys(inheritedEnv)) {
+    if (key.toLowerCase() === 'path') {
+      delete inheritedEnv[key];
+    }
+  }
 
   fs.mkdirSync(runtimeDir, { recursive: true });
   fs.mkdirSync(newsDataDir, { recursive: true });
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
   fs.mkdirSync(workspacesRoot, { recursive: true });
 
-  let newsScriptsDir = path.join(appRoot, 'server', 'scripts');
-  let skillsDir = path.join(appRoot, 'skills');
+  let newsScriptsDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'server-scripts')
+    : path.join(appRoot, 'server', 'scripts');
+  let skillsDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'skills')
+    : path.join(appRoot, 'skills');
 
   if (app.isPackaged) {
     newsScriptsDir = prepareRuntimeAssetDirectory(newsScriptsDir, runtimeNewsScriptsDir, { refresh: true });
@@ -529,7 +607,9 @@ function buildServerEnv(appRoot) {
   }
 
   return {
-    ...process.env,
+    ...inheritedEnv,
+    PATH: executablePath,
+    ...(codexCliPath ? { CODEX_CLI_PATH: codexCliPath } : {}),
     ELECTRON_RUN_AS_NODE: '1',
     LINGZHI_LAB_DESKTOP: '1',
     DATABASE_PATH: process.env.DATABASE_PATH || databasePath,
@@ -574,6 +654,7 @@ async function startServer() {
     newsDataDir: env.LINGZHI_NEWS_DATA_DIR,
     newsScriptsDir: env.LINGZHI_NEWS_SCRIPTS_DIR,
     skillsDir: env.LINGZHI_SKILLS_DIR,
+    codexCliPath: env.CODEX_CLI_PATH || null,
   });
 
   serverProcess = spawn(nodeBinary, [entrypoint], {
