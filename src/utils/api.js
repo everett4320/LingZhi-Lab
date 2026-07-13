@@ -48,6 +48,7 @@ export const api = {
   projects: () => authenticatedFetch('/api/projects'),
   trashedProjects: () => authenticatedFetch('/api/projects/trash'),
   settings: {
+    codexModels: () => authenticatedFetch('/api/settings/codex-models'),
     autoResearchEmail: () => authenticatedFetch('/api/settings/auto-research-email'),
     updateAutoResearchEmail: (senderEmail) =>
       authenticatedFetch('/api/settings/auto-research-email', {

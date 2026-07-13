@@ -308,7 +308,7 @@ const COMMUNITY_PACK_CONFIGS: Record<string, PackConfig> = {
     mcp: [
       {
         key: 'codex',
-        label: 'Codex (GPT-5.4)',
+        label: 'Codex',
         install: 'npm install -g @openai/codex',
         register: 'claude mcp add codex -s user -- codex mcp-server',
         envVars: [{ name: 'OPENAI_API_KEY', example: 'sk-proj-...' }],

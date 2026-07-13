@@ -24,9 +24,9 @@ import type {
   TouchEvent,
 } from 'react';
 import type { CodexReasoningEffortId } from '../../constants/codexReasoningEfforts';
+import type { CodexModelOption } from '../../hooks/useCodexModelCatalog';
 import type { AttachedPrompt, CodexInputMessage, PendingPermissionRequest, PermissionMode, Provider, TokenBudget } from '../../types/types';
-import type { SessionMode, SessionProvider } from '../../../../types/app';
-import { CODEX_MODELS } from '../../../../../shared/modelConstants';
+import type { SessionMode } from '../../../../types/app';
 import { isAutoResearchScenario } from '../../utils/autoResearch';
 
 // New subcomponents
@@ -54,10 +54,6 @@ interface SlashCommand {
   [key: string]: unknown;
 }
 
-function getModelConfig(_p: SessionProvider) {
-  return CODEX_MODELS;
-}
-
 interface ChatComposerProps {
   pendingPermissionRequests: PendingPermissionRequest[];
   handlePermissionDecision: (
@@ -72,6 +68,7 @@ interface ChatComposerProps {
   permissionMode: PermissionMode | string;
   onModeSwitch: () => void;
   codexModel: string;
+  codexModelOptions: CodexModelOption[];
   codexReasoningEffort: CodexReasoningEffortId;
   setCodexReasoningEffort: Dispatch<SetStateAction<CodexReasoningEffortId>>;
   tokenBudget: TokenBudget | null;
@@ -146,6 +143,7 @@ export default function ChatComposer({
   permissionMode,
   onModeSwitch,
   codexModel,
+  codexModelOptions,
   codexReasoningEffort,
   setCodexReasoningEffort,
   tokenBudget,
@@ -229,9 +227,7 @@ export default function ChatComposer({
     : '';
 
   // Provider/model handling for centered mode
-  const sessionProvider = provider as SessionProvider;
   const currentModel = codexModel;
-  const modelConfig = getModelConfig(sessionProvider);
 
   const handleModelChange = (value: string) => {
     setCodexModel?.(value);
@@ -557,11 +553,11 @@ export default function ChatComposer({
                 {/* Right side */}
                 <div className="flex items-center gap-1.5">
                   {/* Model selector */}
-                  {modelConfig && (
+                  {codexModelOptions.length > 0 && (
                     <>
                       <ModelSelector
                         value={currentModel}
-                        options={modelConfig.OPTIONS}
+                        options={codexModelOptions}
                         onChange={handleModelChange}
                       />
                     </>

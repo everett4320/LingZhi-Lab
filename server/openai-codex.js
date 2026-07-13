@@ -26,7 +26,6 @@ import { buildCodexRealtimeTokenBudget } from './utils/sessionTokenUsage.js';
 import { expandSkillCommand } from './utils/skillExpander.js';
 import { buildCodexSessionCreatedEvent } from './utils/codexSessionEvents.js';
 import { buildUnifiedCodexEvent } from './utils/codexUnifiedEvents.js';
-import { CODEX_MODELS } from '../shared/modelConstants.js';
 import { BTW_SYSTEM_PROMPT, buildBtwUserMessage } from './utils/btw.js';
 
 // Track active sessions
@@ -856,7 +855,10 @@ export async function runCodexBtw({ question, transcript, model, env, signal }) 
   }
 
   const userBlock = buildBtwUserMessage(question, transcript);
-  const effectiveModel = model || CODEX_MODELS.DEFAULT;
+  const effectiveModel = typeof model === 'string' ? model.trim() : '';
+  if (!effectiveModel) {
+    throw new Error('No Codex model selected from the local model catalog');
+  }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',

@@ -15,6 +15,7 @@ import type { ChatInterfaceProps } from '../types/types';
 import type { ProviderAvailability } from '../types/types';
 import type { ChatMessage } from '../types/types';
 import { useChatProviderState } from '../hooks/useChatProviderState';
+import { useCodexModelCatalog } from '../hooks/useCodexModelCatalog';
 import { useChatSessionState } from '../hooks/useChatSessionState';
 import { useChatRealtimeHandlers } from '../hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '../hooks/useChatComposerState';
@@ -24,7 +25,6 @@ import { readCliAvailability, writeCliAvailability } from '../../../utils/cliAva
 import { Button } from '../../ui/button';
 import type { PendingAutoIntake } from '../../../types/app';
 import type { EditingFile, DiffInfo } from '../../main-content/types/types';
-import { CODEX_MODELS } from '../../../../shared/modelConstants';
 import { getProviderDisplayName } from '../utils/chatFormatting';
 import { buildEditableMessageDraft, buildReplayMessageDraft, getChatMessageId, getMessageReplayContent } from '../utils/chatMessages';
 import { normalizePath, toRelativePath, isSafePath, fileNameFromPath } from '../../../utils/pathUtils';
@@ -152,6 +152,36 @@ function ChatInterface({
   } = useChatProviderState({
     selectedSession,
   });
+  const {
+    models: codexModelOptions,
+    defaultModel: localCodexDefaultModel,
+    isLoading: isCodexModelCatalogLoading,
+  } = useCodexModelCatalog();
+
+  useEffect(() => {
+    if (isCodexModelCatalogLoading) return;
+
+    const availableModels = new Set(codexModelOptions.map((model) => model.value));
+    const persistedModel = localStorage.getItem('codex-model') || '';
+    const nextModel = availableModels.has(codexModel)
+      ? codexModel
+      : availableModels.has(persistedModel)
+        ? persistedModel
+        : localCodexDefaultModel || codexModelOptions[0]?.value || '';
+
+    if (nextModel !== codexModel) setCodexModel(nextModel);
+    if (nextModel) {
+      localStorage.setItem('codex-model', nextModel);
+    } else {
+      localStorage.removeItem('codex-model');
+    }
+  }, [
+    codexModel,
+    codexModelOptions,
+    isCodexModelCatalogLoading,
+    localCodexDefaultModel,
+    setCodexModel,
+  ]);
 
   const {
     chatMessages,
@@ -728,11 +758,14 @@ function ChatInterface({
                       <select
                         value={importedProjectAnalysisModel}
                         onChange={(event) => handleImportedProjectAnalysisModelChange(event.target.value)}
+                        disabled={codexModelOptions.length === 0}
                         className="min-w-[220px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       >
-                        {CODEX_MODELS.OPTIONS.map(({ value, label }: { value: string; label: string }) => (
-                          <option key={value} value={value}>{label}</option>
-                        ))}
+                        {codexModelOptions.length > 0
+                          ? codexModelOptions.map(({ value, label }) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))
+                          : <option value="">Codex local default</option>}
                       </select>
                     </label>
                   </div>
@@ -809,6 +842,7 @@ function ChatInterface({
           permissionMode={permissionMode}
           onModeSwitch={cyclePermissionMode}
           codexModel={codexModel}
+          codexModelOptions={codexModelOptions}
           codexReasoningEffort={codexReasoningEffort}
           setCodexReasoningEffort={setCodexReasoningEffort}
           tokenBudget={tokenBudget}

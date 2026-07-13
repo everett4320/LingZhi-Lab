@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CODEX_MODELS } from '../../../../shared/modelConstants';
 import type { PendingPermissionRequest, PermissionMode } from '../types/types';
 import type { ProjectSession, SessionProvider } from '../../../types/app';
 
@@ -11,9 +10,8 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
   const [pendingPermissionRequests, setPendingPermissionRequests] = useState<PendingPermissionRequest[]>([]);
   const [provider, setProvider] = useState<SessionProvider>('codex');
-  const [codexModel, setCodexModel] = useState<string>(() => {
-    return localStorage.getItem('codex-model') || CODEX_MODELS.DEFAULT;
-  });
+  // Do not trust a persisted model until the local Codex catalog validates it.
+  const [codexModel, setCodexModel] = useState<string>('');
 
   const lastProviderRef = useRef(provider);
 
@@ -100,4 +98,3 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
     cyclePermissionMode,
   };
 }
-

@@ -1,7 +1,6 @@
 import { spawn } from 'child_process';
 
 import { classifyError, classifySDKError } from '../shared/errorClassifier.js';
-import { CODEX_MODELS } from '../shared/modelConstants.js';
 import { encodeProjectPath } from './projects.js';
 import { resolveAvailableCliCommand } from './utils/cliResolution.js';
 import { createJsonRpcMux, normalizeRpcError } from './utils/codexAppServerRpc.js';
@@ -417,6 +416,65 @@ class CodexBridgeRuntime {
   async initialize() {
     await this.ensureStarted();
     return true;
+  }
+
+  async listModels() {
+    await this.ensureStarted();
+
+    const catalog = [];
+    const seenModels = new Set();
+    const seenCursors = new Set();
+    let cursor = null;
+
+    do {
+      const params = {
+        limit: 100,
+        includeHidden: false,
+        ...(cursor ? { cursor } : {}),
+      };
+      const response = await this.rpc.request('model/list', params);
+      const page = Array.isArray(response?.data) ? response.data : [];
+
+      for (const entry of page) {
+        if (!entry || entry.hidden === true) continue;
+
+        const value = String(entry.model || entry.id || '').trim();
+        if (!value || seenModels.has(value)) continue;
+        seenModels.add(value);
+
+        const supportedReasoningEfforts = Array.isArray(entry.supportedReasoningEfforts)
+          ? entry.supportedReasoningEfforts
+            .map((effort) => typeof effort === 'string' ? effort : effort?.reasoningEffort)
+            .filter((effort) => typeof effort === 'string' && effort.trim())
+          : [];
+
+        catalog.push({
+          value,
+          label: String(entry.displayName || entry.model || entry.id || value),
+          description: typeof entry.description === 'string' ? entry.description : '',
+          isDefault: entry.isDefault === true,
+          supportedReasoningEfforts,
+          defaultReasoningEffort: typeof entry.defaultReasoningEffort === 'string'
+            ? entry.defaultReasoningEffort
+            : null,
+        });
+      }
+
+      const nextCursor = typeof response?.nextCursor === 'string' && response.nextCursor.trim()
+        ? response.nextCursor.trim()
+        : null;
+      if (!nextCursor || seenCursors.has(nextCursor)) {
+        cursor = null;
+      } else {
+        seenCursors.add(nextCursor);
+        cursor = nextCursor;
+      }
+    } while (cursor);
+
+    return {
+      models: catalog,
+      defaultModel: catalog.find((model) => model.isDefault)?.value || catalog[0]?.value || '',
+    };
   }
 
   async ensureStarted() {
@@ -1342,7 +1400,7 @@ class CodexBridgeRuntime {
     const projectPath = options.projectPath || options.cwd || process.cwd();
     const projectName = options.projectName || encodeProjectPath(projectPath);
     const sessionMode = normalizeSessionMode(options.sessionMode || 'research');
-    const model = options.model || CODEX_MODELS.DEFAULT;
+    const model = typeof options.model === 'string' ? options.model.trim() : '';
     const clientTurnId = toSessionKey(options.clientTurnId) || null;
     const providedSessionId = toSessionKey(options.sessionId || options.resumeSessionId);
     const provisionalSessionId = toSessionKey(options.provisionalSessionId)
@@ -1396,7 +1454,7 @@ class CodexBridgeRuntime {
         threadId = toSessionKey(resumeResult?.thread?.id || providedSessionId);
       } else {
         const threadStartResult = await this.rpc.request('thread/start', {
-          model,
+          ...(model ? { model } : {}),
           cwd: projectPath,
           approvalPolicy,
           sandbox,
@@ -1457,7 +1515,7 @@ class CodexBridgeRuntime {
       const turnStartResult = await this.rpc.request('turn/start', {
         threadId,
         input: buildInputItems(command, options.attachments),
-        model,
+        ...(model ? { model } : {}),
         cwd: projectPath,
         approvalPolicy,
         sandboxPolicy,
@@ -1883,6 +1941,10 @@ export function getCodexBridgeRuntime() {
 export async function queryCodexViaBridge(command, options = {}, writer) {
   const runtime = getCodexBridgeRuntime();
   return runtime.query(command, options, writer);
+}
+
+export async function listCodexModelsViaBridge() {
+  return getCodexBridgeRuntime().listModels();
 }
 
 export async function steerCodexViaBridge(params = {}) {

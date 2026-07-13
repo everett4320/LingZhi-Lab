@@ -91,7 +91,7 @@ type AutoResearchConfig = {
 
 function getDefaultModelForProvider(provider: AutoResearchProvider): string {
   if (provider === 'codex') {
-    return CODEX_MODELS.DEFAULT || 'gpt-5.4';
+    return CODEX_MODELS.DEFAULT;
   }
   if (provider === 'gemini') {
     return GEMINI_MODELS.DEFAULT || 'gemini-2.5-flash';

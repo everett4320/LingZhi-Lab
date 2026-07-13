@@ -98,7 +98,7 @@ export const AUTO_RESEARCH_PACKS: PackDef[] = [
       { name: 'Rebuttal', command: '/aris-rebuttal', description: { zh: '解析审稿意见 + 起草反驳信', en: 'Parse reviews + Draft rebuttal', ko: 'Parse reviews + Draft rebuttal' } },
     ],
     mcp: [
-      { key: 'codex', label: 'Codex (GPT-5.4)', install: 'npm install -g @openai/codex', register: 'claude mcp add codex -s user -- codex mcp-server', envVars: [{ name: 'OPENAI_API_KEY', example: 'sk-proj-...' }] },
+      { key: 'codex', label: 'Codex', install: 'npm install -g @openai/codex', register: 'claude mcp add codex -s user -- codex mcp-server', envVars: [{ name: 'OPENAI_API_KEY', example: 'sk-proj-...' }] },
       { key: 'llm-chat', label: 'Generic LLM', register: 'claude mcp add llm-chat -s user -- python3 skills/aris-infra/mcp-servers/llm-chat/server.py', envVars: [{ name: 'LLM_API_KEY', example: 'your-api-key' }, { name: 'LLM_BASE_URL', example: 'https://api.openai.com/v1' }, { name: 'LLM_MODEL', example: 'gpt-4o' }] },
       { key: 'gemini', label: 'Gemini', register: 'claude mcp add gemini-review -s user -- python3 skills/aris-infra/mcp-servers/gemini-review/server.py', envVars: [{ name: 'GEMINI_API_KEY', example: 'your-gemini-key' }] },
     ],

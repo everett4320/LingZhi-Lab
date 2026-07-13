@@ -1,9 +1,23 @@
 import express from 'express';
 import { apiKeysDb, appSettingsDb, credentialsDb } from '../database/db.js';
+import { listCodexModelsViaBridge } from '../codex-bridge-runtime.js';
 
 const router = express.Router();
 const AUTO_RESEARCH_SENDER_EMAIL_KEY = 'auto_research_sender_email';
 const AUTO_RESEARCH_RESEND_API_KEY = 'auto_research_resend_api_key';
+
+router.get('/codex-models', async (_req, res) => {
+  try {
+    res.json(await listCodexModelsViaBridge());
+  } catch (error) {
+    console.error('Error fetching local Codex model catalog:', error);
+    res.status(503).json({
+      models: [],
+      defaultModel: '',
+      error: error?.message || 'Failed to fetch local Codex model catalog',
+    });
+  }
+});
 
 // ===============================
 // API Keys Management
