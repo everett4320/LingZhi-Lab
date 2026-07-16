@@ -19,6 +19,7 @@ import path from 'path';
 import os from 'os';
 import { encodeProjectPath, reconcileCodexSessionIndex } from './projects.js';
 import { sessionDb } from './database/db.js';
+import { getLingzhiCodexHome } from './utils/codexHome.js';
 import { applyStageTagsToSession, recordIndexedSession } from './utils/sessionIndex.js';
 import { classifyError, classifySDKError } from '../shared/errorClassifier.js';
 import { buildTempAttachmentFilename } from './utils/imageAttachmentFiles.js';
@@ -834,7 +835,7 @@ async function resolveOpenAIApiKey(env) {
   if (env?.OPENAI_API_KEY) return env.OPENAI_API_KEY;
   if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY;
   try {
-    const authPath = path.join(os.homedir(), '.codex', 'auth.json');
+    const authPath = path.join(getLingzhiCodexHome(process.env), 'auth.json');
     const content = await fs.readFile(authPath, 'utf8');
     const auth = JSON.parse(content);
     if (auth?.OPENAI_API_KEY) return auth.OPENAI_API_KEY;

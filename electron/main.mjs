@@ -10,8 +10,7 @@ import {
   screen,
   shell,
 } from 'electron';
-import { execFile } from 'node:child_process';
-import { spawn } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -551,7 +550,108 @@ function buildDesktopExecutablePath(cliDirectories) {
     .join(path.delimiter);
 }
 
+function getBundledCodexRuntimePaths() {
+  if (!app.isPackaged) {
+    return { root: null, cliPath: null, toolsDir: null };
+  }
+
+  const root = path.join(process.resourcesPath, 'codex-runtime');
+  const cliName = process.platform === 'win32' ? 'codex.exe' : 'codex';
+  return {
+    root,
+    cliPath: path.join(root, 'codex', cliName),
+    toolsDir: path.join(root, 'path'),
+  };
+}
+
+function migrateLegacyCodexSessions(codexHome) {
+  const markerPath = path.join(codexHome, '.lingzhi-session-migration-v1');
+  if (fs.existsSync(markerPath)) {
+    return;
+  }
+
+  const legacySessionsDir = path.join(os.homedir(), '.codex', 'sessions');
+  const targetSessionsDir = path.join(codexHome, 'sessions');
+
+  try {
+    if (path.resolve(legacySessionsDir) !== path.resolve(targetSessionsDir) && fs.existsSync(legacySessionsDir)) {
+      fs.mkdirSync(targetSessionsDir, { recursive: true });
+      fs.cpSync(legacySessionsDir, targetSessionsDir, {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+      });
+      logDesktop('Migrated legacy Codex session history', {
+        sourceDir: legacySessionsDir,
+        targetDir: targetSessionsDir,
+      });
+    }
+
+    fs.writeFileSync(markerPath, `${new Date().toISOString()}\n`, 'utf8');
+  } catch (error) {
+    logDesktop('Legacy Codex session migration failed', {
+      sourceDir: legacySessionsDir,
+      targetDir: targetSessionsDir,
+      error,
+    });
+  }
+}
+
+function applyBundledCodexApiKey(env) {
+  if (!app.isPackaged) {
+    return;
+  }
+
+  const apiKeyPath = path.join(process.resourcesPath, 'codex-bootstrap', 'api-key.txt');
+  if (!fs.existsSync(apiKeyPath)) {
+    logDesktop('No bundled Codex API key found; skipping API-key bootstrap');
+    return;
+  }
+
+  const apiKey = fs.readFileSync(apiKeyPath, 'utf8').trim();
+  if (!apiKey) {
+    throw new Error('Bundled Codex API key file is empty');
+  }
+  if (!env.CODEX_CLI_PATH || !fs.existsSync(env.CODEX_CLI_PATH)) {
+    throw new Error('Bundled Codex CLI is unavailable; refusing to use a local Codex installation');
+  }
+
+  env.OPENAI_API_KEY = apiKey;
+  const result = spawnSync(env.CODEX_CLI_PATH, ['login', '--with-api-key'], {
+    env,
+    input: `${apiKey}\n`,
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 60_000,
+    shell: false,
+  });
+
+  if (result.error || result.status !== 0) {
+    logDesktop('Bundled Codex API-key login failed', {
+      codexCliPath: env.CODEX_CLI_PATH,
+      codexHome: env.CODEX_HOME,
+      status: result.status,
+      signal: result.signal,
+      error: result.error || null,
+    });
+    throw new Error('Bundled Codex API-key login failed');
+  }
+
+  logDesktop('Bundled Codex API-key login applied', {
+    codexCliPath: env.CODEX_CLI_PATH,
+    codexHome: env.CODEX_HOME,
+  });
+}
+
 function resolveDesktopCodexCli(cliDirectories) {
+  const bundledRuntime = getBundledCodexRuntimePaths();
+  if (bundledRuntime.cliPath && fs.existsSync(bundledRuntime.cliPath)) {
+    return bundledRuntime.cliPath;
+  }
+  if (app.isPackaged) {
+    return null;
+  }
+
   const override = String(process.env.CODEX_CLI_PATH || '').trim();
   if (override) {
     return override;
@@ -574,12 +674,17 @@ function resolveDesktopCodexCli(cliDirectories) {
 function buildServerEnv(appRoot) {
   const userDataDir = app.getPath('userData');
   const runtimeDir = path.join(userDataDir, 'runtime');
+  const codexHome = path.join(userDataDir, 'codex-home');
   const newsDataDir = path.join(runtimeDir, 'news-data');
   const runtimeNewsScriptsDir = path.join(runtimeDir, 'server-scripts');
   const runtimeSkillsDir = path.join(runtimeDir, 'skills');
   const databasePath = resolveSharedDatabasePath();
   const workspacesRoot = resolveSharedWorkspacesRoot();
-  const cliDirectories = getDesktopCliDirectories();
+  const bundledCodexRuntime = getBundledCodexRuntimePaths();
+  const cliDirectories = app.isPackaged ? [] : getDesktopCliDirectories();
+  if (bundledCodexRuntime.toolsDir && fs.existsSync(bundledCodexRuntime.toolsDir)) {
+    cliDirectories.unshift(bundledCodexRuntime.toolsDir);
+  }
   const executablePath = buildDesktopExecutablePath(cliDirectories);
   const codexCliPath = resolveDesktopCodexCli(cliDirectories);
   const inheritedEnv = { ...process.env };
@@ -590,9 +695,11 @@ function buildServerEnv(appRoot) {
   }
 
   fs.mkdirSync(runtimeDir, { recursive: true });
+  fs.mkdirSync(codexHome, { recursive: true });
   fs.mkdirSync(newsDataDir, { recursive: true });
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
   fs.mkdirSync(workspacesRoot, { recursive: true });
+  migrateLegacyCodexSessions(codexHome);
 
   let newsScriptsDir = app.isPackaged
     ? path.join(process.resourcesPath, 'server-scripts')
@@ -610,6 +717,8 @@ function buildServerEnv(appRoot) {
     ...inheritedEnv,
     PATH: executablePath,
     ...(codexCliPath ? { CODEX_CLI_PATH: codexCliPath } : {}),
+    CODEX_HOME: codexHome,
+    LINGZHI_CODEX_HOME: codexHome,
     ELECTRON_RUN_AS_NODE: '1',
     LINGZHI_LAB_DESKTOP: '1',
     DATABASE_PATH: process.env.DATABASE_PATH || databasePath,
@@ -629,6 +738,7 @@ function buildServerEnv(appRoot) {
 async function startServer() {
   const appRoot = resolveAppRoot();
   const env = buildServerEnv(appRoot);
+  applyBundledCodexApiKey(env);
   const requestedPort = Number.parseInt(env.PORT, 10) || 3001;
   const selectedPort = await findAvailablePort(requestedPort, env.HOST);
   env.PORT = String(selectedPort);

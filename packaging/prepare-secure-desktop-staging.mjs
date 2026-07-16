@@ -7,6 +7,15 @@ import * as esbuild from 'esbuild';
 const repoRoot = process.cwd();
 const stagingRoot = path.join(repoRoot, '.desktop-secure');
 
+const codexRuntimeTargets = {
+  'darwin-arm64': ['codex-darwin-arm64', 'aarch64-apple-darwin'],
+  'darwin-x64': ['codex-darwin-x64', 'x86_64-apple-darwin'],
+  'linux-arm64': ['codex-linux-arm64', 'aarch64-unknown-linux-musl'],
+  'linux-x64': ['codex-linux-x64', 'x86_64-unknown-linux-musl'],
+  'win32-arm64': ['codex-win32-arm64', 'aarch64-pc-windows-msvc'],
+  'win32-x64': ['codex-win32-x64', 'x86_64-pc-windows-msvc'],
+};
+
 const jsExtensions = new Set(['.js', '.mjs', '.cjs']);
 
 function toPosix(relativePath) {
@@ -145,6 +154,50 @@ async function writeRuntimePackageJson() {
   );
 }
 
+async function stageBundledCodexRuntime() {
+  const target = codexRuntimeTargets[`${process.platform}-${process.arch}`];
+  if (!target) {
+    throw new Error(`No bundled Codex runtime mapping for ${process.platform}-${process.arch}`);
+  }
+
+  const [packageDir, targetTriple] = target;
+  const sourceDir = path.join(
+    repoRoot,
+    'node_modules',
+    '@openai',
+    packageDir,
+    'vendor',
+    targetTriple,
+  );
+  if (!fsSync.existsSync(sourceDir)) {
+    throw new Error(`Bundled Codex runtime not installed: ${sourceDir}`);
+  }
+
+  await fs.cp(sourceDir, path.join(stagingRoot, 'codex-runtime'), { recursive: true });
+}
+
+async function stageCodexBootstrap() {
+  const bootstrapDir = path.join(stagingRoot, 'codex-bootstrap');
+  const apiKey = String(process.env.LINGZHI_BUNDLED_OPENAI_API_KEY || '').trim();
+  const required = String(process.env.LINGZHI_REQUIRE_BUNDLED_API_KEY || '').trim() === '1';
+
+  await fs.mkdir(bootstrapDir, { recursive: true });
+  await fs.writeFile(
+    path.join(bootstrapDir, 'bootstrap.json'),
+    `${JSON.stringify({ bundledApiKey: Boolean(apiKey) }, null, 2)}\n`,
+    'utf8',
+  );
+
+  if (!apiKey) {
+    if (required) {
+      throw new Error('LINGZHI_BUNDLED_OPENAI_API_KEY is required for this desktop build');
+    }
+    return;
+  }
+
+  await fs.writeFile(path.join(bootstrapDir, 'api-key.txt'), `${apiKey}\n`, 'utf8');
+}
+
 async function main() {
   await fs.rm(stagingRoot, { recursive: true, force: true });
   await fs.mkdir(stagingRoot, { recursive: true });
@@ -161,6 +214,8 @@ async function main() {
     await copyTree(buildDir, path.join(stagingRoot, 'build'), shouldSkipCommon);
   }
 
+  await stageBundledCodexRuntime();
+  await stageCodexBootstrap();
   await writeRuntimePackageJson();
   console.log(`[desktop:stage:secure] Prepared hardened runtime staging at ${stagingRoot}`);
 }

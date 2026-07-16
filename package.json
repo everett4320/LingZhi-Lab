@@ -172,6 +172,14 @@
       {
         "from": ".desktop-secure/skills",
         "to": "skills"
+      },
+      {
+        "from": ".desktop-secure/codex-runtime",
+        "to": "codex-runtime"
+      },
+      {
+        "from": ".desktop-secure/codex-bootstrap",
+        "to": "codex-bootstrap"
       }
     ],
     "electronFuses": {

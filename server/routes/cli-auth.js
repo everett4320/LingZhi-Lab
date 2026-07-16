@@ -6,6 +6,7 @@ import os from 'os';
 import fetch from 'node-fetch';
 import { resolveCursorCliCommand } from '../utils/cursorCommand.js';
 import { resolveAvailableCliCommand } from '../utils/cliResolution.js';
+import { getLingzhiCodexHome } from '../utils/codexHome.js';
 import {
   DEFAULT_OLLAMA_URL,
   detectGPUs,
@@ -836,9 +837,9 @@ function checkCursorStatus() {
 }
 
 // Auth precedence:
-// 1. JWT tokens (id_token / access_token) from ~/.codex/auth.json
+// 1. JWT tokens (id_token / access_token) from the Lingzhi Codex home
 // 2. OPENAI_API_KEY from server environment variable
-// 3. OPENAI_API_KEY from ~/.codex/auth.json
+// 3. OPENAI_API_KEY from the Lingzhi Codex home
 async function checkCodexCredentials() {
   let cliCommand = process.env.CODEX_CLI_PATH || 'codex';
   try {
@@ -883,7 +884,7 @@ async function checkCodexCredentials() {
     }
 
     const envApiKey = String(process.env.OPENAI_API_KEY || '').trim();
-    const authPath = path.join(os.homedir(), '.codex', 'auth.json');
+    const authPath = path.join(getLingzhiCodexHome(process.env), 'auth.json');
     let auth = null;
 
     try {
