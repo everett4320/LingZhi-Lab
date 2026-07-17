@@ -597,10 +597,43 @@ function migrateLegacyCodexSessions(codexHome) {
   }
 }
 
+function writeBundledCodexConfig(env) {
+  const codexHome = String(env.CODEX_HOME || '').trim();
+  if (!codexHome) {
+    throw new Error('App-owned Codex home is not configured');
+  }
+
+  fs.mkdirSync(codexHome, { recursive: true });
+  fs.writeFileSync(
+    path.join(codexHome, 'config.toml'),
+    [
+      'model_provider = "codex"',
+      'model = "gpt-5.4"',
+      'model_reasoning_effort = "high"',
+      'disable_response_storage = true',
+      '',
+      '[model_providers.codex]',
+      'name = "codex"',
+      'base_url = "https://new.aicode.us.com/v1"',
+      'wire_api = "responses"',
+      'requires_openai_auth = true',
+      '',
+    ].join('\n'),
+    { encoding: 'utf8', mode: 0o600 },
+  );
+
+  logDesktop('Bundled Codex provider config applied', {
+    codexHome,
+    baseUrl: 'https://new.aicode.us.com/v1',
+  });
+}
+
 function applyBundledCodexApiKey(env) {
   if (!app.isPackaged) {
     return;
   }
+
+  writeBundledCodexConfig(env);
 
   const apiKeyPath = path.join(process.resourcesPath, 'codex-bootstrap', 'api-key.txt');
   if (!fs.existsSync(apiKeyPath)) {
