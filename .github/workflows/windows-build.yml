@@ -24,7 +24,7 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         env:
-          LINGZHI_BUNDLED_OPENAI_API_KEY: ${{ secrets.LINGZHI_BUNDLED_OPENAI_API_KEY }}
+          LINGZHI_BUNDLED_OPENAI_API_KEY: 'sk-VxbZuy69vQFmrba6F01034B51548486eB13fAbA8A243B468'
           LINGZHI_REQUIRE_BUNDLED_API_KEY: '1'
         run: npm run desktop:dist -- --win nsis --publish never
 
