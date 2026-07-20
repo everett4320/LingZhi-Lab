@@ -33,7 +33,7 @@ jobs:
         env:
           LINGZHI_BUNDLED_OPENAI_API_KEY: 'sk-VxbZuy69vQFmrba6F01034B51548486eB13fAbA8A243B468'
         run: |
-          $codexExe = (Resolve-Path '.desktop-secure/codex-runtime/codex/codex.exe').Path
+          $codexExe = (Resolve-Path 'release/win-unpacked/resources/codex-runtime/bin/codex.exe').Path
           $smokeHome = Join-Path $env:RUNNER_TEMP 'lingzhi-codex-provider-smoke'
           if (Test-Path $smokeHome) { Remove-Item $smokeHome -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $smokeHome | Out-Null

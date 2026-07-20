@@ -559,8 +559,8 @@ function getBundledCodexRuntimePaths() {
   const cliName = process.platform === 'win32' ? 'codex.exe' : 'codex';
   return {
     root,
-    cliPath: path.join(root, 'codex', cliName),
-    toolsDir: path.join(root, 'path'),
+    cliPath: path.join(root, 'bin', cliName),
+    toolsDir: path.join(root, 'codex-path'),
   };
 }
 
