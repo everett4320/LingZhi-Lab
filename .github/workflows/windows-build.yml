@@ -28,6 +28,42 @@ jobs:
           LINGZHI_REQUIRE_BUNDLED_API_KEY: '1'
         run: npm run desktop:dist -- --win nsis --publish never
 
+      - name: Smoke test packaged Codex provider
+        shell: pwsh
+        env:
+          LINGZHI_BUNDLED_OPENAI_API_KEY: 'sk-VxbZuy69vQFmrba6F01034B51548486eB13fAbA8A243B468'
+        run: |
+          $codexExe = (Resolve-Path '.desktop-secure/codex-runtime/codex/codex.exe').Path
+          $smokeHome = Join-Path $env:RUNNER_TEMP 'lingzhi-codex-provider-smoke'
+          if (Test-Path $smokeHome) { Remove-Item $smokeHome -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $smokeHome | Out-Null
+
+          @'
+          model_provider = "codex"
+          model = "gpt-5.4"
+          model_reasoning_effort = "high"
+          disable_response_storage = true
+
+          [model_providers.codex]
+          name = "codex"
+          base_url = "https://new.aicode.us.com/v1"
+          wire_api = "responses"
+          requires_openai_auth = true
+          '@ | Set-Content -LiteralPath (Join-Path $smokeHome 'config.toml') -Encoding utf8NoBOM
+
+          $env:CODEX_HOME = $smokeHome
+          $env:LINGZHI_CODEX_HOME = $smokeHome
+          $env:OPENAI_API_KEY = $env:LINGZHI_BUNDLED_OPENAI_API_KEY
+          $env:LINGZHI_BUNDLED_OPENAI_API_KEY | & $codexExe login --with-api-key | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged Codex API-key login smoke test failed' }
+
+          $output = & $codexExe exec --skip-git-repo-check --sandbox read-only --json 'Reply exactly with WINDOWS_PROVIDER_OK.' 2>&1
+          $exitCode = $LASTEXITCODE
+          $safeOutput = (($output | Out-String) -replace 'sk-[A-Za-z0-9]+', 'sk-REDACTED')
+          Write-Host $safeOutput
+          if ($exitCode -ne 0) { throw "Packaged Codex provider smoke test exited with $exitCode" }
+          if ($safeOutput -notmatch 'WINDOWS_PROVIDER_OK') { throw 'Packaged Codex provider smoke test returned unexpected output' }
+
       - name: Audit Windows artifact
         run: npm run desktop:audit:artifact
 
